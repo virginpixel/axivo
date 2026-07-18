@@ -1243,7 +1243,9 @@ model WorkflowStep {
 
 model WorkflowInstance {
   id                String                 @id @default(uuid()) @db.Uuid
-  requestItemId     String                 @unique @map("request_item_id") @db.Uuid
+  /// An item may have several instances over time (correction restarts);
+  /// at most one is non-terminal at any moment.
+  requestItemId     String                 @map("request_item_id") @db.Uuid
   workflowVersionId String                 @map("workflow_version_id") @db.Uuid
   status            WorkflowInstanceStatus @default(PENDING) @map("status")
   currentStepOrder  Int?                   @map("current_step_order")
@@ -1258,6 +1260,7 @@ model WorkflowInstance {
   workflowVersion WorkflowVersion        @relation(fields: [workflowVersionId], references: [id])
   stepInstances   WorkflowStepInstance[]
 
+  @@index([requestItemId])
   @@index([status])
   @@index([workflowVersionId])
   @@map("workflow_instances")
@@ -1515,7 +1518,7 @@ model RequestItem {
   application      Application?            @relation(fields: [applicationId], references: [id])
   applicationRole  ApplicationRole?        @relation(fields: [applicationRoleId], references: [id])
   assetCategory    AssetCategory?          @relation(fields: [assetCategoryId], references: [id])
-  workflowInstance WorkflowInstance?
+  workflowInstances WorkflowInstance[]
   corrections      RequestCorrection[]
   appAssignments   ApplicationAssignment[]
   licenseAssignments LicenseAssignment[]

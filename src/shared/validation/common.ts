@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ValidationError } from "@/shared/errors";
 
 /**
  * Shared validation primitives (SDS Doc 05 Ch6). Server-side validation is
@@ -71,6 +72,21 @@ export function paged<T>(rows: T[], total: number, pagination: Pagination): Page
     pageSize: pagination.pageSize,
     pageCount: Math.max(1, Math.ceil(total / pagination.pageSize)),
   };
+}
+
+/**
+ * Parse raw client input against a schema, throwing a ValidationError with
+ * field-level messages on failure. Used at the top of every server action.
+ */
+export function parseInput<Schema extends z.ZodTypeAny>(
+  schema: Schema,
+  raw: unknown,
+): z.infer<Schema> {
+  const result = schema.safeParse(raw);
+  if (!result.success) {
+    throw new ValidationError(undefined, fieldErrorsFromZod(result.error));
+  }
+  return result.data;
 }
 
 /** Convert a ZodError into field-level messages for inline display. */
