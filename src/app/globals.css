@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Axivo design tokens (SDS Doc 03).
+ * Brand colors are configurable from Settings; the branding service overrides
+ * --primary at runtime via an inline style on <body>, so brand changes
+ * propagate across the application without rebuilds.
+ */
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 224 76% 48%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 215 25% 27%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 214 95% 93%;
+    --accent-foreground: 224 76% 33%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+    --success: 142 71% 35%;
+    --success-foreground: 210 40% 98%;
+    --warning: 38 92% 40%;
+    --warning-foreground: 210 40% 98%;
+    --info: 199 89% 40%;
+    --info-foreground: 210 40% 98%;
+    --border: 214 32% 91%;
+    --input: 214 32% 86%;
+    --ring: 224 76% 48%;
+    --radius: 0.5rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply rounded bg-muted-foreground/30;
+  }
+}
