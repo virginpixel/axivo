@@ -1,0 +1,116 @@
+"use client";
+
+import { useState } from "react";
+import { Pencil, RotateCw, XCircle } from "lucide-react";
+import {
+  resendNotificationAction,
+  cancelNotificationAction,
+  saveTemplateAction,
+} from "@/modules/notifications/actions";
+import { useAction } from "@/shared/ui/use-action";
+import { Button } from "@/shared/ui/button";
+import { Input, Textarea, Label, FieldError, HelperText } from "@/shared/ui/input";
+import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
+
+export function NotificationRowActions({
+  notificationId,
+  status,
+}: {
+  notificationId: string;
+  status: string;
+}) {
+  const { run, loading } = useAction();
+  return (
+    <div className="flex justify-end gap-1">
+      {status === "FAILED" || status === "DELIVERED" || status === "EXPIRED" ? (
+        <Button
+          variant="ghost" size="icon" loading={loading} aria-label="Resend notification" title="Resend (creates a new delivery record)"
+          onClick={() => run(() => resendNotificationAction(notificationId), { successMessage: "Notification re-queued." })}
+        >
+          <RotateCw className="h-4 w-4" />
+        </Button>
+      ) : null}
+      {status === "QUEUED" ? (
+        <Button
+          variant="ghost" size="icon" loading={loading} aria-label="Cancel notification" title="Cancel"
+          onClick={() => run(() => cancelNotificationAction(notificationId), { successMessage: "Notification cancelled." })}
+        >
+          <XCircle className="h-4 w-4 text-destructive" />
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+export function TemplateDialog({
+  template,
+}: {
+  template: { key: string; name: string; type: string; subject: string; body: string; variables: string[] };
+}) {
+  const { run, loading, fieldErrors } = useAction();
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({
+    name: template.name,
+    subject: template.subject,
+    body: template.body,
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label={`Edit template ${template.key}`}>
+          <Pencil className="h-4 w-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent
+        title={`Edit template: ${template.key}`}
+        description="Saving creates a new template version; previously sent notifications remain unchanged."
+        wide
+      >
+        <div className="space-y-3">
+          <div>
+            <Label htmlFor="tpl-name" required>Template name</Label>
+            <Input id="tpl-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <FieldError message={fieldErrors.name} />
+          </div>
+          <div>
+            <Label htmlFor="tpl-subject" required>Subject</Label>
+            <Input id="tpl-subject" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} />
+            <FieldError message={fieldErrors.subject} />
+          </div>
+          <div>
+            <Label htmlFor="tpl-body" required>Body (HTML)</Label>
+            <Textarea id="tpl-body" rows={10} value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} />
+            <FieldError message={fieldErrors.body} />
+          </div>
+          {template.variables.length > 0 ? (
+            <HelperText>
+              Available variables: {template.variables.map((variable) => `{{${variable}}}`).join(", ")}
+            </HelperText>
+          ) : null}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button
+              loading={loading}
+              onClick={() =>
+                run(
+                  () =>
+                    saveTemplateAction({
+                      key: template.key,
+                      name: form.name,
+                      type: template.type,
+                      subject: form.subject,
+                      body: form.body,
+                    }),
+                  { successMessage: "Template saved as a new version.", onSuccess: () => setOpen(false) },
+                )
+              }
+            >
+              Save new version
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
