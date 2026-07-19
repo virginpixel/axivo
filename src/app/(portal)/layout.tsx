@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/shared/auth/session";
 import { db } from "@/shared/db";
 import { getSetting, SETTING_KEYS } from "@/shared/settings/settings";
 import { ToastProvider } from "@/shared/ui/toast";
+import { brandingStyle, type BrandingConfig } from "@/shared/branding";
 import { Sidebar } from "./sidebar";
 import { Header } from "./header";
 
@@ -26,11 +27,14 @@ export default async function PortalLayout({ children }: { children: React.React
     where: { systemUserId: user.userId, readAt: null },
   });
 
-  const branding = await getSetting<{ systemName: string }>(SETTING_KEYS.BRANDING);
+  const branding = await getSetting<BrandingConfig>(SETTING_KEYS.BRANDING);
 
   return (
     <ToastProvider>
-      <div className="flex min-h-screen">
+      <div
+        className="flex min-h-screen"
+        style={brandingStyle(branding) as React.CSSProperties}
+      >
         <Sidebar
           permissions={Array.from(user.permissions)}
           systemName={branding.systemName || "Axivo"}

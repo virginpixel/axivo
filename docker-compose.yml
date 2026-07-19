@@ -1,0 +1,131 @@
+# =============================================================================
+# Axivo production deployment (SDS Doc 00 §12, Doc 02 Ch10, Doc 19)
+# Single-instance Docker Compose stack:
+#   nginx (only public entry) → web ─┬─ postgres
+#                                    ├─ redis
+#                            worker ─┘
+# Copy .env.example to .env and set real secrets before starting.
+# =============================================================================
+
+name: axivo
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/proxy_params_axivo:/etc/nginx/proxy_params_axivo:ro
+      # Mount TLS certificates here (or run behind Cloudflare Tunnel):
+      # - ./deploy/certs:/etc/nginx/certs:ro
+    networks: [frontend]
+
+  web:
+    build:
+      context: .
+      target: web
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://axivo:${POSTGRES_PASSWORD}@postgres:5432/axivo?schema=public
+      REDIS_URL: redis://redis:6379
+      STORAGE_PATH: /var/lib/axivo/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - storage:/var/lib/axivo/storage
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/login"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks: [frontend, backend]
+
+  worker:
+    build:
+      context: .
+      target: worker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://axivo:${POSTGRES_PASSWORD}@postgres:5432/axivo?schema=public
+      REDIS_URL: redis://redis:6379
+      STORAGE_PATH: /var/lib/axivo/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - storage:/var/lib/axivo/storage
+    # frontend membership provides outbound SMTP connectivity for email delivery.
+    networks: [frontend, backend]
+
+  # One-shot: applies Prisma migrations and idempotent seed on every deploy.
+  migrate:
+    build:
+      context: .
+      target: worker
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://axivo:${POSTGRES_PASSWORD}@postgres:5432/axivo?schema=public
+      REDIS_URL: redis://redis:6379
+      STORAGE_PATH: /var/lib/axivo/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "npx prisma migrate deploy && npx tsx prisma/seed.ts"
+    networks: [backend]
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: axivo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: axivo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U axivo -d axivo"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
+
+volumes:
+  pgdata:
+  redisdata:
+  storage:
+
+networks:
+  # Only nginx is publicly reachable; databases stay on the internal network.
+  frontend:
+  backend:
+    internal: true

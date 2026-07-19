@@ -7,7 +7,7 @@ import { requirePermission, requireUser } from "@/shared/auth/guard";
 import { recordAudit } from "@/shared/audit/audit";
 import { ok, toActionError, BusinessRuleError, NotFoundError, type ActionResult } from "@/shared/errors";
 import { parseInput as parse } from "@/shared/validation/common";
-import { getSmtpConfig, decryptSmtpPassword } from "@/shared/settings/settings";
+import { getSmtpConfig } from "@/shared/settings/settings";
 import { testSmtp } from "@/shared/email/mailer";
 import { resendNotification } from "./service";
 
