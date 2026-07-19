@@ -23,7 +23,9 @@ RUN npx prisma generate && npm run build
 # -----------------------------------------------------------------------------
 FROM node:22-alpine AS web
 WORKDIR /app
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
+# HOSTNAME=0.0.0.0 is required: Docker sets HOSTNAME to the container id and
+# the Next.js standalone server would otherwise bind only to that interface.
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000
 RUN addgroup -S axivo && adduser -S axivo -G axivo
 COPY --from=builder --chown=axivo:axivo /app/.next/standalone ./
 COPY --from=builder --chown=axivo:axivo /app/.next/static ./.next/static
