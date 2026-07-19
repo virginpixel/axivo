@@ -40,7 +40,6 @@ export function CompanyDialog({
     name: string;
     code: string;
     description: string | null;
-    timezone: string;
     currency: string;
   };
 }) {
@@ -50,16 +49,15 @@ export function CompanyDialog({
     name: company?.name ?? "",
     code: company?.code ?? "",
     description: company?.description ?? "",
-    timezone: company?.timezone ?? "UTC",
     currency: company?.currency ?? "USD",
   });
 
   async function submit() {
+    // Timezone is a global setting (Settings → General), not per company.
     const payload = {
       name: form.name,
       code: form.code,
       description: form.description || undefined,
-      timezone: form.timezone,
       currency: form.currency,
     };
     await run(
@@ -96,15 +94,9 @@ export function CompanyDialog({
             <Input id="company-code" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
             <FieldError message={fieldErrors.code} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="company-timezone" required>Timezone</Label>
-              <Input id="company-timezone" value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} />
-            </div>
-            <div>
-              <Label htmlFor="company-currency" required>Currency</Label>
-              <Input id="company-currency" value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} />
-            </div>
+          <div>
+            <Label htmlFor="company-currency" required>Currency</Label>
+            <Input id="company-currency" value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} />
           </div>
           <div>
             <Label htmlFor="company-description">Description</Label>
@@ -121,11 +113,136 @@ export function CompanyDialog({
 }
 
 // ---------------------------------------------------------------------------
-// Departments / Locations / Positions (shared dialog)
+// Departments (with inline Department Heads, SDS Doc 06 Ch3/7)
+// ---------------------------------------------------------------------------
+
+export function DepartmentDialog({
+  companies,
+  peopleByCompany,
+  department,
+}: {
+  companies: { id: string; name: string }[];
+  peopleByCompany: Record<string, { id: string; name: string }[]>;
+  department?: {
+    id: string;
+    companyId: string;
+    name: string;
+    description: string | null;
+    headPersonIds: string[];
+  };
+}) {
+  const { run, loading, fieldErrors } = useAction();
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({
+    companyId: department?.companyId ?? companies[0]?.id ?? "",
+    name: department?.name ?? "",
+    description: department?.description ?? "",
+    headPersonIds: department?.headPersonIds ?? [],
+  });
+  const people = peopleByCompany[form.companyId] ?? [];
+
+  async function submit() {
+    const payload = {
+      companyId: form.companyId,
+      name: form.name,
+      description: form.description || undefined,
+      headPersonIds: form.headPersonIds,
+    };
+    await run(
+      () => (department ? updateDepartmentAction(department.id, payload) : createDepartmentAction(payload)),
+      {
+        successMessage: department ? "Department updated." : "Department created.",
+        onSuccess: () => setOpen(false),
+      },
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        {department ? (
+          <Button variant="ghost" size="icon" aria-label={`Edit ${department.name}`}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+        ) : (
+          <Button size="sm">
+            <Plus className="h-4 w-4" /> New department
+          </Button>
+        )}
+      </DialogTrigger>
+      <DialogContent
+        title={department ? "Edit department" : "New department"}
+        description="Department Head approval steps route to the heads selected here."
+      >
+        <div className="space-y-3">
+          <div>
+            <Label htmlFor="dept-company" required>Company</Label>
+            <Select
+              id="dept-company"
+              value={form.companyId}
+              disabled={!!department}
+              onChange={(e) => setForm({ ...form, companyId: e.target.value, headPersonIds: [] })}
+            >
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>{company.name}</option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="dept-name" required>Department name</Label>
+            <Input id="dept-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <FieldError message={fieldErrors.name} />
+          </div>
+          <div>
+            <Label htmlFor="dept-description">Description</Label>
+            <Textarea id="dept-description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          </div>
+          <div>
+            <Label>Department Head(s)</Label>
+            {people.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Add employees to this company first, then assign heads here.
+              </p>
+            ) : (
+              <div className="mt-1 grid max-h-48 gap-1.5 overflow-y-auto rounded-md border bg-muted/30 p-3 sm:grid-cols-2">
+                {people.map((person) => (
+                  <label key={person.id} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={form.headPersonIds.includes(person.id)}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          headPersonIds: event.target.checked
+                            ? [...current.headPersonIds, person.id]
+                            : current.headPersonIds.filter((id) => id !== person.id),
+                        }))
+                      }
+                      className="h-4 w-4"
+                    />
+                    {person.name}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button onClick={submit} loading={loading}>
+              {department ? "Save changes" : "Create department"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Locations / Positions (shared dialog; locations are managed under Settings)
 // ---------------------------------------------------------------------------
 
 const ENTITY_ACTIONS = {
-  department: { create: createDepartmentAction, update: updateDepartmentAction },
   location: { create: createLocationAction, update: updateLocationAction },
   position: { create: createPositionAction, update: updatePositionAction },
 } as const;
@@ -135,7 +252,7 @@ export function OrgEntityDialog({
   companies,
   record,
 }: {
-  entity: "department" | "location" | "position";
+  entity: "location" | "position";
   companies: { id: string; name: string }[];
   record?: { id: string; companyId: string; name: string; code: string | null; description: string | null };
 }) {

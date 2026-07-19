@@ -1,24 +1,23 @@
 "use client";
 
-import { useState } from "react";
-import { Pencil, Plus, RefreshCw, Ban } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Pencil, Plus, RefreshCw, Ban, Paperclip, Eye } from "lucide-react";
 import {
   createContractAction,
   updateContractAction,
   setContractStatusAction,
   renewContractAction,
+  attachContractPdfAction,
 } from "@/modules/contracts/actions";
 import { useAction } from "@/shared/ui/use-action";
 import { Button } from "@/shared/ui/button";
-import { Input, Select, Textarea, Label, FieldError } from "@/shared/ui/input";
+import { Input, Select, Textarea, Label, FieldError, HelperText } from "@/shared/ui/input";
 import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
-
-const CATEGORIES = ["Software", "Hardware Support", "Cloud Services", "Internet", "Telecom", "Maintenance", "Warranty", "Other"];
 
 export interface ContractRecord {
   id: string;
   companyId: string;
-  contractNumber: string;
+  contractNumber: string | null;
   name: string;
   vendor: string;
   category: string;
@@ -33,13 +32,29 @@ export interface ContractRecord {
   notes: string | null;
 }
 
+export interface ContractCatalogs {
+  vendors: { id: string; name: string }[];
+  categories: { id: string; name: string }[];
+}
+
+/**
+ * Renewal date derives from the end date for periodic renewal types; only
+ * MANUAL contracts set it by hand.
+ */
+function computeRenewalDate(endDate: string, renewalType: string): string {
+  if (!endDate || renewalType === "MANUAL" || renewalType === "CUSTOM") return "";
+  return endDate;
+}
+
 export function ContractDialog({
   companies,
   peopleByCompany,
+  catalogs,
   contract,
 }: {
   companies: { id: string; name: string }[];
   peopleByCompany: Record<string, { id: string; name: string }[]>;
+  catalogs: ContractCatalogs;
   contract?: ContractRecord;
 }) {
   const { run, loading, fieldErrors } = useAction();
@@ -49,21 +64,33 @@ export function ContractDialog({
     contractNumber: contract?.contractNumber ?? "",
     name: contract?.name ?? "",
     vendor: contract?.vendor ?? "",
-    category: contract?.category ?? "Software",
+    category: contract?.category ?? "",
     startDate: contract?.startDate ?? "",
     endDate: contract?.endDate ?? "",
     renewalDate: contract?.renewalDate ?? "",
-    renewalType: contract?.renewalType ?? "MANUAL",
+    renewalType: contract?.renewalType ?? "ANNUAL",
     cost: contract?.cost !== null && contract?.cost !== undefined ? String(contract.cost) : "",
     currency: contract?.currency ?? "USD",
     ownerPersonId: contract?.ownerPersonId ?? "",
     notes: contract?.notes ?? "",
   });
 
+  const autoRenewal = form.renewalType !== "MANUAL" && form.renewalType !== "CUSTOM";
+  // Keep the renewal date in sync with end date + renewal type.
+  useEffect(() => {
+    if (autoRenewal) {
+      setForm((current) => ({
+        ...current,
+        renewalDate: computeRenewalDate(current.endDate, current.renewalType),
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.endDate, form.renewalType]);
+
   async function submit() {
     const payload = {
       companyId: form.companyId,
-      contractNumber: form.contractNumber,
+      contractNumber: form.contractNumber || undefined,
       name: form.name,
       vendor: form.vendor,
       category: form.category,
@@ -86,7 +113,7 @@ export function ContractDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {contract ? (
-          <Button variant="ghost" size="icon" aria-label={`Edit ${contract.contractNumber}`}>
+          <Button variant="ghost" size="icon" aria-label={`Edit ${contract.name}`}>
             <Pencil className="h-4 w-4" />
           </Button>
         ) : (
@@ -107,27 +134,35 @@ export function ContractDialog({
             </Select>
           </div>
           <div>
-            <Label htmlFor="con-number" required>Contract number</Label>
-            <Input id="con-number" value={form.contractNumber} onChange={(e) => setForm({ ...form, contractNumber: e.target.value })} />
-            <FieldError message={fieldErrors.contractNumber} />
-          </div>
-          <div>
             <Label htmlFor="con-name" required>Contract name</Label>
             <Input id="con-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             <FieldError message={fieldErrors.name} />
           </div>
           <div>
             <Label htmlFor="con-vendor" required>Vendor</Label>
-            <Input id="con-vendor" value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} />
+            <Select id="con-vendor" value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })}>
+              <option value="">Select…</option>
+              {catalogs.vendors.map((vendor) => (
+                <option key={vendor.id} value={vendor.name}>{vendor.name}</option>
+              ))}
+            </Select>
+            <HelperText>Vendors are managed in Settings → Catalogs.</HelperText>
             <FieldError message={fieldErrors.vendor} />
           </div>
           <div>
             <Label htmlFor="con-category" required>Category</Label>
             <Select id="con-category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-              {CATEGORIES.map((category) => (
-                <option key={category} value={category}>{category}</option>
+              <option value="">Select…</option>
+              {catalogs.categories.map((category) => (
+                <option key={category.id} value={category.name}>{category.name}</option>
               ))}
             </Select>
+            <FieldError message={fieldErrors.category} />
+          </div>
+          <div>
+            <Label htmlFor="con-number">Contract number (optional)</Label>
+            <Input id="con-number" value={form.contractNumber} onChange={(e) => setForm({ ...form, contractNumber: e.target.value })} />
+            <FieldError message={fieldErrors.contractNumber} />
           </div>
           <div>
             <Label htmlFor="con-owner">Contract owner</Label>
@@ -148,10 +183,6 @@ export function ContractDialog({
             <FieldError message={fieldErrors.endDate} />
           </div>
           <div>
-            <Label htmlFor="con-renewal-date">Renewal date</Label>
-            <Input id="con-renewal-date" type="date" value={form.renewalDate} onChange={(e) => setForm({ ...form, renewalDate: e.target.value })} />
-          </div>
-          <div>
             <Label htmlFor="con-renewal-type" required>Renewal type</Label>
             <Select id="con-renewal-type" value={form.renewalType} onChange={(e) => setForm({ ...form, renewalType: e.target.value })}>
               <option value="MANUAL">Manual</option>
@@ -160,6 +191,21 @@ export function ContractDialog({
               <option value="ANNUAL">Annual</option>
               <option value="CUSTOM">Custom</option>
             </Select>
+          </div>
+          <div>
+            <Label htmlFor="con-renewal-date">Renewal date</Label>
+            <Input
+              id="con-renewal-date"
+              type="date"
+              value={form.renewalDate}
+              readOnly={autoRenewal}
+              onChange={(e) => setForm({ ...form, renewalDate: e.target.value })}
+            />
+            <HelperText>
+              {autoRenewal
+                ? "Calculated automatically from the end date and renewal type."
+                : "Set manually for manual/custom renewals."}
+            </HelperText>
           </div>
           <div>
             <Label htmlFor="con-cost">Cost</Label>
@@ -176,7 +222,53 @@ export function ContractDialog({
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={submit} loading={loading}>{contract ? "Save changes" : "Create contract"}</Button>
+          <Button onClick={submit} loading={loading} disabled={!form.name || !form.vendor || !form.category}>
+            {contract ? "Save changes" : "Create contract"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function AttachPdfDialog({ contractId, contractName }: { contractId: string; contractName: string }) {
+  const { run, loading, fieldErrors } = useAction();
+  const [open, setOpen] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="Attach contract PDF" title="Attach PDF">
+          <Paperclip className="h-4 w-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent title={`Attach PDF: ${contractName}`} description="Stored in Documents with immutable version history and linked to this contract.">
+        <Label htmlFor={`con-pdf-${contractId}`} required>Contract PDF</Label>
+        <Input
+          id={`con-pdf-${contractId}`}
+          type="file"
+          accept="application/pdf"
+          onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+        />
+        <FieldError message={fieldErrors.file} />
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button
+            loading={loading}
+            disabled={!file}
+            onClick={() => {
+              if (!file) return;
+              const data = new FormData();
+              data.set("file", file);
+              void run(() => attachContractPdfAction(contractId, data), {
+                successMessage: "Contract PDF attached.",
+                onSuccess: () => setOpen(false),
+              });
+            }}
+          >
+            Attach PDF
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -187,10 +279,14 @@ export function ContractRowActions({
   contract,
   companies,
   peopleByCompany,
+  catalogs,
+  attachedDocumentId,
 }: {
   contract: ContractRecord;
   companies: { id: string; name: string }[];
   peopleByCompany: Record<string, { id: string; name: string }[]>;
+  catalogs: ContractCatalogs;
+  attachedDocumentId: string | null;
 }) {
   const { run, loading } = useAction();
   const [renewOpen, setRenewOpen] = useState(false);
@@ -203,7 +299,20 @@ export function ContractRowActions({
 
   return (
     <div className="flex justify-end gap-1">
-      <ContractDialog companies={companies} peopleByCompany={peopleByCompany} contract={contract} />
+      {attachedDocumentId ? (
+        <a
+          href={`/api/documents/${attachedDocumentId}/download?inline=1`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent"
+          aria-label="View contract PDF"
+          title="View contract PDF"
+        >
+          <Eye className="h-4 w-4 text-primary" />
+        </a>
+      ) : null}
+      <AttachPdfDialog contractId={contract.id} contractName={contract.name} />
+      <ContractDialog companies={companies} peopleByCompany={peopleByCompany} catalogs={catalogs} contract={contract} />
       {contract.status === "DRAFT" ? (
         <Button
           variant="ghost" size="sm" className="text-xs" loading={loading}
@@ -220,7 +329,7 @@ export function ContractRowActions({
                 <RefreshCw className="h-4 w-4 text-success" />
               </Button>
             </DialogTrigger>
-            <DialogContent title={`Renew ${contract.contractNumber}`} description="Renewal history is preserved; the contract period advances.">
+            <DialogContent title={`Renew ${contract.name}`} description="Renewal history is preserved; the contract period advances.">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label htmlFor={`ren-date-${contract.id}`} required>Renewal date</Label>

@@ -17,7 +17,8 @@ export const assetSchema = z
   .object({
     companyId: uuidSchema,
     categoryId: uuidSchema,
-    assetTag: requiredText("Asset tag", 100),
+    name: requiredText("Asset name", 200),
+    assetTag: optionalText(100),
     serialNumber: optionalText(200),
     manufacturer: optionalText(200),
     model: optionalText(200),

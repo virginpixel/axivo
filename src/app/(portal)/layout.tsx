@@ -3,7 +3,6 @@ import { getCurrentUser } from "@/shared/auth/session";
 import { db } from "@/shared/db";
 import { getSetting, SETTING_KEYS } from "@/shared/settings/settings";
 import { ToastProvider } from "@/shared/ui/toast";
-import { brandingStyle, type BrandingConfig } from "@/shared/branding";
 import { Sidebar } from "./sidebar";
 import { Header } from "./header";
 
@@ -23,18 +22,23 @@ export default async function PortalLayout({ children }: { children: React.React
     redirect("/login");
   }
 
-  const unreadNotifications = await db.inAppNotification.count({
-    where: { systemUserId: user.userId, readAt: null },
-  });
+  const [unreadNotifications, recentNotifications] = await Promise.all([
+    db.inAppNotification.count({
+      where: { systemUserId: user.userId, readAt: null },
+    }),
+    db.inAppNotification.findMany({
+      where: { systemUserId: user.userId },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+      select: { id: true, title: true, body: true, link: true, readAt: true, createdAt: true },
+    }),
+  ]);
 
-  const branding = await getSetting<BrandingConfig>(SETTING_KEYS.BRANDING);
+  const branding = await getSetting<{ systemName?: string }>(SETTING_KEYS.BRANDING);
 
   return (
     <ToastProvider>
-      <div
-        className="flex min-h-screen"
-        style={brandingStyle(branding) as React.CSSProperties}
-      >
+      <div className="flex min-h-screen">
         <Sidebar
           permissions={Array.from(user.permissions)}
           systemName={branding.systemName || "Axivo"}
@@ -45,6 +49,14 @@ export default async function PortalLayout({ children }: { children: React.React
             username={user.username}
             roleName={user.systemRoleName}
             unreadCount={unreadNotifications}
+            recentNotifications={recentNotifications.map((notification) => ({
+              id: notification.id,
+              title: notification.title,
+              body: notification.body,
+              link: notification.link,
+              read: notification.readAt !== null,
+              createdAt: notification.createdAt.toISOString(),
+            }))}
             maintenanceEnabled={maintenance.enabled}
           />
           <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>

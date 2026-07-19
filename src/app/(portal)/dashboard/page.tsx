@@ -4,12 +4,21 @@ import { requirePermission } from "@/shared/auth/guard";
 import { PageHeader, StatCard } from "@/shared/ui/page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { StatusBadge } from "@/shared/ui/badge";
+import { AutoRefresh } from "@/shared/ui/auto-refresh";
 import { formatDateTime } from "@/shared/utils";
+import { StatusDonut } from "./dashboard-charts";
 
 export const metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
 
-/** Portal dashboard (SDS Doc 15 Ch4): live operational KPIs with drill-down links. */
+const label = (value: string) =>
+  value
+    .toLowerCase()
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+
+/** Portal dashboard (SDS Doc 15 Ch4): live KPIs, charts and drill-down links. */
 export default async function DashboardPage() {
   const { user } = await requirePermission("reports.view");
   const isGlobalAdmin = user.systemRoleKey === "SYSTEM_ADMINISTRATOR";
@@ -22,12 +31,14 @@ export default async function DashboardPage() {
     completedRequests,
     totalPeople,
     totalAssets,
-    assignedAssets,
-    availableAssets,
     expiringContracts,
     pendingDeliveries,
     recentRequests,
     failedNotifications,
+    assetsByStatus,
+    requestsByStatus,
+    categoryCounts,
+    categories,
   ] = await Promise.all([
     db.requestItem.count({ where: { status: "PENDING_APPROVAL", request: companyFilter } }),
     db.requestItem.count({ where: { status: "IMPLEMENTATION_PENDING", request: companyFilter } }),
@@ -35,8 +46,6 @@ export default async function DashboardPage() {
     db.request.count({ where: { ...companyFilter, status: "COMPLETED" } }),
     db.person.count({ where: { ...companyFilter, deletedAt: null, isActive: true } }),
     db.asset.count({ where: { ...companyFilter, deletedAt: null } }),
-    db.asset.count({ where: { ...companyFilter, deletedAt: null, status: "ASSIGNED" } }),
-    db.asset.count({ where: { ...companyFilter, deletedAt: null, status: "AVAILABLE" } }),
     db.contract.count({
       where: {
         ...companyFilter,
@@ -54,11 +63,25 @@ export default async function DashboardPage() {
       take: 8,
       include: { items: { select: { id: true } } },
     }),
-    db.notification.count({ where: { status: "FAILED" } }),
+    // Failed notifications an administrator has not yet cleared.
+    db.notification.count({ where: { status: "FAILED", archivedAt: null } }),
+    db.asset.groupBy({ by: ["status"], where: { ...companyFilter, deletedAt: null }, _count: true }),
+    db.request.groupBy({ by: ["status"], where: companyFilter, _count: true }),
+    db.asset.groupBy({ by: ["categoryId"], where: { ...companyFilter, deletedAt: null }, _count: true }),
+    db.assetCategory.findMany({
+      where: { deletedAt: null, ...companyFilter },
+      select: { id: true, name: true },
+    }),
   ]);
+
+  const categoryNames = new Map(categories.map((category) => [category.id, category.name]));
+  const categoryList = categoryCounts
+    .map((entry) => ({ name: categoryNames.get(entry.categoryId) ?? "Unknown", count: entry._count }))
+    .sort((a, b) => b.count - a.count);
 
   return (
     <div>
+      <AutoRefresh />
       <PageHeader
         title="Dashboard"
         description={`Operational overview${isGlobalAdmin ? " across all companies" : ""}.`}
@@ -84,29 +107,71 @@ export default async function DashboardPage() {
           <StatCard label="Active employees" value={totalPeople} />
         </Link>
         <Link href="/assets">
-          <StatCard label="Assets" value={totalAssets} hint={`${assignedAssets} assigned · ${availableAssets} available`} />
+          <StatCard label="Assets" value={totalAssets} />
         </Link>
         <Link href="/contracts">
           <StatCard label="Contracts expiring ≤60d" value={expiringContracts} tone={expiringContracts > 0 ? "warning" : "default"} />
         </Link>
         <Link href="/requests">
-          <StatCard
-            label="Credential acks pending"
-            value={pendingDeliveries}
-            tone={pendingDeliveries > 0 ? "info" : "default"}
-          />
+          <StatCard label="Credential acks pending" value={pendingDeliveries} tone={pendingDeliveries > 0 ? "info" : "default"} />
         </Link>
       </div>
 
       {failedNotifications > 0 ? (
         <div className="mt-4 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm">
           <strong className="text-destructive">{failedNotifications} notification(s) failed to deliver.</strong>{" "}
-          <Link href="/notifications" className="text-primary underline">
-            Review the notification queue
+          <Link href="/notifications?status=FAILED" className="text-primary underline">
+            Review, resend or clear them
           </Link>{" "}
           and verify SMTP settings.
         </div>
       ) : null}
+
+      <div className="mt-6 grid gap-5 lg:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <CardTitle>Assets by status</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <StatusDonut
+              ariaLabel="Assets by status"
+              data={assetsByStatus.map((entry) => ({ name: label(entry.status), value: entry._count }))}
+            />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Requests by status</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <StatusDonut
+              ariaLabel="Requests by status"
+              data={requestsByStatus.map((entry) => ({ name: label(entry.status), value: entry._count }))}
+            />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Asset categories</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {categoryList.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No assets registered yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {categoryList.slice(0, 8).map((entry) => (
+                  <li key={entry.name} className="flex items-center justify-between text-sm">
+                    <span>{entry.name}</span>
+                    <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold">
+                      {entry.count}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Card className="mt-6">
         <CardHeader>

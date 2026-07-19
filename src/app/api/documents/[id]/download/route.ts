@@ -40,11 +40,13 @@ export async function GET(
       id,
       versionNumber,
     );
+    // ?inline=1 renders viewable types (PDF, images) in the browser tab.
+    const inline = url.searchParams.get("inline") === "1";
     return new Response(new Uint8Array(content), {
       headers: {
         "Content-Type": version.mimeType,
         "Content-Length": String(version.fileSize),
-        "Content-Disposition": `attachment; filename="${version.fileName.replace(/"/g, "")}"`,
+        "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${version.fileName.replace(/"/g, "")}"`,
         "Cache-Control": "private, no-store",
         "X-Content-Type-Options": "nosniff",
       },

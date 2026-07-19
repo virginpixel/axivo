@@ -106,7 +106,8 @@ export interface AssetFormRecord {
   id: string;
   companyId: string;
   categoryId: string;
-  assetTag: string;
+  name: string;
+  assetTag: string | null;
   serialNumber: string | null;
   manufacturer: string | null;
   model: string | null;
@@ -117,16 +118,24 @@ export interface AssetFormRecord {
   status: string;
 }
 
+export interface AssetCatalogs {
+  manufacturers: { id: string; name: string }[];
+  models: { id: string; name: string; parentId: string | null }[];
+  suppliers: { id: string; name: string }[];
+}
+
 export function AssetDialog({
   companies,
   categories,
   locations,
+  catalogs,
   asset,
   triggerIcon,
 }: {
   companies: Company[];
   categories: Category[];
   locations: LocationOption[];
+  catalogs: AssetCatalogs;
   asset?: AssetFormRecord;
   triggerIcon?: boolean;
 }) {
@@ -135,6 +144,7 @@ export function AssetDialog({
   const [form, setForm] = useState({
     companyId: asset?.companyId ?? companies[0]?.id ?? "",
     categoryId: asset?.categoryId ?? "",
+    name: asset?.name ?? "",
     assetTag: asset?.assetTag ?? "",
     serialNumber: asset?.serialNumber ?? "",
     manufacturer: asset?.manufacturer ?? "",
@@ -146,12 +156,19 @@ export function AssetDialog({
   });
   const companyCategories = categories.filter((category) => category.companyId === form.companyId);
   const companyLocations = locations.filter((location) => location.companyId === form.companyId);
+  const selectedManufacturer = catalogs.manufacturers.find(
+    (manufacturer) => manufacturer.name === form.manufacturer,
+  );
+  const manufacturerModels = catalogs.models.filter(
+    (model) => !selectedManufacturer || model.parentId === selectedManufacturer.id,
+  );
 
   async function submit() {
     const payload = {
       companyId: form.companyId,
       categoryId: form.categoryId,
-      assetTag: form.assetTag,
+      name: form.name,
+      assetTag: form.assetTag || undefined,
       serialNumber: form.serialNumber || undefined,
       manufacturer: form.manufacturer || undefined,
       model: form.model || undefined,
@@ -170,7 +187,7 @@ export function AssetDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {asset || triggerIcon ? (
-          <Button variant="ghost" size="icon" aria-label={asset ? `Edit ${asset.assetTag}` : "New asset"}>
+          <Button variant="ghost" size="icon" aria-label={asset ? `Edit ${asset.name}` : "New asset"}>
             {asset ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
           </Button>
         ) : (
@@ -179,7 +196,7 @@ export function AssetDialog({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent title={asset ? `Edit asset ${asset.assetTag}` : "New asset"} wide>
+      <DialogContent title={asset ? `Edit asset: ${asset.name}` : "New asset"} wide>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <Label htmlFor="asset-company" required>Company</Label>
@@ -200,21 +217,51 @@ export function AssetDialog({
             </Select>
           </div>
           <div>
-            <Label htmlFor="asset-tag" required>Asset tag</Label>
+            <Label htmlFor="asset-name" required>Asset name</Label>
+            <Input id="asset-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder={'e.g. "Front Desk Laptop 1"'} />
+            <FieldError message={fieldErrors.name} />
+          </div>
+          <div>
+            <Label htmlFor="asset-tag">Asset tag (optional)</Label>
             <Input id="asset-tag" value={form.assetTag} onChange={(e) => setForm({ ...form, assetTag: e.target.value })} />
             <FieldError message={fieldErrors.assetTag} />
           </div>
           <div>
-            <Label htmlFor="asset-serial">Serial number</Label>
-            <Input id="asset-serial" value={form.serialNumber} onChange={(e) => setForm({ ...form, serialNumber: e.target.value })} />
-          </div>
-          <div>
             <Label htmlFor="asset-manufacturer">Manufacturer</Label>
-            <Input id="asset-manufacturer" value={form.manufacturer} onChange={(e) => setForm({ ...form, manufacturer: e.target.value })} />
+            <Select
+              id="asset-manufacturer"
+              value={form.manufacturer}
+              onChange={(e) => setForm({ ...form, manufacturer: e.target.value, model: "" })}
+            >
+              <option value="">Select…</option>
+              {catalogs.manufacturers.map((manufacturer) => (
+                <option key={manufacturer.id} value={manufacturer.name}>{manufacturer.name}</option>
+              ))}
+            </Select>
+            <HelperText>Managed in Settings → Catalogs.</HelperText>
           </div>
           <div>
             <Label htmlFor="asset-model">Model</Label>
-            <Input id="asset-model" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} />
+            <Select id="asset-model" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })}>
+              <option value="">Select…</option>
+              {manufacturerModels.map((model) => (
+                <option key={model.id} value={model.name}>{model.name}</option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="asset-supplier">Supplier</Label>
+            <Select id="asset-supplier" value={form.supplier} onChange={(e) => setForm({ ...form, supplier: e.target.value })}>
+              <option value="">Select…</option>
+              {catalogs.suppliers.map((supplier) => (
+                <option key={supplier.id} value={supplier.name}>{supplier.name}</option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="asset-serial">Serial number</Label>
+            <Input id="asset-serial" value={form.serialNumber} onChange={(e) => setForm({ ...form, serialNumber: e.target.value })} />
           </div>
           <div>
             <Label htmlFor="asset-location">Location</Label>
@@ -236,7 +283,7 @@ export function AssetDialog({
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={submit} loading={loading} disabled={!form.categoryId || !form.assetTag}>
+          <Button onClick={submit} loading={loading} disabled={!form.categoryId || !form.name.trim()}>
             {asset ? "Save changes" : "Create asset"}
           </Button>
         </div>
@@ -248,18 +295,22 @@ export function AssetDialog({
 export function AssetRowActions({
   asset,
   activeAssignmentId,
+  activeMaintenanceId,
   companies,
   categories,
   locations,
+  catalogs,
   people,
   documents,
   permissions,
 }: {
   asset: AssetFormRecord;
   activeAssignmentId: string | null;
+  activeMaintenanceId: string | null;
   companies: Company[];
   categories: Category[];
   locations: LocationOption[];
+  catalogs: AssetCatalogs;
   people: PersonOption[];
   documents: { id: string; name: string }[];
   permissions: { canManage: boolean; canAssign: boolean; canMaintain: boolean; canDispose: boolean };
@@ -275,7 +326,7 @@ export function AssetRowActions({
   return (
     <div className="flex justify-end gap-1">
       {permissions.canManage ? (
-        <AssetDialog companies={companies} categories={categories} locations={locations} asset={asset} />
+        <AssetDialog companies={companies} categories={categories} locations={locations} catalogs={catalogs} asset={asset} />
       ) : null}
 
       {permissions.canAssign && asset.status === "AVAILABLE" ? (
@@ -285,7 +336,7 @@ export function AssetRowActions({
               <UserPlus className="h-4 w-4 text-primary" />
             </Button>
           </DialogTrigger>
-          <DialogContent title={`Assign ${asset.assetTag}`} description="A handover acknowledgement email is sent automatically when the category requires it.">
+          <DialogContent title={`Assign ${asset.name}`} description="A handover acknowledgement email is sent automatically when the category requires it.">
             <Label htmlFor={`assign-person-${asset.id}`} required>Employee</Label>
             <Select id={`assign-person-${asset.id}`} value={personId} onChange={(e) => setPersonId(e.target.value)}>
               <option value="">Select…</option>
@@ -321,14 +372,34 @@ export function AssetRowActions({
         </Button>
       ) : null}
 
-      {permissions.canMaintain && asset.status !== "DISCARDED" && asset.status !== "ASSIGNED" ? (
+      {permissions.canMaintain && asset.status === "UNDER_REPAIR" && activeMaintenanceId ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          loading={loading}
+          aria-label="Complete maintenance"
+          title="Complete maintenance"
+          onClick={() =>
+            run(() => setMaintenanceStatusAction(activeMaintenanceId, "COMPLETED"), {
+              successMessage: "Maintenance completed; previous status restored.",
+            })
+          }
+        >
+          <Wrench className="h-4 w-4 text-success" />
+        </Button>
+      ) : null}
+
+      {permissions.canMaintain &&
+      asset.status !== "DISCARDED" &&
+      asset.status !== "ASSIGNED" &&
+      asset.status !== "UNDER_REPAIR" ? (
         <Dialog open={maintenanceOpen} onOpenChange={setMaintenanceOpen}>
           <DialogTrigger asChild>
             <Button variant="ghost" size="icon" aria-label="Schedule maintenance" title="Maintenance">
               <Wrench className="h-4 w-4 text-warning" />
             </Button>
           </DialogTrigger>
-          <DialogContent title={`Maintenance for ${asset.assetTag}`}>
+          <DialogContent title={`Maintenance for ${asset.name}`}>
             <div className="space-y-3">
               <div>
                 <Label htmlFor={`maint-type-${asset.id}`} required>Maintenance type</Label>
@@ -394,7 +465,7 @@ export function AssetRowActions({
             </Button>
           </DialogTrigger>
           <DialogContent
-            title={`Dispose ${asset.assetTag}`}
+            title={`Dispose ${asset.name}`}
             description="A completed disposal document is required before the asset becomes Discarded. This cannot be undone."
           >
             <div className="space-y-3">

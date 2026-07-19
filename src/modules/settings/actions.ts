@@ -211,6 +211,123 @@ export async function saveUploadSettingsAction(raw: unknown): Promise<ActionResu
   }
 }
 
+// --- Catalogs (Settings → Catalogs): dropdown sources across the platform ---
+
+const CATALOG_KINDS = ["MANUFACTURER", "ASSET_MODEL", "SUPPLIER", "VENDOR", "CONTRACT_CATEGORY"] as const;
+
+const catalogItemSchema = z
+  .object({
+    kind: z.enum(CATALOG_KINDS),
+    name: z.string().trim().min(1, "Name is required.").max(200),
+    /** ASSET_MODEL items belong to a manufacturer. */
+    parentId: z.string().uuid().optional().or(z.literal("").transform(() => undefined)),
+  })
+  .strict();
+
+export async function createCatalogItemAction(raw: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const { audit } = await requirePermission("settings.manage");
+    const input = parse(catalogItemSchema, raw);
+    if (input.kind === "ASSET_MODEL" && !input.parentId) {
+      throw new BusinessRuleError("Select the manufacturer this model belongs to.");
+    }
+    if (input.parentId) {
+      const parent = await db.catalogItem.findFirst({
+        where: { id: input.parentId, kind: "MANUFACTURER", deletedAt: null },
+      });
+      if (!parent) throw new BusinessRuleError("The parent manufacturer was not found.");
+    }
+    const duplicate = await db.catalogItem.findFirst({
+      where: {
+        kind: input.kind,
+        name: { equals: input.name, mode: "insensitive" },
+        parentId: input.parentId ?? null,
+        deletedAt: null,
+      },
+    });
+    if (duplicate) throw new BusinessRuleError("An entry with this name already exists.");
+    const item = await db.catalogItem.create({
+      data: {
+        kind: input.kind,
+        name: input.name,
+        parentId: input.parentId ?? null,
+        createdById: audit.actorUserId ?? null,
+      },
+    });
+    await recordAudit(audit, {
+      module: "settings",
+      eventType: "catalog.created",
+      action: `Added ${input.kind.toLowerCase().replace("_", " ")} "${input.name}" to catalogs`,
+      targetType: "catalog_item",
+      targetId: item.id,
+      targetLabel: input.name,
+    });
+    revalidatePath("/settings");
+    return ok({ id: item.id });
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function setCatalogItemActiveAction(id: string, isActive: boolean): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("settings.manage");
+    const item = await db.catalogItem.findFirst({ where: { id, deletedAt: null } });
+    if (!item) throw new BusinessRuleError("Catalog entry not found.");
+    await db.catalogItem.update({ where: { id }, data: { isActive } });
+    await recordAudit(audit, {
+      module: "settings",
+      eventType: isActive ? "catalog.enabled" : "catalog.disabled",
+      action: `${isActive ? "Enabled" : "Disabled"} catalog entry "${item.name}"`,
+      targetType: "catalog_item",
+      targetId: id,
+      targetLabel: item.name,
+    });
+    revalidatePath("/settings");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+// --- Branding logo (Settings → General): shown on public forms and login ---
+
+export async function uploadBrandingLogoAction(formData: FormData): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("settings.manage");
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) {
+      throw new BusinessRuleError("Choose a logo image (PNG, JPG or SVG).");
+    }
+    const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+    if (!["png", "jpg", "jpeg", "svg", "webp"].includes(extension)) {
+      throw new BusinessRuleError("Logos must be PNG, JPG, SVG or WEBP images.");
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      throw new BusinessRuleError("Logo must be 2 MB or smaller.");
+    }
+    const { storage } = await import("@/shared/storage/storage");
+    const { getSetting } = await import("@/shared/settings/settings");
+    const stored = await storage.save(Buffer.from(await file.arrayBuffer()), extension, "branding");
+    const branding = await getSetting<Record<string, unknown>>(SETTING_KEYS.BRANDING);
+    await setSetting(audit, {
+      key: SETTING_KEYS.BRANDING,
+      value: {
+        ...branding,
+        logoStorageKey: stored.storageKey,
+        logoMimeType:
+          extension === "svg" ? "image/svg+xml" : extension === "webp" ? "image/webp" : `image/${extension === "jpg" ? "jpeg" : extension}`,
+      } as never,
+      category: "branding",
+      description: "Global branding",
+    });
+    revalidatePath("/", "layout");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
 // --- Security operations (Doc 05 Ch13) ---
 
 export async function forceLogoutSessionAction(sessionId: string): Promise<ActionResult<undefined>> {

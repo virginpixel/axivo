@@ -106,6 +106,7 @@ export async function createForm(context: AuditContext, input: FormInput) {
         name: input.name,
         description: input.description,
         confirmationMessage: input.confirmationMessage,
+        allowedAssetCategoryIds: input.allowedAssetCategoryIds,
         slug,
         status: "DRAFT",
         createdById: context.actorUserId ?? null,
@@ -188,6 +189,7 @@ export async function updateForm(context: AuditContext, id: string, input: FormI
         requestTypeId: input.requestTypeId,
         workflowId: input.workflowId,
         confirmationMessage: input.confirmationMessage,
+        allowedAssetCategoryIds: input.allowedAssetCategoryIds,
         updatedById: context.actorUserId ?? null,
       },
     });

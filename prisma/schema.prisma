@@ -291,6 +291,14 @@ enum SettingScope {
   COMPANY
 }
 
+enum CatalogKind {
+  MANUFACTURER
+  ASSET_MODEL
+  SUPPLIER
+  VENDOR
+  CONTRACT_CATEGORY
+}
+
 // =============================================================================
 // Organization (Doc 06)
 // =============================================================================
@@ -807,7 +815,8 @@ model CredentialDeliveryField {
 model License {
   id            String        @id @default(uuid()) @db.Uuid
   companyId     String        @map("company_id") @db.Uuid
-  applicationId String        @map("application_id") @db.Uuid
+  /// Optional: standalone licenses (VPN, Adobe, ...) need no application link.
+  applicationId String?       @map("application_id") @db.Uuid
   name          String        @map("name")
   licenseType   LicenseType   @map("license_type")
   vendor        String?       @map("vendor")
@@ -824,7 +833,7 @@ model License {
   deletedById   String?       @map("deleted_by") @db.Uuid
 
   company     Company             @relation(fields: [companyId], references: [id])
-  application Application         @relation(fields: [applicationId], references: [id])
+  application Application?        @relation(fields: [applicationId], references: [id])
   contract    Contract?           @relation(fields: [contractId], references: [id])
   purchases   LicensePurchase[]
   assignments LicenseAssignment[]
@@ -916,7 +925,9 @@ model Asset {
   id             String      @id @default(uuid()) @db.Uuid
   companyId      String      @map("company_id") @db.Uuid
   categoryId     String      @map("category_id") @db.Uuid
-  assetTag       String      @map("asset_tag")
+  /// Human-readable asset name (required); the tag is an optional identifier.
+  name           String      @default("") @map("name")
+  assetTag       String?     @map("asset_tag")
   serialNumber   String?     @map("serial_number")
   manufacturer   String?     @map("manufacturer")
   model          String?     @map("model")
@@ -1106,7 +1117,7 @@ model ClearanceItem {
 model Contract {
   id             String              @id @default(uuid()) @db.Uuid
   companyId      String              @map("company_id") @db.Uuid
-  contractNumber String              @map("contract_number")
+  contractNumber String?             @map("contract_number")
   name           String              @map("name")
   vendor         String              @map("vendor")
   category       String              @map("category")
@@ -1385,6 +1396,8 @@ model Form {
   slug                String     @unique @map("slug")
   status              FormStatus @default(DRAFT) @map("status")
   confirmationMessage String?    @map("confirmation_message")
+  /// ASSET_REQUEST forms: category ids requestable through this form (null = all).
+  allowedAssetCategoryIds Json?  @map("allowed_asset_category_ids")
   currentVersionId    String?    @unique @map("current_version_id") @db.Uuid
   isActive            Boolean    @default(true) @map("is_active")
   createdAt           DateTime   @default(now()) @map("created_at")
@@ -1463,13 +1476,19 @@ model Request {
   formVersionId String        @map("form_version_id") @db.Uuid
   status        RequestStatus @default(SUBMITTED) @map("status")
 
-  requesterPersonId String? @map("requester_person_id") @db.Uuid
-  requesterName     String  @map("requester_name")
-  requesterEmail    String  @map("requester_email")
+  requesterPersonId  String? @map("requester_person_id") @db.Uuid
+  requesterName      String  @map("requester_name")
+  requesterEmail     String  @map("requester_email")
+  requesterEmployeeId String? @map("requester_employee_id")
+  requesterDepartment String? @map("requester_department")
+  requesterPosition  String? @map("requester_position")
 
   requestedForPersonId String? @map("requested_for_person_id") @db.Uuid
   requestedForName     String  @map("requested_for_name")
   requestedForEmail    String  @map("requested_for_email")
+  requestedForEmployeeId String? @map("requested_for_employee_id")
+  requestedForDepartment String? @map("requested_for_department")
+  requestedForPosition String? @map("requested_for_position")
   requestedForDepartmentId String? @map("requested_for_department_id") @db.Uuid
 
   /// Immutable snapshot of the submitted custom field values
@@ -1714,6 +1733,9 @@ model Notification {
   sentAt       DateTime?           @map("sent_at")
   cancelledAt  DateTime?           @map("cancelled_at")
   cancelledById String?            @map("cancelled_by") @db.Uuid
+  /// Failed deliveries an administrator has cleared from the dashboard alert;
+  /// the immutable delivery history itself is untouched.
+  archivedAt   DateTime?           @map("archived_at")
   createdAt    DateTime            @default(now()) @map("created_at")
   updatedAt    DateTime            @updatedAt @map("updated_at")
 
@@ -1846,6 +1868,28 @@ model SystemSettingHistory {
 
   @@index([settingId, changedAt])
   @@map("system_setting_history")
+}
+
+/// Administrator-managed reference lists (Settings → Catalogs): manufacturers,
+/// asset models (child of a manufacturer), suppliers, vendors and contract
+/// categories used as dropdown sources across the platform.
+model CatalogItem {
+  id        String      @id @default(uuid()) @db.Uuid
+  kind      CatalogKind @map("kind")
+  name      String      @map("name")
+  parentId  String?     @map("parent_id") @db.Uuid
+  isActive  Boolean     @default(true) @map("is_active")
+  createdAt DateTime    @default(now()) @map("created_at")
+  createdById String?   @map("created_by") @db.Uuid
+  updatedAt DateTime    @updatedAt @map("updated_at")
+  deletedAt DateTime?   @map("deleted_at")
+
+  parent   CatalogItem?  @relation("catalog_parent", fields: [parentId], references: [id])
+  children CatalogItem[] @relation("catalog_parent")
+
+  @@unique([kind, name, parentId])
+  @@index([kind, isActive])
+  @@map("catalog_items")
 }
 
 /// Sequential business counters (e.g. request numbers) maintained atomically.

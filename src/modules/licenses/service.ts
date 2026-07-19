@@ -37,11 +37,13 @@ export async function getLicenseAvailability(
 }
 
 export async function createLicense(context: AuditContext, input: LicenseInput) {
-  const application = await db.application.findFirst({
-    where: { id: input.applicationId, companyId: input.companyId, deletedAt: null },
-  });
-  if (!application) {
-    throw new BusinessRuleError("The application must exist and belong to the same company.");
+  if (input.applicationId) {
+    const application = await db.application.findFirst({
+      where: { id: input.applicationId, companyId: input.companyId, deletedAt: null },
+    });
+    if (!application) {
+      throw new BusinessRuleError("The linked application must belong to the same company.");
+    }
   }
   const duplicate = await db.license.findFirst({
     where: {
@@ -63,7 +65,7 @@ export async function createLicense(context: AuditContext, input: LicenseInput) 
   }
   return db.$transaction(async (tx) => {
     const license = await tx.license.create({
-      data: { ...input, createdById: context.actorUserId ?? null },
+      data: { ...input, applicationId: input.applicationId ?? null, createdById: context.actorUserId ?? null },
     });
     await recordAudit(
       { ...context, companyId: input.companyId },
@@ -106,10 +108,18 @@ export async function updateLicense(context: AuditContext, id: string, input: Li
     });
     if (!contract) throw new BusinessRuleError("The linked contract must belong to the same company.");
   }
+  if (input.applicationId) {
+    const application = await db.application.findFirst({
+      where: { id: input.applicationId, companyId: input.companyId, deletedAt: null },
+    });
+    if (!application) {
+      throw new BusinessRuleError("The linked application must belong to the same company.");
+    }
+  }
   return db.$transaction(async (tx) => {
     const license = await tx.license.update({
       where: { id },
-      data: { ...input, updatedById: context.actorUserId ?? null },
+      data: { ...input, applicationId: input.applicationId ?? null, updatedById: context.actorUserId ?? null },
     });
     const contractChanged = existing.contractId !== (input.contractId ?? null);
     await recordAudit(

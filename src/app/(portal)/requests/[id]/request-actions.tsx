@@ -1,11 +1,93 @@
 "use client";
 
 import { useState } from "react";
+import { Send, UserRoundPen } from "lucide-react";
 import { cancelRequestAction, completeImplementationAction } from "@/modules/requests/actions";
+import {
+  resendApprovalNotificationsAction,
+  transferStepApproverAction,
+} from "@/modules/workflow/actions";
 import { useAction } from "@/shared/ui/use-action";
 import { Button } from "@/shared/ui/button";
 import { Input, Textarea, Select, Label, FieldError, HelperText } from "@/shared/ui/input";
 import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
+
+/** Resend + transfer controls shown next to an active approval step. */
+export function StepAdminControls({
+  stepInstanceId,
+  people,
+}: {
+  stepInstanceId: string;
+  people: { id: string; name: string }[];
+}) {
+  const { run, loading } = useAction();
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [personId, setPersonId] = useState("");
+
+  return (
+    <span className="flex items-center gap-0.5">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7"
+        loading={loading}
+        aria-label="Resend approval email"
+        title="Resend approval email"
+        onClick={() =>
+          run(() => resendApprovalNotificationsAction(stepInstanceId), {
+            successMessage: "Approval notification resent.",
+          })
+        }
+      >
+        <Send className="h-3.5 w-3.5" />
+      </Button>
+      <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
+        <DialogTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            aria-label="Transfer to another approver"
+            title="Transfer to another approver"
+          >
+            <UserRoundPen className="h-3.5 w-3.5" />
+          </Button>
+        </DialogTrigger>
+        <DialogContent
+          title="Transfer approval step"
+          description="Pending approvers are replaced; the new approver receives a fresh secure approval email. Completed decisions remain in the history."
+        >
+          <Label htmlFor={`transfer-person-${stepInstanceId}`} required>New approver</Label>
+          <Select
+            id={`transfer-person-${stepInstanceId}`}
+            value={personId}
+            onChange={(event) => setPersonId(event.target.value)}
+          >
+            <option value="">Select a person…</option>
+            {people.map((person) => (
+              <option key={person.id} value={person.id}>{person.name}</option>
+            ))}
+          </Select>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setTransferOpen(false)}>Cancel</Button>
+            <Button
+              loading={loading}
+              disabled={!personId}
+              onClick={() =>
+                run(() => transferStepApproverAction(stepInstanceId, personId), {
+                  successMessage: "Step transferred; approval email sent.",
+                  onSuccess: () => setTransferOpen(false),
+                })
+              }
+            >
+              Transfer step
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </span>
+  );
+}
 
 export function RequestAdminActions({ requestId }: { requestId: string }) {
   const { run, loading } = useAction();

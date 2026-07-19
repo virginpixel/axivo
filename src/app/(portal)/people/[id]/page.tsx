@@ -8,6 +8,10 @@ import { StatusBadge } from "@/shared/ui/badge";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
 import { formatDate, formatDateTime, fullName } from "@/shared/utils";
 import { PersonDialog, EmploymentStatusSelect, CreateAccountDialog, AccountControls } from "../person-dialogs";
+import { StartClearanceButton, ReturnAssetButton } from "./person-clearance";
+import { ClearancePanel } from "../../assets/asset-dialogs";
+import { AssignmentRowActions } from "../../applications/application-dialogs";
+import { LicenseAssignmentActions } from "../../licenses/license-dialogs";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +43,14 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
 
   const canManage = user.permissions.has("people.manage");
   const canManageAccounts = user.permissions.has("people.accounts.manage");
+  const canManageAssets = user.permissions.has("assets.assignments.manage");
+  const canManageAppAssignments = user.permissions.has("applications.assignments.manage");
+  const canManageLicenseAssignments = user.permissions.has("licenses.assignments.manage");
+
+  const openClearance = await db.clearance.findFirst({
+    where: { personId: person.id, status: "IN_PROGRESS" },
+    include: { items: { include: { assetAssignment: { include: { asset: true } } } } },
+  });
 
   const [orgCompanies, orgDepartments, orgPositions, orgLocations, systemRoles] = await Promise.all([
     db.company.findMany({
@@ -58,8 +70,9 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
         breadcrumbs={[{ label: "People", href: "/people" }, { label: fullName(person) }]}
         description={`${person.employeeId} · ${person.company.name}`}
         actions={
-          canManage ? (
+          canManage || canManageAssets ? (
             <div className="flex items-center gap-2">
+              {canManageAssets && !openClearance ? <StartClearanceButton personId={person.id} /> : null}
               <EmploymentStatusSelect personId={person.id} current={person.employmentStatus} />
               <PersonDialog
                 orgData={{ companies: orgCompanies, departments: orgDepartments, positions: orgPositions, locations: orgLocations }}
@@ -83,6 +96,23 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
           ) : undefined
         }
       />
+
+      {openClearance ? (
+        <div className="mb-5">
+          <ClearancePanel
+            clearanceId={openClearance.id}
+            personName={fullName(person)}
+            items={openClearance.items.map((item) => ({
+              id: item.id,
+              assetTag: item.assetAssignment.asset.assetTag ?? item.assetAssignment.asset.name,
+              model: item.assetAssignment.asset.model,
+              status: item.status,
+              comments: item.comments,
+            }))}
+            canManage={canManageAssets}
+          />
+        </div>
+      ) : null}
 
       <div className="grid gap-5 lg:grid-cols-3">
         <Card>
@@ -144,7 +174,12 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
               <p className="text-sm text-muted-foreground">No application assignments.</p>
             ) : (
               <Table>
-                <THead><TR><TH>Application</TH><TH>Role</TH><TH>Username</TH><TH>Status</TH></TR></THead>
+                <THead>
+                  <TR>
+                    <TH>Application</TH><TH>Role</TH><TH>Username</TH><TH>Status</TH>
+                    {canManageAppAssignments ? <TH /> : null}
+                  </TR>
+                </THead>
                 <TBody>
                   {person.applicationAssignments.map((assignment) => (
                     <TR key={assignment.id}>
@@ -152,6 +187,11 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                       <TD>{assignment.applicationRole?.name ?? "—"}</TD>
                       <TD>{assignment.username ?? "—"}</TD>
                       <TD><StatusBadge status={assignment.status} /></TD>
+                      {canManageAppAssignments ? (
+                        <TD className="text-right">
+                          <AssignmentRowActions assignmentId={assignment.id} status={assignment.status} />
+                        </TD>
+                      ) : null}
                     </TR>
                   ))}
                 </TBody>
@@ -167,19 +207,33 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
               <p className="text-sm text-muted-foreground">No asset assignments.</p>
             ) : (
               <Table>
-                <THead><TR><TH>Asset</TH><TH>Assigned</TH><TH>Returned</TH><TH>Status</TH></TR></THead>
+                <THead>
+                  <TR>
+                    <TH>Asset</TH><TH>Assigned</TH><TH>Returned</TH><TH>Status</TH>
+                    {canManageAssets ? <TH /> : null}
+                  </TR>
+                </THead>
                 <TBody>
                   {person.assetAssignments.map((assignment) => (
                     <TR key={assignment.id}>
                       <TD>
-                        <Link href={`/assets?q=${assignment.asset.assetTag}`} className="font-medium text-primary hover:underline">
-                          {assignment.asset.assetTag}
+                        <Link href={`/assets/${assignment.asset.id}`} className="font-medium text-primary hover:underline">
+                          {assignment.asset.name || assignment.asset.assetTag}
                         </Link>
-                        <p className="text-xs text-muted-foreground">{assignment.asset.model ?? ""}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {[assignment.asset.assetTag, assignment.asset.model].filter(Boolean).join(" · ")}
+                        </p>
                       </TD>
                       <TD>{formatDate(assignment.assignedAt)}</TD>
                       <TD>{assignment.returnedAt ? formatDate(assignment.returnedAt) : "—"}</TD>
                       <TD><StatusBadge status={assignment.status} /></TD>
+                      {canManageAssets ? (
+                        <TD className="text-right">
+                          {assignment.status === "ASSIGNED" ? (
+                            <ReturnAssetButton assignmentId={assignment.id} />
+                          ) : null}
+                        </TD>
+                      ) : null}
                     </TR>
                   ))}
                 </TBody>
@@ -195,13 +249,23 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
               <p className="text-sm text-muted-foreground">No license assignments.</p>
             ) : (
               <Table>
-                <THead><TR><TH>License</TH><TH>Assigned</TH><TH>Status</TH></TR></THead>
+                <THead>
+                  <TR>
+                    <TH>License</TH><TH>Assigned</TH><TH>Status</TH>
+                    {canManageLicenseAssignments ? <TH /> : null}
+                  </TR>
+                </THead>
                 <TBody>
                   {person.licenseAssignments.map((assignment) => (
                     <TR key={assignment.id}>
                       <TD className="font-medium">{assignment.license.name}</TD>
                       <TD>{formatDate(assignment.assignedAt)}</TD>
                       <TD><StatusBadge status={assignment.status} /></TD>
+                      {canManageLicenseAssignments ? (
+                        <TD className="text-right">
+                          <LicenseAssignmentActions assignmentId={assignment.id} status={assignment.status} />
+                        </TD>
+                      ) : null}
                     </TR>
                   ))}
                 </TBody>

@@ -60,7 +60,10 @@ describe("end-to-end request lifecycle", () => {
       name: "Test Resort", code: "TR1", description: undefined, timezone: "UTC", currency: "USD",
     });
     const department = await orgService.createDepartment(actor, {
-      companyId: company.id, name: "Front Office", code: undefined, description: undefined, defaultLocationId: undefined,
+      companyId: company.id, name: "Front Office", description: undefined, headPersonIds: [],
+    });
+    const position = await db.position.create({
+      data: { companyId: company.id, name: "Agent" },
     });
 
     const hodRole = await db.approvalRole.create({
@@ -110,9 +113,9 @@ describe("end-to-end request lifecycle", () => {
       ],
     });
 
-    // --- Form (Doc 22) ---
-    const requestType = await formsService.createRequestType(actor, {
-      companyId: company.id, name: "Application Access", kind: "APPLICATION_ACCESS", description: undefined,
+    // --- Form (Doc 22): standard request types are auto-created per company ---
+    const requestType = await db.requestType.findFirstOrThrow({
+      where: { companyId: company.id, kind: "APPLICATION_ACCESS" },
     });
     const form = await formsService.createForm(actor, {
       companyId: company.id,
@@ -121,6 +124,7 @@ describe("end-to-end request lifecycle", () => {
       name: "IT Access Request",
       description: undefined,
       confirmationMessage: "Thank you!",
+      allowedAssetCategoryIds: [],
       fields: [
         { fieldKey: "justification", label: "Justification", fieldType: "TEXT", isRequired: true, placeholder: undefined, helpText: undefined, defaultValue: undefined, options: undefined, validation: undefined, visibilityRules: undefined },
       ],
@@ -138,8 +142,14 @@ describe("end-to-end request lifecycle", () => {
         slug: published!.slug,
         requesterName: "Requester Person",
         requesterEmail: "requester@test.local",
+        requesterEmployeeId: "E-900",
+        requesterDepartmentId: department.id,
+        requesterPositionId: position.id,
         requestedForName: "New Employee",
         requestedForEmail: "employee@test.local",
+        requestedForEmployeeId: "E-200",
+        requestedForDepartmentId: department.id,
+        requestedForPositionId: position.id,
         fieldValues: { justification: "New hire" },
         items: [{ itemType: "APPLICATION", applicationId: application.id, applicationRoleId: undefined, assetCategoryId: undefined, description: undefined }],
         website: "",
@@ -249,14 +259,22 @@ describe("end-to-end request lifecycle", () => {
     const application = await db.application.findFirstOrThrow();
     const hod = await db.person.findFirstOrThrow({ where: { employeeId: "E-100" } });
 
+    const department = await db.department.findFirstOrThrow({ where: { name: "Front Office" } });
+    const position = await db.position.findFirstOrThrow({ where: { name: "Agent" } });
     const submission = await requestsService.submitPublicRequest(
       { ...actor, ipAddress: "10.0.0.2" },
       {
         slug: form.slug,
         requesterName: "Requester",
         requesterEmail: "requester2@test.local",
+        requesterEmployeeId: "E-901",
+        requesterDepartmentId: department.id,
+        requesterPositionId: position.id,
         requestedForName: "New Employee",
         requestedForEmail: "employee@test.local",
+        requestedForEmployeeId: "E-200",
+        requestedForDepartmentId: department.id,
+        requestedForPositionId: position.id,
         fieldValues: { justification: "Two items" },
         items: [
           { itemType: "APPLICATION", applicationId: application.id, applicationRoleId: undefined, assetCategoryId: undefined, description: undefined },
@@ -339,7 +357,7 @@ describe("end-to-end request lifecycle", () => {
       requireHandoverAcceptance: false, requireClearanceRecovery: true,
     });
     const asset = await assetsService.createAsset(actor, {
-      companyId: company.id, categoryId: category.id, assetTag: "LT-0001",
+      companyId: company.id, categoryId: category.id, name: "Test Laptop 1", assetTag: "LT-0001",
       serialNumber: undefined, manufacturer: undefined, model: undefined, locationId: undefined,
       supplier: undefined, purchaseDate: undefined, purchasePrice: undefined, currency: undefined,
       warrantyExpiry: undefined, notes: undefined,

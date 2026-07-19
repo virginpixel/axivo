@@ -6,6 +6,7 @@ import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge } from "@/shared/ui/badge";
 import { formatDateTime } from "@/shared/utils";
 import { Input, Select } from "@/shared/ui/input";
+import { AutoRefresh } from "@/shared/ui/auto-refresh";
 import type { Prisma, RequestStatus } from "@prisma/client";
 
 export const metadata = { title: "Requests" };
@@ -84,6 +85,7 @@ export default async function RequestsPage({
 
   return (
     <div>
+      <AutoRefresh />
       <PageHeader title="Requests" description="All business requests and their workflow progress." />
 
       <form method="get" className="mb-4 flex flex-wrap items-end gap-2">

@@ -20,9 +20,9 @@ export const departmentSchema = z
   .object({
     companyId: uuidSchema,
     name: requiredText("Department name"),
-    code: optionalText(20),
     description: optionalText(),
-    defaultLocationId: uuidSchema.optional().or(z.literal("").transform(() => undefined)),
+    /// Department Heads assigned inline (one or many people of the company).
+    headPersonIds: z.array(uuidSchema).max(20).default([]),
   })
   .strict();
 

@@ -18,15 +18,17 @@ export async function createContract(context: AuditContext, input: ContractInput
     where: { id: input.companyId, deletedAt: null, isActive: true },
   });
   if (!company) throw new BusinessRuleError("Company not found or disabled.");
-  const duplicate = await db.contract.findFirst({
-    where: {
-      companyId: input.companyId,
-      contractNumber: { equals: input.contractNumber, mode: "insensitive" },
-      deletedAt: null,
-    },
-  });
-  if (duplicate) {
-    throw new ValidationError(undefined, { contractNumber: "This contract number already exists." });
+  if (input.contractNumber) {
+    const duplicate = await db.contract.findFirst({
+      where: {
+        companyId: input.companyId,
+        contractNumber: { equals: input.contractNumber, mode: "insensitive" },
+        deletedAt: null,
+      },
+    });
+    if (duplicate) {
+      throw new ValidationError(undefined, { contractNumber: "This contract number already exists." });
+    }
   }
   if (input.ownerPersonId) {
     const owner = await db.person.findFirst({
@@ -38,6 +40,7 @@ export async function createContract(context: AuditContext, input: ContractInput
     const contract = await tx.contract.create({
       data: {
         ...input,
+        contractNumber: input.contractNumber ?? null,
         reminderDays: input.reminderDays ?? undefined,
         status: "DRAFT",
         createdById: context.actorUserId ?? null,
@@ -48,10 +51,10 @@ export async function createContract(context: AuditContext, input: ContractInput
       {
         module: MODULE,
         eventType: "contract.created",
-        action: `Created contract ${contract.contractNumber} "${contract.name}"`,
+        action: `Created contract "${contract.name}"${contract.contractNumber ? ` (${contract.contractNumber})` : ""}`,
         targetType: "contract",
         targetId: contract.id,
-        targetLabel: contract.contractNumber,
+        targetLabel: contract.contractNumber ?? contract.name,
       },
       tx,
     );
@@ -65,22 +68,25 @@ export async function updateContract(context: AuditContext, id: string, input: C
   if (existing.companyId !== input.companyId) {
     throw new BusinessRuleError("Contracts cannot be moved between companies.");
   }
-  const duplicate = await db.contract.findFirst({
-    where: {
-      companyId: input.companyId,
-      contractNumber: { equals: input.contractNumber, mode: "insensitive" },
-      deletedAt: null,
-      id: { not: id },
-    },
-  });
-  if (duplicate) {
-    throw new ValidationError(undefined, { contractNumber: "This contract number already exists." });
+  if (input.contractNumber) {
+    const duplicate = await db.contract.findFirst({
+      where: {
+        companyId: input.companyId,
+        contractNumber: { equals: input.contractNumber, mode: "insensitive" },
+        deletedAt: null,
+        id: { not: id },
+      },
+    });
+    if (duplicate) {
+      throw new ValidationError(undefined, { contractNumber: "This contract number already exists." });
+    }
   }
   return db.$transaction(async (tx) => {
     const contract = await tx.contract.update({
       where: { id },
       data: {
         ...input,
+        contractNumber: input.contractNumber ?? null,
         reminderDays: input.reminderDays ?? undefined,
         updatedById: context.actorUserId ?? null,
       },
@@ -90,10 +96,10 @@ export async function updateContract(context: AuditContext, id: string, input: C
       {
         module: MODULE,
         eventType: "contract.updated",
-        action: `Updated contract ${contract.contractNumber}`,
+        action: `Updated contract "${contract.name}"`,
         targetType: "contract",
         targetId: id,
-        targetLabel: contract.contractNumber,
+        targetLabel: contract.contractNumber ?? contract.name,
         fieldChanges: diffRecords(
           existing as unknown as Record<string, unknown>,
           contract as unknown as Record<string, unknown>,
@@ -132,10 +138,10 @@ export async function setContractStatus(context: AuditContext, id: string, statu
       {
         module: MODULE,
         eventType: `contract.${status.toLowerCase()}`,
-        action: `Changed contract ${contract.contractNumber} status to ${status}`,
+        action: `Changed contract "${contract.name}" status to ${status}`,
         targetType: "contract",
         targetId: id,
-        targetLabel: contract.contractNumber,
+        targetLabel: contract.contractNumber ?? contract.name,
         fieldChanges: [{ field: "status", previousValue: existing.status, newValue: status }],
       },
       tx,
@@ -180,10 +186,10 @@ export async function renewContract(context: AuditContext, input: ContractRenewa
       {
         module: MODULE,
         eventType: "contract.renewed",
-        action: `Renewed contract ${contract.contractNumber}`,
+        action: `Renewed contract "${contract.name}"`,
         targetType: "contract_renewal",
         targetId: renewal.id,
-        targetLabel: contract.contractNumber,
+        targetLabel: contract.contractNumber ?? contract.name,
       },
       tx,
     );
@@ -218,10 +224,10 @@ export async function linkContract(context: AuditContext, input: ContractLinkInp
       {
         module: MODULE,
         eventType: "contract.linked",
-        action: `Linked contract ${contract.contractNumber} to ${input.entityType}`,
+        action: `Linked contract "${contract.name}" to ${input.entityType}`,
         targetType: "contract",
         targetId: contract.id,
-        targetLabel: contract.contractNumber,
+        targetLabel: contract.contractNumber ?? contract.name,
         details: { entityType: input.entityType, entityId: input.entityId },
       },
       tx,
@@ -246,7 +252,7 @@ export async function unlinkContract(context: AuditContext, linkId: string) {
         action: `Removed contract link to ${link.entityType}`,
         targetType: "contract",
         targetId: link.contractId,
-        targetLabel: link.contract.contractNumber,
+        targetLabel: link.contract.contractNumber ?? link.contract.name,
         details: { entityType: link.entityType, entityId: link.entityId },
       },
       tx,

@@ -133,15 +133,17 @@ export async function createAsset(context: AuditContext, input: AssetInput) {
   });
   if (!category) throw new BusinessRuleError("Asset category must belong to the same company.");
   if (!category.isActive) throw new BusinessRuleError("Disabled categories cannot receive new assets.");
-  const duplicateTag = await db.asset.findFirst({
-    where: {
-      companyId: input.companyId,
-      assetTag: { equals: input.assetTag, mode: "insensitive" },
-      deletedAt: null,
-    },
-  });
-  if (duplicateTag) {
-    throw new ValidationError(undefined, { assetTag: "This asset tag already exists in this company." });
+  if (input.assetTag) {
+    const duplicateTag = await db.asset.findFirst({
+      where: {
+        companyId: input.companyId,
+        assetTag: { equals: input.assetTag, mode: "insensitive" },
+        deletedAt: null,
+      },
+    });
+    if (duplicateTag) {
+      throw new ValidationError(undefined, { assetTag: "This asset tag already exists in this company." });
+    }
   }
   if (input.locationId) {
     const location = await db.location.findFirst({
@@ -151,17 +153,17 @@ export async function createAsset(context: AuditContext, input: AssetInput) {
   }
   return db.$transaction(async (tx) => {
     const asset = await tx.asset.create({
-      data: { ...input, createdById: context.actorUserId ?? null },
+      data: { ...input, assetTag: input.assetTag ?? null, createdById: context.actorUserId ?? null },
     });
     await recordAudit(
       { ...context, companyId: input.companyId },
       {
         module: MODULE,
         eventType: "asset.created",
-        action: `Created asset ${asset.assetTag}`,
+        action: `Created asset "${asset.name}"${asset.assetTag ? ` (${asset.assetTag})` : ""}`,
         targetType: "asset",
         targetId: asset.id,
-        targetLabel: asset.assetTag,
+        targetLabel: asset.name,
       },
       tx,
     );
@@ -175,35 +177,37 @@ export async function updateAsset(context: AuditContext, id: string, input: Asse
   if (existing.companyId !== input.companyId) {
     throw new BusinessRuleError("Assets cannot be moved between companies unless explicitly transferred.");
   }
-  const duplicateTag = await db.asset.findFirst({
-    where: {
-      companyId: input.companyId,
-      assetTag: { equals: input.assetTag, mode: "insensitive" },
-      deletedAt: null,
-      id: { not: id },
-    },
-  });
-  if (duplicateTag) {
-    throw new ValidationError(undefined, { assetTag: "This asset tag already exists in this company." });
+  if (input.assetTag) {
+    const duplicateTag = await db.asset.findFirst({
+      where: {
+        companyId: input.companyId,
+        assetTag: { equals: input.assetTag, mode: "insensitive" },
+        deletedAt: null,
+        id: { not: id },
+      },
+    });
+    if (duplicateTag) {
+      throw new ValidationError(undefined, { assetTag: "This asset tag already exists in this company." });
+    }
   }
   return db.$transaction(async (tx) => {
     const asset = await tx.asset.update({
       where: { id },
-      data: { ...input, updatedById: context.actorUserId ?? null },
+      data: { ...input, assetTag: input.assetTag ?? null, updatedById: context.actorUserId ?? null },
     });
     await recordAudit(
       { ...context, companyId: input.companyId },
       {
         module: MODULE,
         eventType: "asset.updated",
-        action: `Updated asset ${asset.assetTag}`,
+        action: `Updated asset "${asset.name}"`,
         targetType: "asset",
         targetId: id,
-        targetLabel: asset.assetTag,
+        targetLabel: asset.name,
         fieldChanges: diffRecords(
           existing as unknown as Record<string, unknown>,
           asset as unknown as Record<string, unknown>,
-          ["assetTag", "serialNumber", "manufacturer", "model", "categoryId", "locationId", "supplier", "warrantyExpiry", "notes"],
+          ["name", "assetTag", "serialNumber", "manufacturer", "model", "categoryId", "locationId", "supplier", "warrantyExpiry", "notes"],
         ),
       },
       tx,
@@ -244,10 +248,10 @@ export async function setAssetStatus(context: AuditContext, id: string, status: 
       {
         module: MODULE,
         eventType: "asset.status_changed",
-        action: `Changed asset ${asset.assetTag} status to ${status}`,
+        action: `Changed asset "${asset.name}" status to ${status}`,
         targetType: "asset",
         targetId: id,
-        targetLabel: asset.assetTag,
+        targetLabel: asset.name,
         fieldChanges: [{ field: "status", previousValue: existing.status, newValue: status }],
       },
       tx,
@@ -303,10 +307,10 @@ export async function assignAsset(
       {
         module: MODULE,
         eventType: "asset.assigned",
-        action: `Assigned asset ${asset.assetTag} to ${person.firstName} ${person.lastName}`,
+        action: `Assigned asset "${asset.name}" to ${person.firstName} ${person.lastName}`,
         targetType: "asset_assignment",
         targetId: assignment.id,
-        targetLabel: asset.assetTag,
+        targetLabel: asset.name,
       },
       tx,
     );
@@ -349,10 +353,10 @@ export async function returnAsset(context: AuditContext, assignmentId: string, n
       {
         module: MODULE,
         eventType: "asset.returned",
-        action: `Returned asset ${existing.asset.assetTag} from ${existing.person.firstName} ${existing.person.lastName}`,
+        action: `Returned asset "${existing.asset.name}" from ${existing.person.firstName} ${existing.person.lastName}`,
         targetType: "asset_assignment",
         targetId: assignmentId,
-        targetLabel: existing.asset.assetTag,
+        targetLabel: existing.asset.name,
       },
       tx,
     );
@@ -437,11 +441,11 @@ export async function createHandoverForAssignments(
         {
           heading: "Assets",
           table: {
-            headers: ["Asset Tag", "Serial Number", "Manufacturer", "Model", "Assigned"],
+            headers: ["Asset", "Tag", "Serial Number", "Model", "Assigned"],
             rows: assignments.map((a) => [
-              a.asset.assetTag,
+              a.asset.name,
+              a.asset.assetTag ?? "—",
               a.asset.serialNumber ?? "—",
-              a.asset.manufacturer ?? "—",
               a.asset.model ?? "—",
               a.assignedAt.toISOString().slice(0, 10),
             ]),
@@ -600,10 +604,10 @@ export async function verifyClearanceItem(context: AuditContext, input: Clearanc
       {
         module: MODULE,
         eventType: "clearance.asset_verified",
-        action: `Verified asset ${item.assetAssignment.asset.assetTag} as ${input.status}`,
+        action: `Verified asset "${item.assetAssignment.asset.name}" as ${input.status}`,
         targetType: "clearance_item",
         targetId: item.id,
-        targetLabel: item.assetAssignment.asset.assetTag,
+        targetLabel: item.assetAssignment.asset.name,
         details: input.comments ? { comments: input.comments } : undefined,
       },
       tx,
@@ -687,10 +691,10 @@ export async function completeClearance(context: AuditContext, clearanceId: stri
         {
           heading: "Asset Inventory",
           table: {
-            headers: ["Asset Tag", "Model", "Status", "Comments"],
+            headers: ["Asset", "Tag", "Status", "Comments"],
             rows: clearance.items.map((item) => [
-              item.assetAssignment.asset.assetTag,
-              item.assetAssignment.asset.model ?? "—",
+              item.assetAssignment.asset.name,
+              item.assetAssignment.asset.assetTag ?? "—",
               item.status,
               item.comments ?? "—",
             ]),
@@ -746,10 +750,10 @@ export async function createMaintenance(context: AuditContext, input: Maintenanc
       {
         module: MODULE,
         eventType: "maintenance.created",
-        action: `Scheduled ${input.maintenanceType} maintenance for ${asset.assetTag}`,
+        action: `Scheduled ${input.maintenanceType} maintenance for "${asset.name}"`,
         targetType: "asset_maintenance",
         targetId: maintenance.id,
-        targetLabel: asset.assetTag,
+        targetLabel: asset.name,
       },
       tx,
     );
@@ -791,10 +795,10 @@ export async function setMaintenanceStatus(
       {
         module: MODULE,
         eventType: `maintenance.${status.toLowerCase()}`,
-        action: `Maintenance for ${existing.asset.assetTag} marked ${status}`,
+        action: `Maintenance for "${existing.asset.name}" marked ${status}`,
         targetType: "asset_maintenance",
         targetId: id,
-        targetLabel: existing.asset.assetTag,
+        targetLabel: existing.asset.name,
       },
       tx,
     );
@@ -851,10 +855,10 @@ export async function disposeAsset(context: AuditContext, input: DisposalInput) 
       {
         module: MODULE,
         eventType: "asset.discarded",
-        action: `Discarded asset ${asset.assetTag} (${input.method})`,
+        action: `Discarded asset "${asset.name}" (${input.method})`,
         targetType: "asset",
         targetId: input.assetId,
-        targetLabel: asset.assetTag,
+        targetLabel: asset.name,
         details: { reason: input.reason, method: input.method },
       },
       tx,

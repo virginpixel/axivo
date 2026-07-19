@@ -6,7 +6,8 @@ import { uuidSchema, requiredText, optionalText, dateSchema, positiveInt, nonNeg
 export const licenseSchema = z
   .object({
     companyId: uuidSchema,
-    applicationId: uuidSchema,
+    /// Optional: standalone licenses (Adobe, VPN, ...) need no application.
+    applicationId: uuidSchema.optional().or(z.literal("").transform(() => undefined)),
     name: requiredText("License name"),
     licenseType: z.enum(["SUBSCRIPTION", "PERPETUAL"]),
     vendor: optionalText(200),

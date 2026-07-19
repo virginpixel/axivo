@@ -51,6 +51,30 @@ export async function cancelNotificationAction(notificationId: string): Promise<
   }
 }
 
+/**
+ * Clear failed deliveries from dashboards/alerts. The immutable delivery
+ * history is preserved; rows are only marked archived.
+ */
+export async function archiveFailedNotificationsAction(): Promise<ActionResult<{ count: number }>> {
+  try {
+    const { audit } = await requirePermission("notifications.manage");
+    const result = await db.notification.updateMany({
+      where: { status: "FAILED", archivedAt: null },
+      data: { archivedAt: new Date() },
+    });
+    await recordAudit(audit, {
+      module: "notifications",
+      eventType: "notification.failed_cleared",
+      action: `Cleared ${result.count} failed notification(s) from alerts`,
+    });
+    revalidatePath("/notifications");
+    revalidatePath("/dashboard");
+    return ok({ count: result.count });
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
 const templateSchema = z
   .object({
     key: z.string().trim().min(1).max(100).regex(/^[a-z0-9_]+$/, "Key may contain lowercase letters, numbers and underscores."),

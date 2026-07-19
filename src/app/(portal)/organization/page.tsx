@@ -4,9 +4,15 @@ import { db } from "@/shared/db";
 import { PageHeader } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge } from "@/shared/ui/badge";
-import { cn } from "@/shared/utils";
-import { CompanyDialog, OrgEntityDialog, ToggleActiveButton, ApprovalRoleDialog } from "./org-dialogs";
-import { AssignmentManager, DepartmentHeadManager } from "./sections";
+import { cn, fullName } from "@/shared/utils";
+import {
+  CompanyDialog,
+  OrgEntityDialog,
+  DepartmentDialog,
+  ToggleActiveButton,
+  ApprovalRoleDialog,
+} from "./org-dialogs";
+import { AssignmentManager } from "./sections";
 
 export const metadata = { title: "Organization" };
 export const dynamic = "force-dynamic";
@@ -14,15 +20,16 @@ export const dynamic = "force-dynamic";
 const TABS = [
   { key: "companies", label: "Companies" },
   { key: "departments", label: "Departments" },
-  { key: "locations", label: "Locations" },
   { key: "positions", label: "Positions" },
   { key: "approval-roles", label: "Approval Roles" },
-  { key: "department-heads", label: "Department Heads" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
 
-/** Organization administration (SDS Doc 06 Ch8). */
+/**
+ * Organization administration (SDS Doc 06). Department Heads are assigned on
+ * the department itself; asset locations are managed under Settings.
+ */
 export default async function OrganizationPage({
   searchParams,
 }: {
@@ -44,12 +51,26 @@ export default async function OrganizationPage({
     orderBy: { name: "asc" },
   });
   const companyIds = companies.map((company) => company.id);
+  const companyOptions = companies.map((company) => ({ id: company.id, name: company.name }));
   const nameFilter = q ? { name: { contains: q, mode: "insensitive" as const } } : {};
   const activeFilter = showInactive ? {} : { isActive: true };
 
+  const people = await db.person.findMany({
+    where: { deletedAt: null, isActive: true, companyId: { in: companyIds } },
+    orderBy: { lastName: "asc" },
+    select: { id: true, firstName: true, lastName: true, companyId: true },
+  });
+  const peopleByCompany: Record<string, { id: string; name: string }[]> = {};
+  for (const person of people) {
+    (peopleByCompany[person.companyId] ??= []).push({ id: person.id, name: fullName(person) });
+  }
+
   return (
     <div>
-      <PageHeader title="Organization" description="Companies, departments, locations, positions and approval routing." />
+      <PageHeader
+        title="Organization"
+        description="Companies, departments, positions and approval routing. Department Heads are set on each department."
+      />
 
       <nav className="mb-5 flex flex-wrap gap-1 border-b" aria-label="Organization sections">
         {TABS.map((entry) => (
@@ -98,7 +119,7 @@ export default async function OrganizationPage({
             <Table>
               <THead>
                 <TR>
-                  <TH>Name</TH><TH>Code</TH><TH>Timezone</TH><TH>Currency</TH><TH>Status</TH><TH className="text-right">Actions</TH>
+                  <TH>Name</TH><TH>Code</TH><TH>Currency</TH><TH>Status</TH><TH className="text-right">Actions</TH>
                 </TR>
               </THead>
               <TBody>
@@ -109,7 +130,6 @@ export default async function OrganizationPage({
                     <TR key={company.id}>
                       <TD className="font-medium">{company.name}</TD>
                       <TD>{company.code}</TD>
-                      <TD>{company.timezone}</TD>
                       <TD>{company.currency}</TD>
                       <TD><StatusBadge status={company.isActive ? "ACTIVE" : "CANCELLED"} /></TD>
                       <TD className="text-right">
@@ -121,7 +141,6 @@ export default async function OrganizationPage({
                                 name: company.name,
                                 code: company.code,
                                 description: company.description,
-                                timezone: company.timezone,
                                 currency: company.currency,
                               }}
                             />
@@ -137,10 +156,20 @@ export default async function OrganizationPage({
         </section>
       ) : null}
 
-      {tab === "departments" || tab === "locations" || tab === "positions" ? (
-        <OrgEntitySection
-          tab={tab}
-          companies={companies.map((company) => ({ id: company.id, name: company.name }))}
+      {tab === "departments" ? (
+        <DepartmentsSection
+          companies={companyOptions}
+          companyIds={companyIds}
+          peopleByCompany={peopleByCompany}
+          nameFilter={nameFilter}
+          activeFilter={activeFilter}
+          canManage={canManage}
+        />
+      ) : null}
+
+      {tab === "positions" ? (
+        <PositionsSection
+          companies={companyOptions}
           companyIds={companyIds}
           nameFilter={nameFilter}
           activeFilter={activeFilter}
@@ -150,87 +179,163 @@ export default async function OrganizationPage({
 
       {tab === "approval-roles" ? (
         <section aria-label="Approval roles" className="space-y-6">
+          <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
+            <strong className="text-foreground">How approval routing works:</strong> Department Head
+            steps always route to the heads configured on the Requested For employee&apos;s
+            department (Departments tab). The assignments below are only for company-wide roles
+            such as HR, General Manager and IT Implementation.
+          </div>
           <div className="flex justify-end">{canManageRoles ? <ApprovalRoleDialog /> : null}</div>
           <ApprovalRolesTable canManage={canManageRoles} showInactive={showInactive} />
-          <AssignmentManager
-            canManage={canManageRoles}
-            companies={companies.map((company) => ({ id: company.id, name: company.name }))}
-          />
+          <AssignmentManager canManage={canManageRoles} companies={companyOptions} />
         </section>
-      ) : null}
-
-      {tab === "department-heads" ? (
-        <DepartmentHeadManager
-          canManage={canManage}
-          companies={companies.map((company) => ({ id: company.id, name: company.name }))}
-        />
       ) : null}
     </div>
   );
 }
 
-async function OrgEntitySection({
-  tab,
+async function DepartmentsSection({
+  companies,
+  companyIds,
+  peopleByCompany,
+  nameFilter,
+  activeFilter,
+  canManage,
+}: {
+  companies: { id: string; name: string }[];
+  companyIds: string[];
+  peopleByCompany: Record<string, { id: string; name: string }[]>;
+  nameFilter: object;
+  activeFilter: object;
+  canManage: boolean;
+}) {
+  const departments = await db.department.findMany({
+    where: { deletedAt: null, companyId: { in: companyIds }, ...nameFilter, ...activeFilter },
+    orderBy: { name: "asc" },
+    include: {
+      company: { select: { name: true } },
+      departmentHeads: {
+        where: { deletedAt: null, isActive: true },
+        include: { person: true },
+      },
+      _count: { select: { people: { where: { deletedAt: null, isActive: true } } } },
+    },
+  });
+
+  return (
+    <section aria-label="Departments">
+      <div className="mb-3 flex justify-end">
+        {canManage ? <DepartmentDialog companies={companies} peopleByCompany={peopleByCompany} /> : null}
+      </div>
+      {departments.length === 0 ? (
+        <EmptyState
+          title="No departments"
+          description="Create departments and assign their Department Heads — approvals route to them automatically."
+        />
+      ) : (
+        <Table>
+          <THead>
+            <TR>
+              <TH>Name</TH><TH>Company</TH><TH>Department Head(s)</TH><TH>People</TH><TH>Status</TH>
+              <TH className="text-right">Actions</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {departments.map((department) => (
+              <TR key={department.id}>
+                <TD className="font-medium">{department.name}</TD>
+                <TD>{department.company.name}</TD>
+                <TD>
+                  {department.departmentHeads.length === 0 ? (
+                    <span className="text-xs text-destructive">None — approvals cannot resolve</span>
+                  ) : (
+                    department.departmentHeads.map((head) => fullName(head.person)).join(", ")
+                  )}
+                </TD>
+                <TD>{department._count.people}</TD>
+                <TD><StatusBadge status={department.isActive ? "ACTIVE" : "CANCELLED"} /></TD>
+                <TD className="text-right">
+                  {canManage ? (
+                    <div className="flex justify-end gap-2">
+                      <DepartmentDialog
+                        companies={companies}
+                        peopleByCompany={peopleByCompany}
+                        department={{
+                          id: department.id,
+                          companyId: department.companyId,
+                          name: department.name,
+                          description: department.description,
+                          headPersonIds: department.departmentHeads.map((head) => head.personId),
+                        }}
+                      />
+                      <ToggleActiveButton entity="department" id={department.id} isActive={department.isActive} />
+                    </div>
+                  ) : null}
+                </TD>
+              </TR>
+            ))}
+          </TBody>
+        </Table>
+      )}
+    </section>
+  );
+}
+
+async function PositionsSection({
   companies,
   companyIds,
   nameFilter,
   activeFilter,
   canManage,
 }: {
-  tab: "departments" | "locations" | "positions";
   companies: { id: string; name: string }[];
   companyIds: string[];
   nameFilter: object;
   activeFilter: object;
   canManage: boolean;
 }) {
-  const where = { deletedAt: null, companyId: { in: companyIds }, ...nameFilter, ...activeFilter };
-  const rows =
-    tab === "departments"
-      ? await db.department.findMany({ where, orderBy: { name: "asc" }, include: { company: true } })
-      : tab === "locations"
-        ? await db.location.findMany({ where, orderBy: { name: "asc" }, include: { company: true } })
-        : await db.position.findMany({ where, orderBy: { name: "asc" }, include: { company: true } });
-
-  const singular = tab === "departments" ? "department" : tab === "locations" ? "location" : "position";
+  const positions = await db.position.findMany({
+    where: { deletedAt: null, companyId: { in: companyIds }, ...nameFilter, ...activeFilter },
+    orderBy: { name: "asc" },
+    include: { company: { select: { name: true } } },
+  });
 
   return (
-    <section aria-label={tab}>
+    <section aria-label="Positions">
       <div className="mb-3 flex justify-end">
-        {canManage ? <OrgEntityDialog entity={singular} companies={companies} /> : null}
+        {canManage ? <OrgEntityDialog entity="position" companies={companies} /> : null}
       </div>
-      {rows.length === 0 ? (
-        <EmptyState title={`No ${tab}`} description={`Create ${tab} to structure each company.`} />
+      {positions.length === 0 ? (
+        <EmptyState title="No positions" description="Create positions to classify employees." />
       ) : (
         <Table>
           <THead>
             <TR>
-              <TH>Name</TH><TH>Code</TH><TH>Company</TH><TH>Description</TH><TH>Status</TH><TH className="text-right">Actions</TH>
+              <TH>Name</TH><TH>Company</TH><TH>Description</TH><TH>Status</TH><TH className="text-right">Actions</TH>
             </TR>
           </THead>
           <TBody>
-            {rows.map((row) => (
-              <TR key={row.id}>
-                <TD className="font-medium">{row.name}</TD>
-                <TD>{row.code ?? "—"}</TD>
-                <TD>{row.company.name}</TD>
-                <TD className="max-w-56 truncate">{row.description ?? "—"}</TD>
-                <TD><StatusBadge status={row.isActive ? "ACTIVE" : "CANCELLED"} /></TD>
+            {positions.map((position) => (
+              <TR key={position.id}>
+                <TD className="font-medium">{position.name}</TD>
+                <TD>{position.company.name}</TD>
+                <TD className="max-w-56 truncate">{position.description ?? "—"}</TD>
+                <TD><StatusBadge status={position.isActive ? "ACTIVE" : "CANCELLED"} /></TD>
                 <TD className="text-right">
                   {canManage ? (
                     <div className="flex justify-end gap-2">
                       <OrgEntityDialog
-                        entity={singular}
+                        entity="position"
                         companies={companies}
                         record={{
-                          id: row.id,
-                          companyId: row.companyId,
-                          name: row.name,
-                          code: row.code,
-                          description: row.description,
+                          id: position.id,
+                          companyId: position.companyId,
+                          name: position.name,
+                          code: position.code,
+                          description: position.description,
                         }}
                       />
-                      <ToggleActiveButton entity={singular} id={row.id} isActive={row.isActive} />
+                      <ToggleActiveButton entity="position" id={position.id} isActive={position.isActive} />
                     </div>
                   ) : null}
                 </TD>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pencil, Plus, Power, ArrowUp, ArrowDown, Trash2 } from "lucide-react";
 import {
   createWorkflowAction,
@@ -41,30 +41,41 @@ export function WorkflowDialog({
 }) {
   const { run, loading, fieldErrors } = useAction();
   const [open, setOpen] = useState(false);
+  const implementationRole = approvalRoles.find((role) => role.key === "IT_IMPLEMENTATION");
+  const defaultSteps = (): StepDraft[] => [
+    {
+      stepName: "Department Head Approval",
+      stepType: "APPROVAL",
+      approvalRoleId: approvalRoles.find((role) => role.key === "DEPARTMENT_HEAD")?.id ?? approvalRoles[0]?.id ?? "",
+      approvalRule: "ANY",
+      allowDelegation: true,
+      commentsRequired: false,
+    },
+    {
+      stepName: "IT Implementation",
+      stepType: "IT_IMPLEMENTATION",
+      approvalRoleId: implementationRole?.id ?? approvalRoles[0]?.id ?? "",
+      approvalRule: "ANY",
+      allowDelegation: false,
+      commentsRequired: false,
+    },
+  ];
   const [companyId, setCompanyId] = useState(workflow?.companyId ?? companies[0]?.id ?? "");
   const [name, setName] = useState(workflow?.name ?? "");
   const [description, setDescription] = useState(workflow?.description ?? "");
-  const implementationRole = approvalRoles.find((role) => role.key === "IT_IMPLEMENTATION");
-  const [steps, setSteps] = useState<StepDraft[]>(
-    workflow?.steps ?? [
-      {
-        stepName: "Department Head Approval",
-        stepType: "APPROVAL",
-        approvalRoleId: approvalRoles.find((role) => role.key === "DEPARTMENT_HEAD")?.id ?? approvalRoles[0]?.id ?? "",
-        approvalRule: "ANY",
-        allowDelegation: true,
-        commentsRequired: false,
-      },
-      {
-        stepName: "IT Implementation",
-        stepType: "IT_IMPLEMENTATION",
-        approvalRoleId: implementationRole?.id ?? approvalRoles[0]?.id ?? "",
-        approvalRule: "ANY",
-        allowDelegation: false,
-        commentsRequired: false,
-      },
-    ],
-  );
+  const [steps, setSteps] = useState<StepDraft[]>(workflow?.steps ?? defaultSteps());
+
+  // Re-sync from the latest server data every time the dialog opens so edits
+  // always start from the current active version's steps.
+  useEffect(() => {
+    if (open) {
+      setCompanyId(workflow?.companyId ?? companies[0]?.id ?? "");
+      setName(workflow?.name ?? "");
+      setDescription(workflow?.description ?? "");
+      setSteps(workflow?.steps && workflow.steps.length > 0 ? workflow.steps.map((step) => ({ ...step })) : defaultSteps());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   function updateStep(index: number, patch: Partial<StepDraft>) {
     setSteps((current) => current.map((step, i) => (i === index ? { ...step, ...patch } : step)));
@@ -116,8 +127,9 @@ export function WorkflowDialog({
       </DialogTrigger>
       <DialogContent
         title={workflow ? "Edit workflow" : "New workflow"}
-        description="Steps execute in order. The final step must be IT Implementation."
+        description="Steps execute in order from step 1 downward. The final step must be IT Implementation."
         wide
+        className="max-w-5xl"
       >
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -171,7 +183,16 @@ export function WorkflowDialog({
             <FieldError message={fieldErrors.steps} />
             <ol className="space-y-2">
               {steps.map((step, index) => (
-                <li key={index} className="rounded-md border p-3">
+                <li key={index} className="relative rounded-md border p-3 pl-12">
+                  <span
+                    className="absolute left-3 top-4 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground"
+                    aria-label={`Step ${index + 1}`}
+                  >
+                    {index + 1}
+                  </span>
+                  {index < steps.length - 1 ? (
+                    <span className="absolute bottom-0 left-[23px] top-11 w-px bg-border" aria-hidden />
+                  ) : null}
                   <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                     <div>
                       <Label htmlFor={`step-name-${index}`} className="text-xs">Step name</Label>

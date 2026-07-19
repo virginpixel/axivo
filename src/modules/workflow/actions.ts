@@ -189,6 +189,72 @@ export async function resendApprovalNotificationsAction(stepInstanceId: string):
   }
 }
 
+/**
+ * Transfer an active approval step to another approver: un-acted assignments
+ * are replaced, their tokens revoked, and the new approver is notified.
+ */
+export async function transferStepApproverAction(
+  stepInstanceId: string,
+  personId: string,
+): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("workflows.admin");
+    const step = await db.workflowStepInstance.findUnique({
+      where: { id: stepInstanceId },
+      include: {
+        assignments: true,
+        workflowInstance: { include: { requestItem: { include: { request: true } } } },
+      },
+    });
+    if (!step || step.status !== "ACTIVE") {
+      throw new BusinessRuleError("Only active approval steps can be transferred.");
+    }
+    if (step.stepType === "IT_IMPLEMENTATION") {
+      throw new BusinessRuleError("Implementation steps are completed through the IT portal.");
+    }
+    const request = step.workflowInstance.requestItem.request;
+    const person = await db.person.findFirst({
+      where: { id: personId, companyId: request.companyId, deletedAt: null, isActive: true },
+    });
+    if (!person) {
+      throw new BusinessRuleError("The new approver must be an active person of the same company.");
+    }
+
+    await db.$transaction(async (tx) => {
+      // Remove approvers who have not acted; acted decisions remain history.
+      await tx.approvalAssignment.deleteMany({
+        where: { workflowStepInstanceId: stepInstanceId, actedAt: null, personId: { not: personId } },
+      });
+      await tx.approvalAssignment.upsert({
+        where: {
+          workflowStepInstanceId_personId: { workflowStepInstanceId: stepInstanceId, personId },
+        },
+        create: { workflowStepInstanceId: stepInstanceId, personId },
+        update: {},
+      });
+      const { revokeTokensForTarget } = await import("@/shared/tokens/secure-tokens");
+      await revokeTokensForTarget("workflow_step_instance", stepInstanceId, tx);
+      await recordAudit(
+        { ...audit, companyId: request.companyId },
+        {
+          module: "workflow",
+          eventType: "workflow.approver_transferred",
+          action: `Transferred step "${step.stepName}" on ${request.requestNumber} to ${person.firstName} ${person.lastName}`,
+          targetType: "workflow_step_instance",
+          targetId: stepInstanceId,
+          targetLabel: step.stepName,
+        },
+        tx,
+      );
+    });
+    await engine.sendApprovalEmails(audit, stepInstanceId);
+    revalidatePath("/requests");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
 function tokenFailureMessage(reason: string): string {
   switch (reason) {
     case "expired":

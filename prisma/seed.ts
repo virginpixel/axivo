@@ -179,6 +179,31 @@ async function main(): Promise<void> {
     });
   }
 
+  console.log("[seed] Seeding standard request types for every company...");
+  const allCompanies = await prisma.company.findMany({ where: { deletedAt: null } });
+  for (const company of allCompanies) {
+    await prisma.requestType.upsert({
+      where: { companyId_name: { companyId: company.id, name: "Application Access" } },
+      create: { companyId: company.id, name: "Application Access", kind: "APPLICATION_ACCESS", description: "Request access to business applications." },
+      update: {},
+    });
+    await prisma.requestType.upsert({
+      where: { companyId_name: { companyId: company.id, name: "Asset Request" } },
+      create: { companyId: company.id, name: "Asset Request", kind: "ASSET_REQUEST", description: "Request company assets such as laptops and phones." },
+      update: {},
+    });
+  }
+
+  console.log("[seed] Seeding default contract categories catalog...");
+  for (const category of ["Software", "Hardware Support", "Cloud Services", "Internet", "Telecom", "Maintenance", "Warranty", "Other"]) {
+    const existing = await prisma.catalogItem.findFirst({
+      where: { kind: "CONTRACT_CATEGORY", name: category, parentId: null },
+    });
+    if (!existing) {
+      await prisma.catalogItem.create({ data: { kind: "CONTRACT_CATEGORY", name: category } });
+    }
+  }
+
   console.log("[seed] Seeding notification templates...");
   for (const template of NOTIFICATION_TEMPLATES) {
     await prisma.notificationTemplate.upsert({

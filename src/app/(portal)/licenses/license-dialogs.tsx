@@ -22,11 +22,11 @@ export function LicenseDialog({
 }: {
   companies: { id: string; name: string }[];
   applications: { id: string; name: string; companyId: string }[];
-  contracts: { id: string; contractNumber: string; name: string; companyId: string }[];
+  contracts: { id: string; contractNumber: string | null; name: string; companyId: string }[];
   license?: {
     id: string;
     companyId: string;
-    applicationId: string;
+    applicationId: string | null;
     name: string;
     licenseType: string;
     vendor: string | null;
@@ -54,7 +54,7 @@ export function LicenseDialog({
   async function submit() {
     const payload = {
       companyId: form.companyId,
-      applicationId: form.applicationId,
+      applicationId: form.applicationId || undefined,
       name: form.name,
       licenseType: form.licenseType,
       vendor: form.vendor || undefined,
@@ -96,9 +96,9 @@ export function LicenseDialog({
               </Select>
             </div>
             <div>
-              <Label htmlFor="lic-application" required>Application</Label>
+              <Label htmlFor="lic-application">Linked application (optional)</Label>
               <Select id="lic-application" value={form.applicationId} onChange={(e) => setForm({ ...form, applicationId: e.target.value })}>
-                <option value="">Select…</option>
+                <option value="">None — standalone license (Adobe, VPN, …)</option>
                 {companyApplications.map((application) => (
                   <option key={application.id} value={application.id}>{application.name}</option>
                 ))}
@@ -134,7 +134,7 @@ export function LicenseDialog({
                 <option value="">No contract</option>
                 {companyContracts.map((contract) => (
                   <option key={contract.id} value={contract.id}>
-                    {contract.contractNumber} · {contract.name}
+                    {contract.contractNumber ? `${contract.contractNumber} · ` : ""}{contract.name}
                   </option>
                 ))}
               </Select>
@@ -146,7 +146,7 @@ export function LicenseDialog({
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={submit} loading={loading} disabled={!form.applicationId}>
+            <Button onClick={submit} loading={loading} >
               {license ? "Save changes" : "Create license"}
             </Button>
           </div>

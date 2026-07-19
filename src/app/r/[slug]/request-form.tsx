@@ -43,24 +43,43 @@ interface ItemDraft {
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+interface ParticipantDraft {
+  name: string;
+  email: string;
+  employeeId: string;
+  departmentId: string;
+  positionId: string;
+}
+
+const EMPTY_PARTICIPANT: ParticipantDraft = {
+  name: "",
+  email: "",
+  employeeId: "",
+  departmentId: "",
+  positionId: "",
+};
+
 export function PublicRequestForm({
   slug,
   requestTypeKind,
   fields,
   applications,
   assetCategories,
+  departments,
+  positions,
 }: {
   slug: string;
   requestTypeKind: string;
   fields: PublicField[];
   applications: PublicApplication[];
   assetCategories: { id: string; name: string }[];
+  departments: { id: string; name: string }[];
+  positions: { id: string; name: string }[];
 }) {
   const { toast } = useToast();
-  const [requesterName, setRequesterName] = useState("");
-  const [requesterEmail, setRequesterEmail] = useState("");
-  const [requestedForName, setRequestedForName] = useState("");
-  const [requestedForEmail, setRequestedForEmail] = useState("");
+  const [requester, setRequester] = useState<ParticipantDraft>(EMPTY_PARTICIPANT);
+  const [requestedFor, setRequestedFor] = useState<ParticipantDraft>(EMPTY_PARTICIPANT);
+  const [sameAsRequester, setSameAsRequester] = useState(false);
   const [values, setValues] = useState<Record<string, string | string[]>>(() => {
     const initial: Record<string, string | string[]> = {};
     for (const field of fields) {
@@ -93,10 +112,16 @@ export function PublicRequestForm({
 
   function validateClient(): boolean {
     const nextErrors: Record<string, string> = {};
-    if (!requesterName.trim()) nextErrors.requesterName = "Your name is required.";
-    if (!EMAIL_PATTERN.test(requesterEmail)) nextErrors.requesterEmail = "Enter a valid email address.";
-    if (!requestedForName.trim()) nextErrors.requestedForName = "Requested for name is required.";
-    if (!EMAIL_PATTERN.test(requestedForEmail)) nextErrors.requestedForEmail = "Enter a valid email address.";
+    const effectiveRequestedFor = sameAsRequester ? requester : requestedFor;
+    const checkParticipant = (prefix: string, participant: ParticipantDraft) => {
+      if (!participant.name.trim()) nextErrors[`${prefix}Name`] = "Name is required.";
+      if (!EMAIL_PATTERN.test(participant.email)) nextErrors[`${prefix}Email`] = "Enter a valid email address.";
+      if (!participant.employeeId.trim()) nextErrors[`${prefix}EmployeeId`] = "Employee ID is required.";
+      if (!participant.departmentId) nextErrors[`${prefix}DepartmentId`] = "Select a department.";
+      if (!participant.positionId) nextErrors[`${prefix}PositionId`] = "Select a position.";
+    };
+    checkParticipant("requester", requester);
+    checkParticipant("requestedFor", effectiveRequestedFor);
     for (const field of visibleFields) {
       const value = values[field.fieldKey];
       const empty = value === undefined || value === "" || (Array.isArray(value) && value.length === 0);
@@ -135,13 +160,20 @@ export function PublicRequestForm({
     event.preventDefault();
     if (!validateClient()) return;
     setLoading(true);
+    const effectiveRequestedFor = sameAsRequester ? requester : requestedFor;
     try {
       const result = await submitPublicRequestAction({
         slug,
-        requesterName: requesterName.trim(),
-        requesterEmail: requesterEmail.trim(),
-        requestedForName: requestedForName.trim(),
-        requestedForEmail: requestedForEmail.trim(),
+        requesterName: requester.name.trim(),
+        requesterEmail: requester.email.trim(),
+        requesterEmployeeId: requester.employeeId.trim(),
+        requesterDepartmentId: requester.departmentId,
+        requesterPositionId: requester.positionId,
+        requestedForName: effectiveRequestedFor.name.trim(),
+        requestedForEmail: effectiveRequestedFor.email.trim(),
+        requestedForEmployeeId: effectiveRequestedFor.employeeId.trim(),
+        requestedForDepartmentId: effectiveRequestedFor.departmentId,
+        requestedForPositionId: effectiveRequestedFor.positionId,
         fieldValues: values,
         website: "",
         items: items.map((item) => ({
@@ -193,62 +225,49 @@ export function PublicRequestForm({
         <input id="website" name="website" type="text" tabIndex={-1} autoComplete="off" />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Requested by</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="field-requesterName" required>Your name</Label>
-            <Input
-              id="field-requesterName"
-              value={requesterName}
-              onChange={(event) => setRequesterName(event.target.value)}
-              aria-invalid={!!errors.requesterName}
-            />
-            <FieldError message={errors.requesterName} />
-          </div>
-          <div>
-            <Label htmlFor="field-requesterEmail" required>Your work email</Label>
-            <Input
-              id="field-requesterEmail"
-              type="email"
-              value={requesterEmail}
-              onChange={(event) => setRequesterEmail(event.target.value)}
-              aria-invalid={!!errors.requesterEmail}
-            />
-            <FieldError message={errors.requesterEmail} />
-          </div>
-        </CardContent>
-      </Card>
+      <ParticipantCard
+        title="Requested by"
+        prefix="requester"
+        participant={requester}
+        onChange={setRequester}
+        departments={departments}
+        positions={positions}
+        errors={errors}
+      />
 
       <Card>
         <CardHeader>
-          <CardTitle>Requested for</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>Requested for</CardTitle>
+            <label className="flex items-center gap-2 text-sm font-normal">
+              <input
+                type="checkbox"
+                checked={sameAsRequester}
+                onChange={(event) => setSameAsRequester(event.target.checked)}
+                className="h-4 w-4"
+              />
+              Same as requester
+            </label>
+          </div>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="field-requestedForName" required>Employee name</Label>
-            <Input
-              id="field-requestedForName"
-              value={requestedForName}
-              onChange={(event) => setRequestedForName(event.target.value)}
-              aria-invalid={!!errors.requestedForName}
+        {!sameAsRequester ? (
+          <CardContent>
+            <ParticipantFields
+              prefix="requestedFor"
+              participant={requestedFor}
+              onChange={setRequestedFor}
+              departments={departments}
+              positions={positions}
+              errors={errors}
             />
-            <FieldError message={errors.requestedForName} />
-          </div>
-          <div>
-            <Label htmlFor="field-requestedForEmail" required>Employee work email</Label>
-            <Input
-              id="field-requestedForEmail"
-              type="email"
-              value={requestedForEmail}
-              onChange={(event) => setRequestedForEmail(event.target.value)}
-              aria-invalid={!!errors.requestedForEmail}
-            />
-            <FieldError message={errors.requestedForEmail} />
-          </div>
-        </CardContent>
+          </CardContent>
+        ) : (
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              This request is for yourself; your details above are used.
+            </p>
+          </CardContent>
+        )}
       </Card>
 
       <Card>
@@ -424,6 +443,124 @@ export function PublicRequestForm({
         Submit request
       </Button>
     </form>
+  );
+}
+
+function ParticipantCard({
+  title,
+  prefix,
+  participant,
+  onChange,
+  departments,
+  positions,
+  errors,
+}: {
+  title: string;
+  prefix: string;
+  participant: ParticipantDraft;
+  onChange: (participant: ParticipantDraft) => void;
+  departments: { id: string; name: string }[];
+  positions: { id: string; name: string }[];
+  errors: Record<string, string>;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ParticipantFields
+          prefix={prefix}
+          participant={participant}
+          onChange={onChange}
+          departments={departments}
+          positions={positions}
+          errors={errors}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+function ParticipantFields({
+  prefix,
+  participant,
+  onChange,
+  departments,
+  positions,
+  errors,
+}: {
+  prefix: string;
+  participant: ParticipantDraft;
+  onChange: (participant: ParticipantDraft) => void;
+  departments: { id: string; name: string }[];
+  positions: { id: string; name: string }[];
+  errors: Record<string, string>;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div>
+        <Label htmlFor={`field-${prefix}Name`} required>Employee name</Label>
+        <Input
+          id={`field-${prefix}Name`}
+          value={participant.name}
+          onChange={(event) => onChange({ ...participant, name: event.target.value })}
+          aria-invalid={!!errors[`${prefix}Name`]}
+        />
+        <FieldError message={errors[`${prefix}Name`]} />
+      </div>
+      <div>
+        <Label htmlFor={`field-${prefix}EmployeeId`} required>Employee ID</Label>
+        <Input
+          id={`field-${prefix}EmployeeId`}
+          value={participant.employeeId}
+          onChange={(event) => onChange({ ...participant, employeeId: event.target.value })}
+          aria-invalid={!!errors[`${prefix}EmployeeId`]}
+        />
+        <FieldError message={errors[`${prefix}EmployeeId`]} />
+      </div>
+      <div>
+        <Label htmlFor={`field-${prefix}Email`} required>Work email</Label>
+        <Input
+          id={`field-${prefix}Email`}
+          type="email"
+          value={participant.email}
+          onChange={(event) => onChange({ ...participant, email: event.target.value })}
+          aria-invalid={!!errors[`${prefix}Email`]}
+        />
+        <FieldError message={errors[`${prefix}Email`]} />
+      </div>
+      <div>
+        <Label htmlFor={`field-${prefix}DepartmentId`} required>Department</Label>
+        <Select
+          id={`field-${prefix}DepartmentId`}
+          value={participant.departmentId}
+          onChange={(event) => onChange({ ...participant, departmentId: event.target.value })}
+          aria-invalid={!!errors[`${prefix}DepartmentId`]}
+        >
+          <option value="">Select…</option>
+          {departments.map((department) => (
+            <option key={department.id} value={department.id}>{department.name}</option>
+          ))}
+        </Select>
+        <FieldError message={errors[`${prefix}DepartmentId`]} />
+      </div>
+      <div>
+        <Label htmlFor={`field-${prefix}PositionId`} required>Position</Label>
+        <Select
+          id={`field-${prefix}PositionId`}
+          value={participant.positionId}
+          onChange={(event) => onChange({ ...participant, positionId: event.target.value })}
+          aria-invalid={!!errors[`${prefix}PositionId`]}
+        >
+          <option value="">Select…</option>
+          {positions.map((position) => (
+            <option key={position.id} value={position.id}>{position.name}</option>
+          ))}
+        </Select>
+        <FieldError message={errors[`${prefix}PositionId`]} />
+      </div>
+    </div>
   );
 }
 

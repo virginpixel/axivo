@@ -7,7 +7,7 @@ import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Plus } from "lucide-react";
-import { FormRowActions, RequestTypeDialog, CopyLinkButton } from "./form-actions-ui";
+import { FormRowActions, CopyLinkButton } from "./form-actions-ui";
 
 export const metadata = { title: "Forms" };
 export const dynamic = "force-dynamic";
@@ -19,7 +19,7 @@ export default async function FormsPage() {
   const canManage = user.permissions.has("forms.manage");
   const companyScope = isGlobalAdmin ? {} : { companyId: user.companyId };
 
-  const [forms, requestTypes, companies] = await Promise.all([
+  const [forms] = await Promise.all([
     db.form.findMany({
       where: { deletedAt: null, ...companyScope },
       orderBy: [{ company: { name: "asc" } }, { name: "asc" }],
@@ -31,16 +31,6 @@ export default async function FormsPage() {
         _count: { select: { requests: true } },
       },
     }),
-    db.requestType.findMany({
-      where: { deletedAt: null, ...companyScope },
-      orderBy: { name: "asc" },
-      include: { company: { select: { name: true } } },
-    }),
-    db.company.findMany({
-      where: { deletedAt: null, isActive: true, ...(isGlobalAdmin ? {} : { id: user.companyId }) },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
   ]);
 
   const baseUrl = env().APP_URL.replace(/\/+$/, "");
@@ -49,17 +39,14 @@ export default async function FormsPage() {
     <div>
       <PageHeader
         title="Forms"
-        description="Public request forms. Each published form is linked to exactly one workflow."
+        description={`Public request forms — each published form is linked to exactly one workflow. Requesters can browse all published forms at ${baseUrl}/r.`}
         actions={
           canManage ? (
-            <div className="flex gap-2">
-              <RequestTypeDialog companies={companies} />
-              <Link href="/forms/builder">
-                <Button size="sm">
-                  <Plus className="h-4 w-4" /> New form
-                </Button>
-              </Link>
-            </div>
+            <Link href="/forms/builder">
+              <Button size="sm">
+                <Plus className="h-4 w-4" /> New form
+              </Button>
+            </Link>
           ) : undefined
         }
       />
@@ -104,28 +91,6 @@ export default async function FormsPage() {
         </Table>
       )}
 
-      <section aria-label="Request types" className="mt-8">
-        <h2 className="mb-3 text-base font-semibold">Request types</h2>
-        {requestTypes.length === 0 ? (
-          <EmptyState title="No request types" description="Request types define which kind of items a form collects." />
-        ) : (
-          <Table>
-            <THead>
-              <TR><TH>Name</TH><TH>Company</TH><TH>Kind</TH><TH>Status</TH></TR>
-            </THead>
-            <TBody>
-              {requestTypes.map((requestType) => (
-                <TR key={requestType.id}>
-                  <TD className="font-medium">{requestType.name}</TD>
-                  <TD>{requestType.company.name}</TD>
-                  <TD>{requestType.kind.replace(/_/g, " ")}</TD>
-                  <TD><StatusBadge status={requestType.isActive ? "ACTIVE" : "CANCELLED"} /></TD>
-                </TR>
-              ))}
-            </TBody>
-          </Table>
-        )}
-      </section>
     </div>
   );
 }

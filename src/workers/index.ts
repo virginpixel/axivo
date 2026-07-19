@@ -77,10 +77,10 @@ async function contractReminders(): Promise<void> {
         {
           module: "contracts",
           eventType: "contract.expired",
-          action: `Contract ${contract.contractNumber} expired`,
+          action: `Contract "${contract.name}" expired`,
           targetType: "contract",
           targetId: contract.id,
-          targetLabel: contract.contractNumber,
+          targetLabel: contract.contractNumber ?? contract.name,
         },
       );
       continue;
@@ -97,8 +97,8 @@ async function contractReminders(): Promise<void> {
       await queueNotification({
         companyId: contract.companyId,
         eventType: "CONTRACT_RENEWAL_REMINDER",
-        subject: `Contract ${contract.contractNumber} ${contract.renewalDate ? "renews" : "expires"} in ${daysLeft} day(s)`,
-        body: `Contract <strong>${contract.contractNumber}</strong> ("${contract.name}", vendor ${contract.vendor}) for ${contract.company.name} ${contract.renewalDate ? "is due for renewal" : "expires"} on ${targetDate.toISOString().slice(0, 10)}.`,
+        subject: `Contract "${contract.name}" ${contract.renewalDate ? "renews" : "expires"} in ${daysLeft} day(s)`,
+        body: `Contract <strong>${contract.name}</strong>${contract.contractNumber ? ` (${contract.contractNumber})` : ""} with vendor ${contract.vendor} for ${contract.company.name} ${contract.renewalDate ? "is due for renewal" : "expires"} on ${targetDate.toISOString().slice(0, 10)}.`,
         recipients,
         entityType: "contract",
         entityId: contract.id,

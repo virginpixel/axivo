@@ -45,7 +45,7 @@ export default async function ContractsPage({
   };
 
   const soon = new Date(Date.now() + 60 * 86_400_000);
-  const [contracts, companies, people, activeCount, expiringCount, totalCost] = await Promise.all([
+  const [contracts, companies, people, activeCount, expiringCount, totalCost, catalogItems] = await Promise.all([
     db.contract.findMany({
       where,
       orderBy: [{ endDate: "asc" }, { contractNumber: "asc" }],
@@ -76,7 +76,34 @@ export default async function ContractsPage({
       where: { deletedAt: null, ...companyScope, status: { in: ["ACTIVE", "EXPIRING", "RENEWED"] } },
       _sum: { cost: true },
     }),
+    db.catalogItem.findMany({
+      where: { deletedAt: null, isActive: true, kind: { in: ["VENDOR", "CONTRACT_CATEGORY"] } },
+      orderBy: { name: "asc" },
+      select: { id: true, kind: true, name: true },
+    }),
   ]);
+
+  const catalogs = {
+    vendors: catalogItems.filter((item) => item.kind === "VENDOR"),
+    categories: catalogItems.filter((item) => item.kind === "CONTRACT_CATEGORY"),
+  };
+
+  // Latest attached contract PDF per contract for the View button.
+  const contractDocLinks = await db.documentLink.findMany({
+    where: {
+      entityType: "contract",
+      entityId: { in: contracts.map((contract) => contract.id) },
+      removedAt: null,
+    },
+    orderBy: { createdAt: "desc" },
+    select: { entityId: true, documentId: true },
+  });
+  const latestDocByContract = new Map<string, string>();
+  for (const link of contractDocLinks) {
+    if (!latestDocByContract.has(link.entityId)) {
+      latestDocByContract.set(link.entityId, link.documentId);
+    }
+  }
 
   const peopleByCompany: Record<string, { id: string; name: string }[]> = {};
   for (const person of people) {
@@ -88,7 +115,11 @@ export default async function ContractsPage({
       <PageHeader
         title="Contracts"
         description="Vendor contracts, subscriptions, warranties and renewals with automatic reminders."
-        actions={canManage ? <ContractDialog companies={companies} peopleByCompany={peopleByCompany} /> : undefined}
+        actions={
+          canManage ? (
+            <ContractDialog companies={companies} peopleByCompany={peopleByCompany} catalogs={catalogs} />
+          ) : undefined
+        }
       />
 
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-3">
@@ -107,8 +138,8 @@ export default async function ContractsPage({
         </Select>
         <Select name="category" defaultValue={params.category ?? ""} className="w-full sm:w-44" aria-label="Filter by category">
           <option value="">All categories</option>
-          {["Software", "Hardware Support", "Cloud Services", "Internet", "Telecom", "Maintenance", "Warranty", "Other"].map((category) => (
-            <option key={category} value={category}>{category}</option>
+          {catalogs.categories.map((category) => (
+            <option key={category.id} value={category.name}>{category.name}</option>
           ))}
         </Select>
         <button type="submit" className="h-9 rounded-md border bg-card px-4 text-sm hover:bg-accent">Filter</button>
@@ -128,8 +159,10 @@ export default async function ContractsPage({
             {contracts.map((contract) => (
               <TR key={contract.id}>
                 <TD>
-                  <span className="font-medium">{contract.contractNumber}</span>
-                  <p className="max-w-48 truncate text-xs text-muted-foreground">{contract.name}</p>
+                  <span className="font-medium">{contract.name}</span>
+                  {contract.contractNumber ? (
+                    <p className="max-w-48 truncate text-xs text-muted-foreground">{contract.contractNumber}</p>
+                  ) : null}
                 </TD>
                 <TD>{contract.vendor}</TD>
                 <TD>{contract.category}</TD>
@@ -166,6 +199,8 @@ export default async function ContractsPage({
                       }}
                       companies={companies}
                       peopleByCompany={peopleByCompany}
+                      catalogs={catalogs}
+                      attachedDocumentId={latestDocByContract.get(contract.id) ?? null}
                     />
                   </TD>
                 ) : null}

@@ -212,7 +212,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           const assigned = license.assignments.length;
           return [
             license.name,
-            license.application.name,
+            license.application?.name ?? "Standalone",
             license.company.name,
             license.licenseType,
             license.status,
@@ -244,7 +244,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
         headers: ["License", "Application", "Company", "Quantity", "Expires", "Supplier"],
         rows: purchases.map((purchase) => [
           purchase.license.name,
-          purchase.license.application.name,
+          purchase.license.application?.name ?? "Standalone",
           purchase.license.company.name,
           String(purchase.quantity),
           formatDate(purchase.expiryDate),
@@ -274,9 +274,9 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
         take: 5000,
       });
       return {
-        headers: ["Asset tag", "Category", "Company", "Manufacturer/model", "Serial", "Status", "Assigned to", "Warranty"],
+        headers: ["Asset", "Category", "Company", "Manufacturer/model", "Serial", "Status", "Assigned to", "Warranty"],
         rows: assets.map((asset) => [
-          asset.assetTag,
+          asset.name || (asset.assetTag ?? "—"),
           asset.category.name,
           asset.company.name,
           [asset.manufacturer, asset.model].filter(Boolean).join(" ") || "—",
@@ -305,9 +305,9 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
         include: { company: true, category: true },
       });
       return {
-        headers: ["Asset tag", "Category", "Company", "Model", "Warranty expires"],
+        headers: ["Asset", "Category", "Company", "Model", "Warranty expires"],
         rows: assets.map((asset) => [
-          asset.assetTag,
+          asset.name || (asset.assetTag ?? "—"),
           asset.category.name,
           asset.company.name,
           asset.model ?? "—",
@@ -339,7 +339,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
       return {
         headers: ["Contract", "Name", "Vendor", "Company", "End date", "Renewal date", "Cost", "Owner"],
         rows: contracts.map((contract) => [
-          contract.contractNumber,
+          contract.contractNumber ?? "—",
           contract.name,
           contract.vendor,
           contract.company.name,

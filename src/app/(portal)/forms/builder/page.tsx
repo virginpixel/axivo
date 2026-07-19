@@ -18,18 +18,29 @@ export default async function FormBuilderPage({
   const isGlobalAdmin = user.systemRoleKey === "SYSTEM_ADMINISTRATOR";
   const companyScope = isGlobalAdmin ? {} : { companyId: user.companyId };
 
-  const [companies, requestTypes, workflows] = await Promise.all([
+  const [companies, requestTypes, workflows, assetCategories] = await Promise.all([
     db.company.findMany({
       where: { deletedAt: null, isActive: true, ...(isGlobalAdmin ? {} : { id: user.companyId }) },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
     db.requestType.findMany({
-      where: { deletedAt: null, isActive: true, ...companyScope },
+      // The two standard request types are provisioned per company automatically.
+      where: {
+        deletedAt: null,
+        isActive: true,
+        kind: { in: ["APPLICATION_ACCESS", "ASSET_REQUEST"] },
+        ...companyScope,
+      },
       orderBy: { name: "asc" },
       select: { id: true, name: true, kind: true, companyId: true },
     }),
     db.workflow.findMany({
+      where: { deletedAt: null, isActive: true, ...companyScope },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, companyId: true },
+    }),
+    db.assetCategory.findMany({
       where: { deletedAt: null, isActive: true, ...companyScope },
       orderBy: { name: "asc" },
       select: { id: true, name: true, companyId: true },
@@ -51,6 +62,7 @@ export default async function FormBuilderPage({
       name: form.name,
       description: form.description,
       confirmationMessage: form.confirmationMessage,
+      allowedAssetCategoryIds: (form.allowedAssetCategoryIds as string[] | null) ?? [],
       status: form.status,
       fields: (form.currentVersion?.fields ?? []).map((field) => ({
         fieldKey: field.fieldKey,
@@ -81,6 +93,7 @@ export default async function FormBuilderPage({
         companies={companies}
         requestTypes={requestTypes}
         workflows={workflows}
+        assetCategories={assetCategories}
         existing={existing}
       />
     </div>

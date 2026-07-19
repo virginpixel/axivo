@@ -51,6 +51,7 @@ export interface ExistingForm {
   name: string;
   description: string | null;
   confirmationMessage: string | null;
+  allowedAssetCategoryIds: string[];
   status: string;
   fields: FieldDraft[];
 }
@@ -59,11 +60,13 @@ export function FormBuilder({
   companies,
   requestTypes,
   workflows,
+  assetCategories,
   existing,
 }: {
   companies: { id: string; name: string }[];
   requestTypes: { id: string; name: string; kind: string; companyId: string }[];
   workflows: { id: string; name: string; companyId: string }[];
+  assetCategories: { id: string; name: string; companyId: string }[];
   existing: ExistingForm | null;
 }) {
   const router = useRouter();
@@ -74,6 +77,9 @@ export function FormBuilder({
   const [name, setName] = useState(existing?.name ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [confirmationMessage, setConfirmationMessage] = useState(existing?.confirmationMessage ?? "");
+  const [allowedCategoryIds, setAllowedCategoryIds] = useState<string[]>(
+    existing?.allowedAssetCategoryIds ?? [],
+  );
   const [fields, setFields] = useState<FieldDraft[]>(existing?.fields ?? []);
 
   const companyRequestTypes = useMemo(
@@ -84,6 +90,11 @@ export function FormBuilder({
     () => workflows.filter((workflow) => workflow.companyId === companyId),
     [workflows, companyId],
   );
+  const companyCategories = useMemo(
+    () => assetCategories.filter((category) => category.companyId === companyId),
+    [assetCategories, companyId],
+  );
+  const selectedKind = companyRequestTypes.find((requestType) => requestType.id === requestTypeId)?.kind;
 
   function updateField(index: number, patch: Partial<FieldDraft>) {
     setFields((current) => current.map((field, i) => (i === index ? { ...field, ...patch } : field)));
@@ -133,6 +144,7 @@ export function FormBuilder({
       name,
       description: description || undefined,
       confirmationMessage: confirmationMessage || undefined,
+      allowedAssetCategoryIds: selectedKind === "ASSET_REQUEST" ? allowedCategoryIds : [],
       fields: fields.map((field) => ({
         fieldKey: field.fieldKey,
         label: field.label,
@@ -215,6 +227,40 @@ export function FormBuilder({
               placeholder="Shown to the requester after submission."
             />
           </div>
+          {selectedKind === "ASSET_REQUEST" ? (
+            <div className="sm:col-span-2">
+              <Label>Requestable asset categories</Label>
+              {companyCategories.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No asset categories exist yet — create them in Settings → Asset categories.
+                </p>
+              ) : (
+                <div className="mt-1 grid gap-1.5 rounded-md border bg-muted/30 p-3 sm:grid-cols-3">
+                  {companyCategories.map((category) => (
+                    <label key={category.id} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={allowedCategoryIds.includes(category.id)}
+                        onChange={(event) =>
+                          setAllowedCategoryIds((current) =>
+                            event.target.checked
+                              ? [...current, category.id]
+                              : current.filter((id) => id !== category.id),
+                          )
+                        }
+                        className="h-4 w-4"
+                      />
+                      {category.name}
+                    </label>
+                  ))}
+                </div>
+              )}
+              <HelperText>
+                Leave every box unticked to allow all categories; tick specific ones to restrict what
+                this form can request.
+              </HelperText>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 

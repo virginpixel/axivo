@@ -5,7 +5,7 @@ import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge } from "@/shared/ui/badge";
 import { Input, Select } from "@/shared/ui/input";
 import { formatDateTime } from "@/shared/utils";
-import { NotificationRowActions, TemplateDialog } from "./notification-ui";
+import { NotificationRowActions, TemplateDialog, ClearFailedButton } from "./notification-ui";
 import type { Prisma, NotificationStatus } from "@prisma/client";
 
 export const metadata = { title: "Notifications" };
@@ -23,7 +23,7 @@ export default async function NotificationsPage({
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
   const page = Math.max(1, Number(params.page) || 1);
-  const pageSize = 25;
+  const pageSize = 10;
   const isGlobalAdmin = user.systemRoleKey === "SYSTEM_ADMINISTRATOR";
   const canManage = user.permissions.has("notifications.manage");
   const companyScope = isGlobalAdmin ? {} : { OR: [{ companyId: user.companyId }, { companyId: null }] };
@@ -67,6 +67,9 @@ export default async function NotificationsPage({
       <PageHeader
         title="Notifications"
         description="Email delivery queue, history and templates. Delivery history is immutable."
+        actions={
+          canManage && (counts.FAILED ?? 0) > 0 ? <ClearFailedButton /> : undefined
+        }
       />
 
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">

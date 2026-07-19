@@ -2,9 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { db } from "@/shared/db";
 import { requirePermission } from "@/shared/auth/guard";
-import { ok, toActionError, type ActionResult } from "@/shared/errors";
+import { ok, toActionError, NotFoundError, ValidationError, type ActionResult } from "@/shared/errors";
 import { parseInput as parse } from "@/shared/validation/common";
+import { createUploadedDocument } from "@/modules/documents/service";
 import * as service from "./service";
 import { contractSchema, contractRenewalSchema, contractLinkSchema } from "./validators";
 
@@ -62,6 +64,37 @@ export async function linkContractAction(raw: unknown): Promise<ActionResult<und
     await service.linkContract(audit, parse(contractLinkSchema, raw));
     revalidatePath("/contracts");
     return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+/** Attach the signed contract PDF; it is stored in Documents and linked (Doc 23). */
+export async function attachContractPdfAction(
+  contractId: string,
+  formData: FormData,
+): Promise<ActionResult<{ documentId: string }>> {
+  try {
+    const { audit } = await requirePermission("contracts.manage");
+    const contract = await db.contract.findFirst({ where: { id: contractId, deletedAt: null } });
+    if (!contract) throw new NotFoundError("Contract not found.");
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) {
+      throw new ValidationError(undefined, { file: "Choose the contract PDF to attach." });
+    }
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      throw new ValidationError(undefined, { file: "Contract attachments must be PDF files." });
+    }
+    const document = await createUploadedDocument(audit, {
+      companyId: contract.companyId,
+      name: `Contract - ${contract.name}`,
+      categoryName: "Contract",
+      fileName: file.name,
+      content: Buffer.from(await file.arrayBuffer()),
+      links: [{ entityType: "contract", entityId: contractId }],
+    });
+    revalidatePath("/contracts");
+    return ok({ documentId: document.id });
   } catch (error) {
     return toActionError(error);
   }

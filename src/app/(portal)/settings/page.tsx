@@ -16,12 +16,18 @@ import {
   UploadSettingsForm,
   ForceLogoutButton,
 } from "./settings-forms";
+import { CatalogSection, LogoUploadForm, TimezoneForm, AssetCategoryToggle } from "./settings-catalogs";
+import { CategoryDialog } from "../assets/asset-dialogs";
+import { OrgEntityDialog, ToggleActiveButton } from "../organization/org-dialogs";
 
 export const metadata = { title: "Settings" };
 export const dynamic = "force-dynamic";
 
 const TABS = [
   { key: "general", label: "General & Branding" },
+  { key: "catalogs", label: "Catalogs" },
+  { key: "asset-categories", label: "Asset Categories" },
+  { key: "locations", label: "Asset Locations" },
   { key: "security", label: "Security" },
   { key: "email", label: "Email (SMTP)" },
   { key: "notifications", label: "Notifications" },
@@ -29,7 +35,7 @@ const TABS = [
   { key: "sessions", label: "Active Sessions" },
 ] as const;
 
-/** System administration & configuration (SDS Doc 17). */
+/** System administration & configuration (SDS Doc 17) with a settings side nav. */
 export default async function SettingsPage({
   searchParams,
 }: {
@@ -44,52 +50,247 @@ export default async function SettingsPage({
   return (
     <div>
       <PageHeader title="Settings" description="Platform configuration. Every change is versioned and audited." />
-      <nav className="mb-5 flex flex-wrap gap-1 border-b" aria-label="Settings sections">
-        {TABS.map((entry) => (
-          <Link
-            key={entry.key}
-            href={`/settings?tab=${entry.key}`}
-            aria-current={tab === entry.key ? "page" : undefined}
-            className={cn(
-              "border-b-2 px-4 py-2 text-sm font-medium",
-              tab === entry.key
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {entry.label}
-          </Link>
-        ))}
-      </nav>
-
-      {tab === "general" ? <GeneralTab canManage={canManage} /> : null}
-      {tab === "security" ? <SecurityTab canManage={canSecurity} /> : null}
-      {tab === "email" ? <EmailTab canManage={canManage} /> : null}
-      {tab === "notifications" ? <NotificationsTab canManage={canManage} /> : null}
-      {tab === "health" ? <HealthTab /> : null}
-      {tab === "sessions" ? <SessionsTab canManage={canSecurity} currentSessionId={user.sessionId} /> : null}
+      <div className="flex flex-col gap-6 lg:flex-row">
+        <nav
+          aria-label="Settings sections"
+          className="flex shrink-0 flex-row flex-wrap gap-1 lg:w-52 lg:flex-col"
+        >
+          {TABS.map((entry) => (
+            <Link
+              key={entry.key}
+              href={`/settings?tab=${entry.key}`}
+              aria-current={tab === entry.key ? "page" : undefined}
+              className={cn(
+                "rounded-md px-3 py-2 text-sm font-medium",
+                tab === entry.key
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
+              )}
+            >
+              {entry.label}
+            </Link>
+          ))}
+        </nav>
+        <div className="min-w-0 flex-1">
+          {tab === "general" ? <GeneralTab canManage={canManage} /> : null}
+          {tab === "catalogs" ? <CatalogsTab /> : null}
+          {tab === "asset-categories" ? <AssetCategoriesTab canManage={canManage} isGlobalAdmin={user.systemRoleKey === "SYSTEM_ADMINISTRATOR"} companyId={user.companyId} /> : null}
+          {tab === "locations" ? <LocationsTab canManage={canManage} isGlobalAdmin={user.systemRoleKey === "SYSTEM_ADMINISTRATOR"} companyId={user.companyId} /> : null}
+          {tab === "security" ? <SecurityTab canManage={canSecurity} /> : null}
+          {tab === "email" ? <EmailTab canManage={canManage} /> : null}
+          {tab === "notifications" ? <NotificationsTab canManage={canManage} /> : null}
+          {tab === "health" ? <HealthTab /> : null}
+          {tab === "sessions" ? <SessionsTab canManage={canSecurity} currentSessionId={user.sessionId} /> : null}
+        </div>
+      </div>
     </div>
   );
 }
 
+async function CatalogsTab() {
+  const items = await db.catalogItem.findMany({
+    where: { deletedAt: null },
+    orderBy: { name: "asc" },
+    select: { id: true, kind: true, name: true, parentId: true, isActive: true },
+  });
+  const byKind = (kind: string) => items.filter((item) => item.kind === kind);
+  const manufacturers = byKind("MANUFACTURER");
+  return (
+    <div className="space-y-5">
+      <CatalogSection
+        kind="MANUFACTURER"
+        title="Manufacturers"
+        description="Selectable when registering assets."
+        items={manufacturers}
+      />
+      <CatalogSection
+        kind="ASSET_MODEL"
+        title="Models"
+        description="Each model belongs to a manufacturer."
+        items={byKind("ASSET_MODEL")}
+        manufacturers={manufacturers}
+      />
+      <CatalogSection
+        kind="SUPPLIER"
+        title="Suppliers"
+        description="Selectable on assets and license purchases."
+        items={byKind("SUPPLIER")}
+      />
+      <CatalogSection
+        kind="VENDOR"
+        title="Contract vendors"
+        description="Selectable when creating contracts."
+        items={byKind("VENDOR")}
+      />
+      <CatalogSection
+        kind="CONTRACT_CATEGORY"
+        title="Contract categories"
+        description="Selectable when creating contracts."
+        items={byKind("CONTRACT_CATEGORY")}
+      />
+    </div>
+  );
+}
+
+async function AssetCategoriesTab({
+  canManage,
+  isGlobalAdmin,
+  companyId,
+}: {
+  canManage: boolean;
+  isGlobalAdmin: boolean;
+  companyId: string;
+}) {
+  const [categories, companies] = await Promise.all([
+    db.assetCategory.findMany({
+      where: { deletedAt: null, ...(isGlobalAdmin ? {} : { companyId }) },
+      orderBy: { name: "asc" },
+      include: {
+        company: { select: { name: true } },
+        _count: { select: { assets: { where: { deletedAt: null } } } },
+      },
+    }),
+    db.company.findMany({
+      where: { deletedAt: null, isActive: true, ...(isGlobalAdmin ? {} : { id: companyId }) },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
+  return (
+    <section aria-label="Asset categories">
+      <div className="mb-3 flex justify-end">
+        {canManage ? <CategoryDialog companies={companies} /> : null}
+      </div>
+      <Table>
+        <THead>
+          <TR>
+            <TH>Category</TH><TH>Company</TH><TH>Handover ack.</TH><TH>Clearance</TH><TH>Assets</TH><TH>Status</TH>
+            {canManage ? <TH className="text-right">Actions</TH> : null}
+          </TR>
+        </THead>
+        <TBody>
+          {categories.map((category) => (
+            <TR key={category.id}>
+              <TD className="font-medium">{category.name}</TD>
+              <TD>{category.company.name}</TD>
+              <TD>{category.requireHandoverAcceptance ? "Required" : "—"}</TD>
+              <TD>{category.requireClearanceRecovery ? "Required" : "—"}</TD>
+              <TD>{category._count.assets}</TD>
+              <TD>{category.isActive ? "Active" : "Inactive"}</TD>
+              {canManage ? (
+                <TD className="text-right">
+                  <AssetCategoryToggle id={category.id} isActive={category.isActive} />
+                </TD>
+              ) : null}
+            </TR>
+          ))}
+        </TBody>
+      </Table>
+    </section>
+  );
+}
+
+async function LocationsTab({
+  canManage,
+  isGlobalAdmin,
+  companyId,
+}: {
+  canManage: boolean;
+  isGlobalAdmin: boolean;
+  companyId: string;
+}) {
+  const [locations, companies] = await Promise.all([
+    db.location.findMany({
+      where: { deletedAt: null, ...(isGlobalAdmin ? {} : { companyId }) },
+      orderBy: { name: "asc" },
+      include: {
+        company: { select: { name: true } },
+        _count: { select: { assets: { where: { deletedAt: null } } } },
+      },
+    }),
+    db.company.findMany({
+      where: { deletedAt: null, isActive: true, ...(isGlobalAdmin ? {} : { id: companyId }) },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
+  return (
+    <section aria-label="Asset locations">
+      <p className="mb-3 text-sm text-muted-foreground">
+        Locations record where assets are placed (offices, floors, warehouses).
+      </p>
+      <div className="mb-3 flex justify-end">
+        {canManage ? <OrgEntityDialog entity="location" companies={companies} /> : null}
+      </div>
+      <Table>
+        <THead>
+          <TR>
+            <TH>Location</TH><TH>Company</TH><TH>Assets</TH><TH>Status</TH>
+            {canManage ? <TH className="text-right">Actions</TH> : null}
+          </TR>
+        </THead>
+        <TBody>
+          {locations.map((location) => (
+            <TR key={location.id}>
+              <TD className="font-medium">{location.name}</TD>
+              <TD>{location.company.name}</TD>
+              <TD>{location._count.assets}</TD>
+              <TD>{location.isActive ? "Active" : "Inactive"}</TD>
+              {canManage ? (
+                <TD className="text-right">
+                  <div className="flex justify-end gap-1">
+                    <OrgEntityDialog
+                      entity="location"
+                      companies={companies}
+                      record={{
+                        id: location.id,
+                        companyId: location.companyId,
+                        name: location.name,
+                        code: location.code,
+                        description: location.description,
+                      }}
+                    />
+                    <ToggleActiveButton entity="location" id={location.id} isActive={location.isActive} />
+                  </div>
+                </TD>
+              ) : null}
+            </TR>
+          ))}
+        </TBody>
+      </Table>
+    </section>
+  );
+}
+
 async function GeneralTab({ canManage }: { canManage: boolean }) {
-  const [branding, maintenance, uploadMaxMb, allowedTypes] = await Promise.all([
-    getSetting<{ systemName: string; primaryColor: string; secondaryColor: string }>(SETTING_KEYS.BRANDING),
+  const [branding, general, maintenance, uploadMaxMb, allowedTypes] = await Promise.all([
+    getSetting<{ systemName: string; primaryColor: string; secondaryColor: string; logoStorageKey?: string }>(
+      SETTING_KEYS.BRANDING,
+    ),
+    getSetting<{ defaultTimezone?: string }>(SETTING_KEYS.GENERAL),
     getSetting<{ enabled: boolean; message: string }>(SETTING_KEYS.MAINTENANCE_MODE),
     getSetting<number>(SETTING_KEYS.UPLOAD_MAX_MB),
     getSetting<string[]>(SETTING_KEYS.UPLOAD_ALLOWED_TYPES),
   ]);
+  const timezones: string[] = (Intl as unknown as { supportedValuesOf?: (key: string) => string[] })
+    .supportedValuesOf?.("timeZone") ?? ["UTC"];
   return (
     <div className="grid gap-5 lg:grid-cols-2">
-      <BrandingForm
-        current={{
-          systemName: branding.systemName ?? "Axivo",
-          primaryColor: branding.primaryColor ?? "#1d4ed8",
-          secondaryColor: branding.secondaryColor ?? "#0f172a",
-        }}
-        readOnly={!canManage}
-      />
       <div className="space-y-5">
+        <BrandingForm
+          current={{
+            systemName: branding.systemName ?? "Axivo",
+            primaryColor: branding.primaryColor ?? "#1d4ed8",
+            secondaryColor: branding.secondaryColor ?? "#0f172a",
+          }}
+          readOnly={!canManage}
+        />
+        {canManage ? <LogoUploadForm hasLogo={!!branding.logoStorageKey} /> : null}
+      </div>
+      <div className="space-y-5">
+        {canManage ? (
+          <TimezoneForm current={general.defaultTimezone ?? "UTC"} timezones={timezones} />
+        ) : null}
         <MaintenanceForm current={maintenance} readOnly={!canManage} />
         <UploadSettingsForm current={{ maxMb: uploadMaxMb, allowedTypes }} readOnly={!canManage} />
       </div>

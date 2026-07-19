@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requirePermission } from "@/shared/auth/guard";
 import { db } from "@/shared/db";
 import { PageHeader, StatCard, Pagination } from "@/shared/ui/page";
@@ -5,13 +6,7 @@ import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge } from "@/shared/ui/badge";
 import { Input, Select } from "@/shared/ui/input";
 import { fullName, formatDate } from "@/shared/utils";
-import {
-  AssetDialog,
-  CategoryDialog,
-  AssetRowActions,
-  StartClearanceDialog,
-  ClearancePanel,
-} from "./asset-dialogs";
+import { AssetDialog, AssetRowActions } from "./asset-dialogs";
 import type { Prisma, AssetStatus } from "@prisma/client";
 
 export const metadata = { title: "Assets" };
@@ -19,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 const ASSET_STATUSES: AssetStatus[] = ["AVAILABLE", "ASSIGNED", "UNDER_REPAIR", "OUT_OF_ORDER", "RESERVED", "DISCARDED"];
 
-/** Asset management (SDS Doc 11). */
+/** Asset management (SDS Doc 11). Categories and catalogs are managed in Settings. */
 export default async function AssetsPage({
   searchParams,
 }: {
@@ -47,6 +42,7 @@ export default async function AssetsPage({
     ...(q
       ? {
           OR: [
+            { name: { contains: q, mode: "insensitive" } },
             { assetTag: { contains: q, mode: "insensitive" } },
             { serialNumber: { contains: q, mode: "insensitive" } },
             { manufacturer: { contains: q, mode: "insensitive" } },
@@ -56,11 +52,11 @@ export default async function AssetsPage({
       : {}),
   };
 
-  const [assets, total, categories, companies, locations, people, statusCounts, openClearances, documents] =
+  const [assets, total, categories, companies, locations, people, statusCounts, documents, catalogItems] =
     await Promise.all([
       db.asset.findMany({
         where,
-        orderBy: { assetTag: "asc" },
+        orderBy: { name: "asc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: {
@@ -71,6 +67,12 @@ export default async function AssetsPage({
             where: { status: { in: ["ASSIGNED", "PENDING"] }, deletedAt: null },
             include: { person: true },
             take: 1,
+          },
+          maintenance: {
+            where: { status: "IN_PROGRESS", deletedAt: null },
+            orderBy: { startDate: "desc" },
+            take: 1,
+            select: { id: true },
           },
         },
       }),
@@ -93,19 +95,16 @@ export default async function AssetsPage({
         orderBy: { lastName: "asc" }, select: { id: true, firstName: true, lastName: true, companyId: true },
       }),
       db.asset.groupBy({ by: ["status"], where: { deletedAt: null, ...companyScope }, _count: true }),
-      db.clearance.findMany({
-        where: { status: "IN_PROGRESS", ...companyScope },
-        include: {
-          person: true,
-          items: { include: { assetAssignment: { include: { asset: true } } } },
-        },
-        orderBy: { createdAt: "desc" },
-      }),
       db.document.findMany({
-        where: { ...companyScope, kind: { in: ["UPLOADED_FILE", "GENERATED_PDF", "OTHER", "WORD_DOCUMENT", "IMAGE", "SPREADSHEET"] } },
+        where: { ...companyScope },
         orderBy: { createdAt: "desc" },
         take: 100,
         select: { id: true, name: true, companyId: true },
+      }),
+      db.catalogItem.findMany({
+        where: { deletedAt: null, isActive: true, kind: { in: ["MANUFACTURER", "ASSET_MODEL", "SUPPLIER"] } },
+        orderBy: { name: "asc" },
+        select: { id: true, kind: true, name: true, parentId: true },
       }),
     ]);
 
@@ -115,28 +114,26 @@ export default async function AssetsPage({
   for (const person of people) {
     (peopleByCompany[person.companyId] ??= []).push({ id: person.id, name: fullName(person) });
   }
+  const catalogs = {
+    manufacturers: catalogItems.filter((item) => item.kind === "MANUFACTURER"),
+    models: catalogItems.filter((item) => item.kind === "ASSET_MODEL"),
+    suppliers: catalogItems.filter((item) => item.kind === "SUPPLIER"),
+  };
+  const categoryOptions = categories.map((category) => ({
+    id: category.id,
+    name: category.name,
+    companyId: category.companyId,
+  }));
 
   return (
     <div>
       <PageHeader
         title="Assets"
-        description="Company assets across their full lifecycle: assignment, handover, maintenance, clearance and disposal."
+        description="Company assets across their full lifecycle. Categories, manufacturers, models and suppliers are managed in Settings."
         actions={
-          <div className="flex gap-2">
-            {canAssign ? (
-              <StartClearanceDialog peopleByCompany={peopleByCompany} companies={companies} />
-            ) : null}
-            {canManage ? (
-              <>
-                <CategoryDialog companies={companies} />
-                <AssetDialog
-                  companies={companies}
-                  categories={categories.map((category) => ({ id: category.id, name: category.name, companyId: category.companyId }))}
-                  locations={locations}
-                />
-              </>
-            ) : null}
-          </div>
+          canManage ? (
+            <AssetDialog companies={companies} categories={categoryOptions} locations={locations} catalogs={catalogs} />
+          ) : undefined
         }
       />
 
@@ -147,29 +144,8 @@ export default async function AssetsPage({
         <StatCard label="Discarded" value={counts.DISCARDED ?? 0} />
       </div>
 
-      {openClearances.length > 0 ? (
-        <section aria-label="Open clearances" className="mb-6 space-y-3">
-          <h2 className="text-base font-semibold">Open clearances</h2>
-          {openClearances.map((clearance) => (
-            <ClearancePanel
-              key={clearance.id}
-              clearanceId={clearance.id}
-              personName={fullName(clearance.person)}
-              items={clearance.items.map((item) => ({
-                id: item.id,
-                assetTag: item.assetAssignment.asset.assetTag,
-                model: item.assetAssignment.asset.model,
-                status: item.status,
-                comments: item.comments,
-              }))}
-              canManage={canAssign}
-            />
-          ))}
-        </section>
-      ) : null}
-
       <form method="get" className="mb-4 flex flex-wrap items-end gap-2">
-        <Input name="q" defaultValue={q} placeholder="Search tag, serial, model…" className="w-full sm:w-64" aria-label="Search assets" />
+        <Input name="q" defaultValue={q} placeholder="Search name, tag, serial, model…" className="w-full sm:w-64" aria-label="Search assets" />
         <Select name="status" defaultValue={params.status ?? ""} className="w-full sm:w-44" aria-label="Filter by status">
           <option value="">All statuses</option>
           {ASSET_STATUSES.map((status) => (
@@ -192,7 +168,7 @@ export default async function AssetsPage({
           <Table>
             <THead>
               <TR>
-                <TH>Asset tag</TH><TH>Category</TH><TH>Manufacturer / model</TH><TH>Serial</TH><TH>Assigned to</TH><TH>Warranty</TH><TH>Status</TH>
+                <TH>Asset</TH><TH>Category</TH><TH>Manufacturer / model</TH><TH>Serial</TH><TH>Assigned to</TH><TH>Warranty</TH><TH>Status</TH>
                 <TH className="text-right">Actions</TH>
               </TR>
             </THead>
@@ -201,7 +177,14 @@ export default async function AssetsPage({
                 const activeAssignment = asset.assignments[0];
                 return (
                   <TR key={asset.id}>
-                    <TD className="font-medium">{asset.assetTag}</TD>
+                    <TD>
+                      <Link href={`/assets/${asset.id}`} className="font-medium text-primary hover:underline">
+                        {asset.name || asset.assetTag || "Unnamed asset"}
+                      </Link>
+                      {asset.assetTag ? (
+                        <p className="text-xs text-muted-foreground">{asset.assetTag}</p>
+                      ) : null}
+                    </TD>
                     <TD>{asset.category.name}</TD>
                     <TD>{[asset.manufacturer, asset.model].filter(Boolean).join(" ") || "—"}</TD>
                     <TD>{asset.serialNumber ?? "—"}</TD>
@@ -214,6 +197,7 @@ export default async function AssetsPage({
                           id: asset.id,
                           companyId: asset.companyId,
                           categoryId: asset.categoryId,
+                          name: asset.name,
                           assetTag: asset.assetTag,
                           serialNumber: asset.serialNumber,
                           manufacturer: asset.manufacturer,
@@ -225,9 +209,11 @@ export default async function AssetsPage({
                           status: asset.status,
                         }}
                         activeAssignmentId={activeAssignment?.id ?? null}
+                        activeMaintenanceId={asset.maintenance[0]?.id ?? null}
                         companies={companies}
-                        categories={categories.map((category) => ({ id: category.id, name: category.name, companyId: category.companyId }))}
+                        categories={categoryOptions}
                         locations={locations}
+                        catalogs={catalogs}
                         people={peopleByCompany[asset.companyId] ?? []}
                         documents={documents.filter((document) => document.companyId === asset.companyId)}
                         permissions={{ canManage, canAssign, canMaintain, canDispose }}

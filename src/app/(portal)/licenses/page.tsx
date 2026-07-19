@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requirePermission } from "@/shared/auth/guard";
 import { db } from "@/shared/db";
 import { getLicenseAvailability } from "@/modules/licenses/service";
@@ -32,7 +33,7 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
       include: {
         company: { select: { name: true } },
         application: { select: { name: true } },
-        contract: { select: { contractNumber: true } },
+        contract: { select: { contractNumber: true, name: true } },
         purchases: { where: { deletedAt: null }, orderBy: { purchaseDate: "desc" } },
         assignments: {
           where: { deletedAt: null, status: { in: ["ACTIVE", "PENDING", "SUSPENDED"] } },
@@ -95,8 +96,8 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
 
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Purchased seats" value={totals.purchased} />
-        <StatCard label="Assigned" value={totals.assigned} />
         <StatCard label="Available" value={totals.available} tone={totals.available <= 0 ? "warning" : "success"} />
+        <StatCard label="Assigned" value={totals.assigned} />
         <StatCard label="Expiring ≤ 60 days" value={expiringCount} tone={expiringCount > 0 ? "warning" : "default"} />
       </div>
 
@@ -118,11 +119,14 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <CardTitle>
-                        {license.name}
+                        <Link href={`/licenses/${license.id}`} className="hover:underline">
+                          {license.name}
+                        </Link>
                         <span className="ml-2 text-sm font-normal text-muted-foreground">
-                          {license.application.name} · {license.company.name} · {license.licenseType.toLowerCase()}
+                          {license.application ? `${license.application.name} · ` : ""}
+                          {license.company.name} · {license.licenseType.toLowerCase()}
                           {license.vendor ? ` · ${license.vendor}` : ""}
-                          {license.contract ? ` · contract ${license.contract.contractNumber}` : ""}
+                          {license.contract ? ` · contract ${license.contract.contractNumber ?? license.contract.name}` : ""}
                         </span>
                       </CardTitle>
                       <p className="mt-0.5 text-sm">

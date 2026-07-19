@@ -16,29 +16,55 @@ export default async function PublicFormPage({ params }: { params: Promise<{ slu
   if (!form || !form.currentVersion) notFound();
 
   const kind = form.requestType.kind;
-  const applications =
+  const allowedCategoryIds = (form.allowedAssetCategoryIds as string[] | null) ?? null;
+  const [applications, assetCategories, departments, positions] = await Promise.all([
     kind === "APPLICATION_ACCESS" || kind === "ROLE_CHANGE"
-      ? await db.application.findMany({
+      ? db.application.findMany({
           where: { companyId: form.companyId, isActive: true, deletedAt: null },
           orderBy: { name: "asc" },
           include: {
             roles: { where: { isActive: true, deletedAt: null }, orderBy: { name: "asc" } },
           },
         })
-      : [];
-  const assetCategories =
+      : Promise.resolve([]),
     kind === "ASSET_REQUEST"
-      ? await db.assetCategory.findMany({
-          where: { companyId: form.companyId, isActive: true, deletedAt: null },
+      ? db.assetCategory.findMany({
+          where: {
+            companyId: form.companyId,
+            isActive: true,
+            deletedAt: null,
+            // Forms may restrict which asset categories can be requested.
+            ...(allowedCategoryIds && allowedCategoryIds.length > 0
+              ? { id: { in: allowedCategoryIds } }
+              : {}),
+          },
           orderBy: { name: "asc" },
         })
-      : [];
+      : Promise.resolve([]),
+    db.department.findMany({
+      where: { companyId: form.companyId, isActive: true, deletedAt: null },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+    db.position.findMany({
+      where: { companyId: form.companyId, isActive: true, deletedAt: null },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
+
+  const { getSetting, SETTING_KEYS } = await import("@/shared/settings/settings");
+  const branding = await getSetting<{ logoStorageKey?: string }>(SETTING_KEYS.BRANDING);
 
   return (
     <ToastProvider>
       <main className="min-h-screen bg-background py-8">
         <div className="mx-auto w-full max-w-2xl px-4">
           <div className="mb-6 text-center">
+            {branding.logoStorageKey ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src="/api/branding/logo" alt="" className="mx-auto mb-3 max-h-16 w-auto" />
+            ) : null}
             <p className="text-sm font-semibold uppercase tracking-wide text-primary">
               {form.company.name}
             </p>
@@ -70,6 +96,8 @@ export default async function PublicFormPage({ params }: { params: Promise<{ slu
               id: category.id,
               name: category.name,
             }))}
+            departments={departments}
+            positions={positions}
           />
           <p className="mt-6 text-center text-xs text-muted-foreground">
             Powered by Axivo · Your submission is routed automatically for approval.

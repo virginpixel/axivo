@@ -37,6 +37,24 @@ export async function createCompany(context: AuditContext, input: CompanyInput) 
     const company = await tx.company.create({
       data: { ...input, createdById: context.actorUserId ?? null },
     });
+    // Standard request types are provisioned automatically (Asset Request /
+    // Application Access) so forms can be built without extra setup.
+    await tx.requestType.createMany({
+      data: [
+        {
+          companyId: company.id,
+          name: "Application Access",
+          kind: "APPLICATION_ACCESS",
+          description: "Request access to business applications.",
+        },
+        {
+          companyId: company.id,
+          name: "Asset Request",
+          kind: "ASSET_REQUEST",
+          description: "Request company assets such as laptops and phones.",
+        },
+      ],
+    });
     await recordAudit(
       { ...context, companyId: company.id },
       {
@@ -126,22 +144,67 @@ async function assertCompanyActive(companyId: string): Promise<void> {
   }
 }
 
+async function assertHeadsInCompany(personIds: string[], companyId: string): Promise<void> {
+  if (personIds.length === 0) return;
+  const count = await db.person.count({
+    where: { id: { in: personIds }, companyId, deletedAt: null, isActive: true },
+  });
+  if (count !== personIds.length) {
+    throw new BusinessRuleError("Department Heads must be active people of the same company.");
+  }
+}
+
+/** Reconcile department_heads with the selected people (history preserved via soft delete). */
+async function syncDepartmentHeads(
+  context: AuditContext,
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  departmentId: string,
+  personIds: string[],
+): Promise<void> {
+  const existing = await tx.departmentHead.findMany({ where: { departmentId } });
+  const wanted = new Set(personIds);
+  for (const head of existing) {
+    const shouldBeActive = wanted.has(head.personId);
+    if (shouldBeActive && (!head.isActive || head.deletedAt)) {
+      await tx.departmentHead.update({
+        where: { id: head.id },
+        data: { isActive: true, deletedAt: null, updatedById: context.actorUserId ?? null },
+      });
+    } else if (!shouldBeActive && head.isActive && !head.deletedAt) {
+      await tx.departmentHead.update({
+        where: { id: head.id },
+        data: { isActive: false, deletedAt: new Date(), updatedById: context.actorUserId ?? null },
+      });
+    }
+    wanted.delete(head.personId);
+  }
+  for (const personId of wanted) {
+    await tx.departmentHead.create({
+      data: { departmentId, personId, createdById: context.actorUserId ?? null },
+    });
+  }
+}
+
 export async function createDepartment(context: AuditContext, input: DepartmentInput) {
   await assertCompanyActive(input.companyId);
   await assertUniqueInCompany("department", input.companyId, input.name);
-  if (input.defaultLocationId) {
-    await assertLocationInCompany(input.defaultLocationId, input.companyId);
-  }
+  await assertHeadsInCompany(input.headPersonIds, input.companyId);
   return db.$transaction(async (tx) => {
     const department = await tx.department.create({
-      data: { ...input, createdById: context.actorUserId ?? null },
+      data: {
+        companyId: input.companyId,
+        name: input.name,
+        description: input.description,
+        createdById: context.actorUserId ?? null,
+      },
     });
+    await syncDepartmentHeads(context, tx, department.id, input.headPersonIds);
     await recordAudit(
       { ...context, companyId: input.companyId },
       {
         module: MODULE,
         eventType: "department.created",
-        action: `Created department "${department.name}"`,
+        action: `Created department "${department.name}" (${input.headPersonIds.length} head(s))`,
         targetType: "department",
         targetId: department.id,
         targetLabel: department.name,
@@ -159,14 +222,17 @@ export async function updateDepartment(context: AuditContext, id: string, input:
     throw new BusinessRuleError("Departments cannot be moved between companies.");
   }
   await assertUniqueInCompany("department", input.companyId, input.name, id);
-  if (input.defaultLocationId) {
-    await assertLocationInCompany(input.defaultLocationId, input.companyId);
-  }
+  await assertHeadsInCompany(input.headPersonIds, input.companyId);
   return db.$transaction(async (tx) => {
     const department = await tx.department.update({
       where: { id },
-      data: { ...input, updatedById: context.actorUserId ?? null },
+      data: {
+        name: input.name,
+        description: input.description,
+        updatedById: context.actorUserId ?? null,
+      },
     });
+    await syncDepartmentHeads(context, tx, id, input.headPersonIds);
     await recordAudit(
       { ...context, companyId: input.companyId },
       {
@@ -179,7 +245,7 @@ export async function updateDepartment(context: AuditContext, id: string, input:
         fieldChanges: diffRecords(
           existing as unknown as Record<string, unknown>,
           department as unknown as Record<string, unknown>,
-          ["name", "code", "description", "defaultLocationId"],
+          ["name", "description"],
         ),
       },
       tx,
@@ -648,11 +714,3 @@ async function assertUniqueInCompany(
   }
 }
 
-async function assertLocationInCompany(locationId: string, companyId: string): Promise<void> {
-  const location = await db.location.findFirst({
-    where: { id: locationId, companyId, deletedAt: null },
-  });
-  if (!location) {
-    throw new BusinessRuleError("The default location must belong to the same company.");
-  }
-}

@@ -90,6 +90,8 @@ export const formSchema = z
     name: requiredText("Form name"),
     description: optionalText(),
     confirmationMessage: optionalText(2000),
+    /** ASSET_REQUEST forms: restrict requestable asset categories (empty = all). */
+    allowedAssetCategoryIds: z.array(uuidSchema).max(100).default([]),
     fields: z.array(formFieldSchema).max(200),
   })
   .strict()

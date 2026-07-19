@@ -91,6 +91,35 @@ export async function submitPublicRequest(
     }
   }
 
+  // Departments and positions selected on the form must belong to the form's
+  // company; their names are stored as immutable snapshots and the Requested
+  // For department drives Department Head routing (Doc 06 Ch3).
+  const [requesterDepartment, requestedForDepartment, requesterPosition, requestedForPosition] =
+    await Promise.all([
+      db.department.findFirst({
+        where: { id: input.requesterDepartmentId, companyId: form.companyId, deletedAt: null },
+      }),
+      db.department.findFirst({
+        where: { id: input.requestedForDepartmentId, companyId: form.companyId, deletedAt: null },
+      }),
+      db.position.findFirst({
+        where: { id: input.requesterPositionId, companyId: form.companyId, deletedAt: null },
+      }),
+      db.position.findFirst({
+        where: { id: input.requestedForPositionId, companyId: form.companyId, deletedAt: null },
+      }),
+    ]);
+  if (!requesterDepartment || !requestedForDepartment) {
+    throw new ValidationError(undefined, {
+      requestedForDepartmentId: "Please select a valid department.",
+    });
+  }
+  if (!requesterPosition || !requestedForPosition) {
+    throw new ValidationError(undefined, {
+      requestedForPositionId: "Please select a valid position.",
+    });
+  }
+
   // Match participants to People where possible (Doc 00 §6).
   const [requesterMatch, requestedForMatch] = await Promise.all([
     matchPersonByEmail(form.companyId, input.requesterEmail),
@@ -109,10 +138,16 @@ export async function submitPublicRequest(
         requesterPersonId: requesterMatch?.id ?? null,
         requesterName: input.requesterName,
         requesterEmail: input.requesterEmail,
+        requesterEmployeeId: input.requesterEmployeeId,
+        requesterDepartment: requesterDepartment.name,
+        requesterPosition: requesterPosition.name,
         requestedForPersonId: requestedForMatch?.id ?? null,
         requestedForName: input.requestedForName,
         requestedForEmail: input.requestedForEmail,
-        requestedForDepartmentId: requestedForMatch?.departmentId ?? null,
+        requestedForEmployeeId: input.requestedForEmployeeId,
+        requestedForDepartment: requestedForDepartment.name,
+        requestedForPosition: requestedForPosition.name,
+        requestedForDepartmentId: requestedForDepartment.id,
         fieldData: values as Prisma.InputJsonValue,
         sourceIp: context.ipAddress,
       },

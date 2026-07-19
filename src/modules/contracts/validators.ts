@@ -3,6 +3,7 @@ import { uuidSchema, requiredText, optionalText, dateSchema, nonNegativeDecimal 
 
 /** Contracts module validation (SDS Doc 23). */
 
+/** Default categories seeded into the CONTRACT_CATEGORY catalog. */
 export const CONTRACT_CATEGORIES = [
   "Software",
   "Hardware Support",
@@ -17,10 +18,10 @@ export const CONTRACT_CATEGORIES = [
 export const contractSchema = z
   .object({
     companyId: uuidSchema,
-    contractNumber: requiredText("Contract number", 100),
+    contractNumber: optionalText(100),
     name: requiredText("Contract name"),
     vendor: requiredText("Vendor", 200),
-    category: z.enum(CONTRACT_CATEGORIES),
+    category: requiredText("Category", 100),
     startDate: dateSchema.optional(),
     endDate: dateSchema.optional(),
     renewalDate: dateSchema.optional(),

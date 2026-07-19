@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, RotateCw, XCircle } from "lucide-react";
+import { Pencil, RotateCw, XCircle, Eraser, Eye } from "lucide-react";
 import {
   resendNotificationAction,
   cancelNotificationAction,
   saveTemplateAction,
+  archiveFailedNotificationsAction,
 } from "@/modules/notifications/actions";
 import { useAction } from "@/shared/ui/use-action";
 import { Button } from "@/shared/ui/button";
@@ -42,6 +43,33 @@ export function NotificationRowActions({
   );
 }
 
+export function ClearFailedButton() {
+  const { run, loading } = useAction();
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      loading={loading}
+      onClick={() =>
+        run(() => archiveFailedNotificationsAction(), {
+          successMessage: "Failed notifications cleared from alerts.",
+        })
+      }
+    >
+      <Eraser className="h-4 w-4" /> Clear failed
+    </Button>
+  );
+}
+
+/** Substitute {{variables}} with sample values for the template preview. */
+function renderPreview(template: string, variables: string[]): string {
+  let output = template;
+  for (const variable of variables) {
+    output = output.replaceAll(`{{${variable}}}`, `<mark>${variable}</mark>`);
+  }
+  return output.replace(/\{\{\s*([\w.]+)\s*\}\}/g, "<mark>$1</mark>");
+}
+
 export function TemplateDialog({
   template,
 }: {
@@ -49,6 +77,7 @@ export function TemplateDialog({
 }) {
   const { run, loading, fieldErrors } = useAction();
   const [open, setOpen] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const [form, setForm] = useState({
     name: template.name,
     subject: template.subject,
@@ -88,7 +117,23 @@ export function TemplateDialog({
               Available variables: {template.variables.map((variable) => `{{${variable}}}`).join(", ")}
             </HelperText>
           ) : null}
+          {showPreview ? (
+            <div className="rounded-md border bg-muted/30 p-4">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Preview</p>
+              <p
+                className="mb-2 border-b pb-2 text-sm font-semibold"
+                dangerouslySetInnerHTML={{ __html: renderPreview(form.subject, template.variables) }}
+              />
+              <div
+                className="text-sm [&_mark]:rounded [&_mark]:bg-primary/15 [&_mark]:px-1 [&_mark]:text-primary"
+                dangerouslySetInnerHTML={{ __html: renderPreview(form.body, template.variables) }}
+              />
+            </div>
+          ) : null}
           <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setShowPreview((current) => !current)}>
+              <Eye className="h-4 w-4" /> {showPreview ? "Hide preview" : "Preview"}
+            </Button>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button
               loading={loading}
