@@ -59,6 +59,15 @@ export const approvalRoleAssignmentSchema = z
   })
   .strict();
 
+/** Assign several people to a role at once (a company may need two IT staff). */
+export const approvalRoleAssignmentBulkSchema = z
+  .object({
+    companyId: uuidSchema,
+    approvalRoleId: uuidSchema,
+    personIds: z.array(uuidSchema).min(1, "Select at least one person."),
+  })
+  .strict();
+
 export const departmentHeadSchema = z
   .object({
     departmentId: uuidSchema,
@@ -72,4 +81,5 @@ export type LocationInput = z.infer<typeof locationSchema>;
 export type PositionInput = z.infer<typeof positionSchema>;
 export type ApprovalRoleInput = z.infer<typeof approvalRoleSchema>;
 export type ApprovalRoleAssignmentInput = z.infer<typeof approvalRoleAssignmentSchema>;
+export type ApprovalRoleAssignmentBulkInput = z.infer<typeof approvalRoleAssignmentBulkSchema>;
 export type DepartmentHeadInput = z.infer<typeof departmentHeadSchema>;

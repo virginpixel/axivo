@@ -587,6 +587,23 @@ export async function assignApprovalRole(context: AuditContext, input: ApprovalR
   });
 }
 
+/** Assign several people to one approval role in a single step. */
+export async function assignApprovalRolePeople(
+  context: AuditContext,
+  input: { companyId: string; approvalRoleId: string; personIds: string[] },
+) {
+  let count = 0;
+  for (const personId of input.personIds) {
+    await assignApprovalRole(context, {
+      companyId: input.companyId,
+      approvalRoleId: input.approvalRoleId,
+      personId,
+    });
+    count += 1;
+  }
+  return { count };
+}
+
 export async function removeApprovalRoleAssignment(context: AuditContext, assignmentId: string) {
   const existing = await db.approvalRoleAssignment.findFirst({
     where: { id: assignmentId, deletedAt: null },

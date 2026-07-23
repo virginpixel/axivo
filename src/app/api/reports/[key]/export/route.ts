@@ -21,7 +21,12 @@ export async function GET(
 
   const url = new URL(request.url);
   const format = url.searchParams.get("format") === "xlsx" ? "xlsx" : "csv";
-  const result = await report.run(user);
+  // Carry any report filters from the query string into the export.
+  const filters: Record<string, string> = {};
+  for (const [param, value] of url.searchParams.entries()) {
+    if (param !== "format" && value) filters[param] = value;
+  }
+  const result = await report.run(user, filters);
   const generatedAt = new Date();
 
   const requestHeaders = await headers();

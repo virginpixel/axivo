@@ -90,7 +90,7 @@ export function FormRowActions({ formId, status }: { formId: string; status: str
         aria-label="Delete form"
         title="Delete"
         onClick={() => {
-          if (!window.confirm("Delete this form? Forms with submitted requests can only be archived.")) return;
+          if (!window.confirm("Delete this form? Requests already submitted keep their own record, so their history stays intact.")) return;
           run(() => deleteFormAction(formId), { successMessage: "Form deleted." });
         }}
       >

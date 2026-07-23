@@ -15,12 +15,15 @@ export const dynamic = "force-dynamic";
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ report?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const { user, audit } = await requirePermission("reports.view");
   const params = await searchParams;
   const selected = params.report ? getReport(params.report) : undefined;
   const canExport = user.permissions.has("reports.export");
+  // Filter values come straight from the query string (minus "report").
+  const activeFilters: Record<string, string | undefined> = { ...params };
+  delete activeFilters.report;
 
   if (!selected) {
     const categories = Array.from(new Set(STANDARD_REPORTS.map((report) => report.category)));
@@ -50,7 +53,14 @@ export default async function ReportsPage({
     );
   }
 
-  const result = await selected.run(user);
+  const filterDefs = selected.filters ? await selected.filters(user) : [];
+  const result = await selected.run(user, activeFilters);
+  // Preserve report + filters when building export links.
+  const exportQuery = new URLSearchParams();
+  for (const [key, value] of Object.entries(activeFilters)) {
+    if (value) exportQuery.set(key, value);
+  }
+  const exportSuffix = exportQuery.toString() ? `&${exportQuery.toString()}` : "";
   await recordAudit(audit, {
     module: "reports",
     eventType: "report.executed",
@@ -69,13 +79,13 @@ export default async function ReportsPage({
           canExport ? (
             <div className="flex gap-2">
               <a
-                href={`/api/reports/${selected.key}/export?format=csv`}
+                href={`/api/reports/${selected.key}/export?format=csv${exportSuffix}`}
                 className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-card px-3 text-xs font-medium hover:bg-accent"
               >
                 <Download className="h-3.5 w-3.5" /> CSV
               </a>
               <a
-                href={`/api/reports/${selected.key}/export?format=xlsx`}
+                href={`/api/reports/${selected.key}/export?format=xlsx${exportSuffix}`}
                 className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-card px-3 text-xs font-medium hover:bg-accent"
               >
                 <Download className="h-3.5 w-3.5" /> XLSX
@@ -84,6 +94,43 @@ export default async function ReportsPage({
           ) : undefined
         }
       />
+      {filterDefs.length > 0 ? (
+        <form method="get" className="mb-4 flex flex-wrap items-end gap-2">
+          <input type="hidden" name="report" value={selected.key} />
+          {filterDefs.map((filter) => (
+            <div key={filter.key}>
+              <label htmlFor={`filter-${filter.key}`} className="mb-1 block text-xs font-medium text-muted-foreground">
+                {filter.label}
+              </label>
+              <select
+                id={`filter-${filter.key}`}
+                name={filter.key}
+                defaultValue={activeFilters[filter.key] ?? ""}
+                className="h-9 rounded-md border border-input bg-card px-3 text-sm"
+              >
+                <option value="">All</option>
+                {filter.options.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+          ))}
+          <button
+            type="submit"
+            className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            Apply
+          </button>
+          {exportSuffix ? (
+            <Link
+              href={`/reports?report=${selected.key}`}
+              className="inline-flex h-9 items-center rounded-md border px-3 text-sm hover:bg-accent"
+            >
+              Clear
+            </Link>
+          ) : null}
+        </form>
+      ) : null}
       {result.rows.length === 0 ? (
         <EmptyState title="No data" description="No records match this report right now." />
       ) : (
@@ -93,6 +140,7 @@ export default async function ReportsPage({
               {result.headers.map((header) => (
                 <TH key={header}>{header}</TH>
               ))}
+              {result.rowLinks ? <TH className="text-right">PDF</TH> : null}
             </TR>
           </THead>
           <TBody>
@@ -103,6 +151,18 @@ export default async function ReportsPage({
                     {cell}
                   </TD>
                 ))}
+                {result.rowLinks ? (
+                  <TD className="text-right">
+                    {result.rowLinks[rowIndex] ? (
+                      <a
+                        href={result.rowLinks[rowIndex]!}
+                        className="inline-flex items-center gap-1 text-primary hover:underline"
+                      >
+                        <Download className="h-3.5 w-3.5" /> PDF
+                      </a>
+                    ) : null}
+                  </TD>
+                ) : null}
               </TR>
             ))}
           </TBody>

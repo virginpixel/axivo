@@ -99,7 +99,11 @@ export async function prepareDelivery(
 }
 
 /** Send (or send again) the secure acknowledgement email for a delivery. */
-export async function sendDeliveryEmail(context: AuditContext, deliveryId: string): Promise<void> {
+export async function sendDeliveryEmail(
+  context: AuditContext,
+  deliveryId: string,
+  overrideEmail?: string,
+): Promise<void> {
   const delivery = await db.credentialDelivery.findUnique({
     where: { id: deliveryId },
     include: { person: true, application: true },
@@ -108,9 +112,12 @@ export async function sendDeliveryEmail(context: AuditContext, deliveryId: strin
   if (delivery.status === "REVOKED") {
     throw new BusinessRuleError("This delivery has been revoked.");
   }
+  // A one-off address is used when IT resends to somewhere other than the
+  // profile email; the profile is left unchanged.
+  const recipientEmail = overrideEmail?.trim() || delivery.person.email;
   const { token } = await issueToken({
     purpose: "CREDENTIAL_ACKNOWLEDGEMENT",
-    email: delivery.person.email,
+    email: recipientEmail,
     personId: delivery.personId,
     targetType: "credential_delivery",
     targetId: deliveryId,
@@ -132,7 +139,7 @@ export async function sendDeliveryEmail(context: AuditContext, deliveryId: strin
     ].join("<br/>"),
     recipients: [
       {
-        email: delivery.person.email,
+        email: recipientEmail,
         name: `${delivery.person.firstName} ${delivery.person.lastName}`,
         personId: delivery.personId,
       },
@@ -149,7 +156,7 @@ export async function sendDeliveryEmail(context: AuditContext, deliveryId: strin
     {
       module: MODULE,
       eventType: "delivery.sent",
-      action: `Sent credential acknowledgement email for "${delivery.application.name}"`,
+      action: `Sent credential acknowledgement email for "${delivery.application.name}"${overrideEmail ? ` to ${recipientEmail}` : ""}`,
       targetType: "credential_delivery",
       targetId: deliveryId,
     },
@@ -236,6 +243,7 @@ export async function resendDelivery(
   context: AuditContext,
   deliveryId: string,
   newSecret?: string,
+  overrideEmail?: string,
 ): Promise<void> {
   const delivery = await db.credentialDelivery.findUnique({
     where: { id: deliveryId },
@@ -284,7 +292,7 @@ export async function resendDelivery(
       tx,
     );
   });
-  await sendDeliveryEmail(context, deliveryId);
+  await sendDeliveryEmail(context, deliveryId, overrideEmail);
 }
 
 export async function revokeDelivery(context: AuditContext, deliveryId: string): Promise<void> {

@@ -12,6 +12,7 @@ import {
   positionSchema,
   approvalRoleSchema,
   approvalRoleAssignmentSchema,
+  approvalRoleAssignmentBulkSchema,
   departmentHeadSchema,
 } from "./validators";
 
@@ -203,6 +204,18 @@ export async function assignApprovalRoleAction(raw: unknown): Promise<ActionResu
     const assignment = await service.assignApprovalRole(audit, parse(approvalRoleAssignmentSchema, raw));
     revalidatePath("/organization");
     return ok({ id: assignment.id });
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function assignApprovalRolePeopleAction(raw: unknown): Promise<ActionResult<{ count: number }>> {
+  try {
+    const { audit } = await requirePermission("organization.approvalRoles.manage");
+    const input = parse(approvalRoleAssignmentBulkSchema, raw);
+    const result = await service.assignApprovalRolePeople(audit, input);
+    revalidatePath("/organization");
+    return ok(result);
   } catch (error) {
     return toActionError(error);
   }

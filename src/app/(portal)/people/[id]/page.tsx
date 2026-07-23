@@ -9,6 +9,7 @@ import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
 import { formatDate, formatDateTime, fullName } from "@/shared/utils";
 import { PersonDialog, EmploymentStatusSelect, CreateAccountDialog, AccountControls } from "../person-dialogs";
 import { ReturnAssetButton, GenerateHandoverButton, ClearanceControl, PersonDocumentDelete } from "./person-clearance";
+import { ResendAckButton } from "@/shared/ui/resend-ack-button";
 import { AssignmentRowActions } from "../../applications/application-dialogs";
 import { LicenseAssignmentActions } from "../../licenses/license-dialogs";
 
@@ -68,6 +69,13 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
   const personDocuments = personDocumentLinks
     .filter((link) => link.document)
     .map((link) => link.document);
+
+  // Handovers awaiting acknowledgement, so a missed email can be resent.
+  const pendingHandovers = await db.handover.findMany({
+    where: { personId: person.id, status: { not: "ACKNOWLEDGED" } },
+    orderBy: { createdAt: "desc" },
+    include: { _count: { select: { assets: true } } },
+  });
 
   // Assets currently assigned to this person, offered when generating a handover.
   const assignedAssets = person.assetAssignments
@@ -321,7 +329,7 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
               <p className="text-sm text-muted-foreground">No credential deliveries.</p>
             ) : (
               <Table>
-                <THead><TR><TH>Application</TH><TH>Username</TH><TH>Sent</TH><TH>Status</TH></TR></THead>
+                <THead><TR><TH>Application</TH><TH>Username</TH><TH>Sent</TH><TH>Status</TH>{canManageAppAssignments ? <TH className="text-right">Resend</TH> : null}</TR></THead>
                 <TBody>
                   {person.credentialDeliveries.map((delivery) => (
                     <TR key={delivery.id}>
@@ -329,6 +337,13 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                       <TD>{delivery.username}</TD>
                       <TD>{delivery.sentAt ? formatDateTime(delivery.sentAt) : "None"}</TD>
                       <TD><StatusBadge status={delivery.status} /></TD>
+                      {canManageAppAssignments ? (
+                        <TD className="text-right">
+                          {delivery.status !== "REVOKED" ? (
+                            <ResendAckButton kind="credential" targetId={delivery.id} defaultEmail={person.email} />
+                          ) : null}
+                        </TD>
+                      ) : null}
                     </TR>
                   ))}
                 </TBody>
@@ -336,6 +351,31 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
             )}
           </CardContent>
         </Card>
+
+        {pendingHandovers.length > 0 ? (
+          <Card>
+            <CardHeader><CardTitle>Asset handovers awaiting acknowledgement</CardTitle></CardHeader>
+            <CardContent>
+              <Table>
+                <THead><TR><TH>Assets</TH><TH>Sent</TH><TH>Status</TH>{canManageAssets ? <TH className="text-right">Resend</TH> : null}</TR></THead>
+                <TBody>
+                  {pendingHandovers.map((handover) => (
+                    <TR key={handover.id}>
+                      <TD>{handover._count.assets} asset(s)</TD>
+                      <TD>{handover.sentAt ? formatDateTime(handover.sentAt) : "Not sent"}</TD>
+                      <TD><StatusBadge status={handover.status} /></TD>
+                      {canManageAssets ? (
+                        <TD className="text-right">
+                          <ResendAckButton kind="handover" targetId={handover.id} defaultEmail={person.email} />
+                        </TD>
+                      ) : null}
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card className="lg:col-span-2">
           <CardHeader><CardTitle>Documents</CardTitle></CardHeader>

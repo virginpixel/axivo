@@ -8,9 +8,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { StatusBadge } from "@/shared/ui/badge";
 import { formatDateTime } from "@/shared/utils";
 import { RequestAdminActions, ImplementationPanel, StepAdminControls, RequestedForResolution } from "./request-actions";
+import { ResendAckButton } from "@/shared/ui/resend-ack-button";
 import { AutoRefresh } from "@/shared/ui/auto-refresh";
 import { fullName } from "@/shared/utils";
 import { listActiveRequestFieldsFor } from "@/modules/request-fields/service";
+import { resolveApprovers } from "@/modules/workflow/engine";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +57,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
 
   const timeline = await getRequestTimeline(id);
   const canImplement = user.permissions.has("requests.implement");
+  const canDeliver = user.permissions.has("applications.credentials.deliver");
 
   // Company of the requested-for employee (forms may be shared across companies).
   const requestedForCompanyName = request.requestedForCompanyId
@@ -87,12 +90,40 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
   );
   const itemFieldLabels = new Map(itemRequestFields.map((field) => [field.fieldKey, field.label]));
 
+  // Resolve approvers live for every active approval step, so someone added to
+  // the role after the step went active is shown and can act. Keyed by step id.
+  const liveApprovers = new Map<string, string[]>();
+  for (const item of request.items) {
+    for (const instance of item.workflowInstances) {
+      for (const step of instance.stepInstances) {
+        if (step.status !== "ACTIVE" || step.stepType === "IT_IMPLEMENTATION") continue;
+        const resolved = await resolveApprovers(db, {
+          companyId: request.companyId,
+          approvalRoleId: step.approvalRoleId,
+          requestedForDepartmentId: request.requestedForDepartmentId,
+          allowDelegation: true,
+        });
+        liveApprovers.set(
+          step.id,
+          resolved.map((approver) => `${approver.person.firstName} ${approver.person.lastName}`),
+        );
+      }
+    }
+  }
+
   // Offered when IT confirms the details before creating the employee record.
   const requestedForDepartments = await db.department.findMany({
     where: { deletedAt: null, companyId: request.requestedForCompanyId ?? request.companyId },
     orderBy: { name: "asc" },
     select: { id: true, name: true },
   });
+  const requestedForPositions = (
+    await db.position.findMany({
+      where: { deletedAt: null, companyId: request.requestedForCompanyId ?? request.companyId },
+      orderBy: { name: "asc" },
+      select: { name: true },
+    })
+  ).map((position) => position.name);
 
   const availableAssets = await db.asset.findMany({
     where: { companyId: request.companyId, status: "AVAILABLE", deletedAt: null },
@@ -181,6 +212,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
               requestedForPosition={request.requestedForPosition}
               requestedForDepartmentId={request.requestedForDepartmentId}
               departments={requestedForDepartments}
+              positions={requestedForPositions}
               requestedForName={request.requestedForName}
               requestedForEmployeeId={request.requestedForEmployeeId}
               companyName={requestedForCompanyName}
@@ -280,24 +312,39 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                                 <StatusBadge status={step.status === "ACTIVE" ? "PENDING" : step.status} />
                               </div>
                             </div>
-                            {step.assignments.length > 0 ? (
-                              <p className="mt-0.5 text-xs text-muted-foreground">
-                                Approver(s):{" "}
-                                {step.assignments
-                                  .map((assignment) => `${assignment.person.firstName} ${assignment.person.lastName}`)
-                                  .join(", ")}
-                              </p>
-                            ) : step.status === "ACTIVE" || step.status === "PENDING" ? (
-                              /* Almost always means nobody is assigned to the
-                                 step's approval role yet. */
-                              <p className="mt-0.5 text-xs text-destructive">
-                                No approvers resolved for this step.{" "}
-                                <a href="/organization" className="underline">
-                                  Assign people to its approval role
-                                </a>
-                                , or transfer this step to a specific approver.
-                              </p>
-                            ) : null}
+                            {(() => {
+                              // Live-resolved approvers for active steps; the
+                              // frozen assignment list otherwise (history).
+                              const live = liveApprovers.get(step.id);
+                              const names =
+                                live && live.length > 0
+                                  ? live
+                                  : step.assignments.map(
+                                      (assignment) =>
+                                        `${assignment.person.firstName} ${assignment.person.lastName}`,
+                                    );
+                              if (names.length > 0) {
+                                return (
+                                  <p className="mt-0.5 text-xs text-muted-foreground">
+                                    Approver(s): {names.join(", ")}
+                                  </p>
+                                );
+                              }
+                              // Implementation steps never carry assignees by
+                              // design (permission-gated), so no warning there.
+                              if (step.status === "ACTIVE" && step.stepType !== "IT_IMPLEMENTATION") {
+                                return (
+                                  <p className="mt-0.5 text-xs text-destructive">
+                                    No approvers resolved for this step.{" "}
+                                    <a href="/organization" className="underline">
+                                      Assign people to its approval role
+                                    </a>
+                                    , then use the resend button, or transfer this step to a specific approver.
+                                  </p>
+                                );
+                              }
+                              return null;
+                            })()}
                             {step.actions.map((action) => (
                               <p key={action.id} className="mt-1 text-xs">
                                 <span className="font-medium">
@@ -321,11 +368,21 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                         Credential deliveries
                       </h4>
                       {item.credentialDeliveries.map((delivery) => (
-                        <div key={delivery.id} className="flex items-center justify-between py-1">
+                        <div key={delivery.id} className="flex items-center justify-between gap-2 py-1">
                           <span>
                             {delivery.application.name} · {delivery.username}
                           </span>
-                          <StatusBadge status={delivery.status} />
+                          <span className="flex items-center gap-1">
+                            {/* Resend when a link was missed; revoked ones can't. */}
+                            {canDeliver && delivery.status !== "REVOKED" ? (
+                              <ResendAckButton
+                                kind="credential"
+                                targetId={delivery.id}
+                                defaultEmail={request.requestedForEmail}
+                              />
+                            ) : null}
+                            <StatusBadge status={delivery.status} />
+                          </span>
                         </div>
                       ))}
                     </div>

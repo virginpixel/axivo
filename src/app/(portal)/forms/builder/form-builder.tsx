@@ -2,13 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react";
 import { createFormAction, updateFormAction } from "@/modules/forms/actions";
 import type { VisibilityRule } from "@/modules/forms/validators";
 import { useAction } from "@/shared/ui/use-action";
 import { Button } from "@/shared/ui/button";
 import { Input, Textarea, Select, Label, FieldError, HelperText } from "@/shared/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Combobox } from "@/shared/ui/combobox";
 
 /** Client-side form builder (SDS Doc 22): fields, properties, conditional visibility. */
 
@@ -304,29 +305,49 @@ export function FormBuilder({
                   No asset categories exist yet. Create them in Settings, Asset categories.
                 </p>
               ) : (
-                <div className="mt-1 grid gap-1.5 rounded-md border bg-muted/30 p-3 sm:grid-cols-3">
-                  {assetCategories.map((category) => (
-                    <label key={category.id} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={allowedCategoryIds.includes(category.id)}
-                        onChange={(event) =>
-                          setAllowedCategoryIds((current) =>
-                            event.target.checked
-                              ? [...current, category.id]
-                              : current.filter((id) => id !== category.id),
-                          )
-                        }
-                        className="h-4 w-4"
-                      />
-                      {category.name}
-                    </label>
-                  ))}
-                </div>
+                <>
+                  {/* Searchable so it scales; each pick becomes a removable tag. */}
+                  <Combobox
+                    id="fb-allowed-categories"
+                    value=""
+                    placeholder="Search categories to allow…"
+                    options={assetCategories
+                      .filter((category) => !allowedCategoryIds.includes(category.id))
+                      .map((category) => ({ value: category.id, label: category.name }))}
+                    onChange={(value) => {
+                      if (value) setAllowedCategoryIds((current) => [...current, value]);
+                    }}
+                  />
+                  {allowedCategoryIds.length > 0 ? (
+                    <ul className="mt-2 flex flex-wrap gap-1">
+                      {allowedCategoryIds.map((categoryId) => {
+                        const category = assetCategories.find((entry) => entry.id === categoryId);
+                        return (
+                          <li
+                            key={categoryId}
+                            className="flex items-center gap-1 rounded-full border bg-muted/40 py-1 pl-3 pr-1 text-xs"
+                          >
+                            {category?.name ?? categoryId}
+                            <button
+                              type="button"
+                              aria-label={`Remove ${category?.name ?? "category"}`}
+                              className="rounded-full p-0.5 hover:bg-accent"
+                              onClick={() =>
+                                setAllowedCategoryIds((current) => current.filter((id) => id !== categoryId))
+                              }
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : null}
+                </>
               )}
               <HelperText>
-                Leave every box unticked to allow all categories; tick specific ones to restrict what
-                this form can request.
+                Leave empty to allow all categories; add specific ones to restrict what this form can
+                request.
               </HelperText>
             </div>
           ) : null}

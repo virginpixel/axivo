@@ -14,8 +14,10 @@ import { revokeTokensForTarget } from "@/shared/tokens/secure-tokens";
 
 const securitySettingsSchema = z
   .object({
-    sessionIdleMinutes: z.coerce.number().int().min(5).max(480),
-    sessionAbsoluteHours: z.coerce.number().int().min(1).max(72),
+    // 0 means never expire on idle; the absolute lifetime still applies unless
+    // it is also 0.
+    sessionIdleMinutes: z.coerce.number().int().min(0).max(480),
+    sessionAbsoluteHours: z.coerce.number().int().min(0).max(720),
     loginMaxAttempts: z.coerce.number().int().min(3).max(20),
     loginCooldownMinutes: z.coerce.number().int().min(1).max(120),
     tokenExpiryHours: z.coerce.number().int().min(1).max(720),

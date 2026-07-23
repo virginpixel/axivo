@@ -30,6 +30,12 @@ export interface AuthenticatedUser {
   sessionId: string;
 }
 
+/** 0 disables the timeout: represent "never" as a date far in the future. */
+const NEVER = new Date("9999-12-31T23:59:59Z");
+function expiryFrom(now: Date, ms: number): Date {
+  return ms <= 0 ? NEVER : new Date(now.getTime() + ms);
+}
+
 export async function createSession(systemUserId: string): Promise<string> {
   const [idleMinutes, absoluteHours] = await Promise.all([
     getSetting<number>(SETTING_KEYS.SESSION_IDLE_MINUTES),
@@ -43,8 +49,8 @@ export async function createSession(systemUserId: string): Promise<string> {
     data: {
       tokenHash: sha256(token),
       systemUserId,
-      idleExpiresAt: new Date(now.getTime() + idleMinutes * 60_000),
-      absoluteExpiresAt: new Date(now.getTime() + absoluteHours * 3_600_000),
+      idleExpiresAt: expiryFrom(now, idleMinutes * 60_000),
+      absoluteExpiresAt: expiryFrom(now, absoluteHours * 3_600_000),
       ipAddress: getClientIp(requestHeaders),
       userAgent: requestHeaders.get("user-agent")?.slice(0, 512) ?? null,
     },
@@ -119,7 +125,7 @@ export const getCurrentUser = cache(async (): Promise<AuthenticatedUser | null> 
     where: { id: session.id },
     data: {
       lastActivityAt: now,
-      idleExpiresAt: new Date(now.getTime() + idleMinutes * 60_000),
+      idleExpiresAt: expiryFrom(now, idleMinutes * 60_000),
     },
   });
 

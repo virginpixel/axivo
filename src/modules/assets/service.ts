@@ -4,7 +4,7 @@ import { recordAudit, diffRecords, type AuditContext } from "@/shared/audit/audi
 import { BusinessRuleError, NotFoundError, ValidationError } from "@/shared/errors";
 import { createGeneratedPdf } from "@/modules/documents/service";
 import { queueNotification } from "@/modules/notifications/service";
-import { issueToken, tokenActionUrl } from "@/shared/tokens/secure-tokens";
+import { issueToken, tokenActionUrl, revokeTokensForTarget } from "@/shared/tokens/secure-tokens";
 import { validateCustomFieldValue, type CustomFieldFormat } from "@/modules/catalogs/format";
 import type { AssetStatus } from "@prisma/client";
 import type {
@@ -530,7 +530,11 @@ export async function createHandoverForAssignments(
 }
 
 /** Send (or resend) the secure acknowledgement email for a generated handover. */
-export async function sendHandover(context: AuditContext, handoverId: string) {
+export async function sendHandover(
+  context: AuditContext,
+  handoverId: string,
+  overrideEmail?: string,
+) {
   const handover = await db.handover.findFirst({
     where: { id: handoverId },
     include: { person: true, assets: true },
@@ -540,9 +544,13 @@ export async function sendHandover(context: AuditContext, handoverId: string) {
     throw new BusinessRuleError("This handover has already been acknowledged.");
   }
   const person = handover.person;
+  // Resending invalidates any previous link and, when given, uses a one-off
+  // address without touching the employee profile.
+  const recipientEmail = overrideEmail?.trim() || person.email;
+  await revokeTokensForTarget("handover", handover.id);
   const { token } = await issueToken({
     purpose: "ASSET_HANDOVER",
-    email: person.email,
+    email: recipientEmail,
     personId: person.id,
     targetType: "handover",
     targetId: handover.id,
@@ -559,10 +567,10 @@ export async function sendHandover(context: AuditContext, handoverId: string) {
     },
     subject: "Asset handover acknowledgement required",
     body: `Dear ${person.firstName},<br/><br/>Company assets have been assigned to you. Please review and acknowledge receipt using the secure link below.<br/><br/><a href="${url}">Review and acknowledge asset handover</a>`,
-    recipients: [{ email: person.email, name: `${person.firstName} ${person.lastName}`, personId: person.id }],
+    recipients: [{ email: recipientEmail, name: `${person.firstName} ${person.lastName}`, personId: person.id }],
     entityType: "handover",
     entityId: handover.id,
-    dedupeKey: `handover:${handover.id}:sent:${handover.sentAt ? "resend" : "first"}`,
+    dedupeKey: `handover:${handover.id}:sent:${Date.now()}`,
   });
   await db.handover.update({ where: { id: handover.id }, data: { sentAt: new Date() } });
   await recordAudit(
@@ -570,7 +578,7 @@ export async function sendHandover(context: AuditContext, handoverId: string) {
     {
       module: MODULE,
       eventType: "handover.sent",
-      action: `Sent handover acknowledgement to ${person.firstName} ${person.lastName}`,
+      action: `Sent handover acknowledgement to ${person.firstName} ${person.lastName}${overrideEmail ? ` at ${recipientEmail}` : ""}`,
       targetType: "handover",
       targetId: handover.id,
     },

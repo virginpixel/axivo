@@ -37,21 +37,21 @@ export function SecuritySettingsForm({
   const [form, setForm] = useState(current);
 
   const fields: { key: keyof typeof current; label: string; hint?: string }[] = [
-    { key: "sessionIdleMinutes", label: "Session idle timeout (minutes)" },
-    { key: "sessionAbsoluteHours", label: "Absolute session timeout (hours)" },
+    { key: "sessionIdleMinutes", label: "Session idle timeout (minutes)", hint: "Set to 0 to never sign out on inactivity." },
+    { key: "sessionAbsoluteHours", label: "Absolute session timeout (hours)", hint: "Set to 0 to never force re-authentication." },
     { key: "loginMaxAttempts", label: "Failed logins before cooldown", hint: "Accounts are never permanently locked." },
     { key: "loginCooldownMinutes", label: "Login cooldown (minutes)" },
     { key: "tokenExpiryHours", label: "Secure email link expiry (hours)" },
     { key: "credentialSecretExpiryHours", label: "Temporary credential expiry (hours)" },
     { key: "publicFormRatePerHour", label: "Public form submissions per IP per hour" },
-    { key: "passwordMinLength", label: "Minimum password length", hint: "Cannot be reduced below 12 (SDS baseline)." },
+    { key: "passwordMinLength", label: "Minimum password length", hint: "Cannot be reduced below 12." },
   ];
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Security policies</CardTitle>
-        <CardDescription>Session, throttling, token and password settings (SDS Doc 05).</CardDescription>
+        <CardDescription>Session, throttling, token and password settings.</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -314,7 +314,7 @@ export function NotificationSettingsForm({
     <Card>
       <CardHeader>
         <CardTitle>Notification & reminder settings</CardTitle>
-        <CardDescription>Reminder schedules for approvals, acknowledgements and renewals (SDS Doc 14 Ch6).</CardDescription>
+        <CardDescription>Reminder schedules for approvals, acknowledgements and renewals.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="grid gap-3 sm:grid-cols-3">

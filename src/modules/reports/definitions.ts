@@ -12,14 +12,27 @@ import type { AuthenticatedUser } from "@/shared/auth/session";
 export interface ReportResult {
   headers: string[];
   rows: string[][];
+  /** Optional per-row link (e.g. a request PDF), aligned to `rows`. */
+  rowLinks?: (string | null)[];
 }
+
+export interface ReportFilter {
+  key: string;
+  label: string;
+  options: { value: string; label: string }[];
+}
+
+/** Applied filter values, keyed by ReportFilter.key. */
+export type ReportFilters = Record<string, string | undefined>;
 
 export interface ReportDefinition {
   key: string;
   name: string;
   category: string;
   description: string;
-  run: (user: AuthenticatedUser) => Promise<ReportResult>;
+  /** Filter controls this report offers, resolved live for the current user. */
+  filters?: (user: AuthenticatedUser) => Promise<ReportFilter[]>;
+  run: (user: AuthenticatedUser, filters?: ReportFilters) => Promise<ReportResult>;
 }
 
 function companyScope(user: AuthenticatedUser): { companyId?: string } {
@@ -32,10 +45,55 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
     name: "Access Requests by Application",
     category: "Audit evidence",
     description:
-      "Every application access request with its approvers and outcome. Filter by application to hand an auditor the sample they ask for.",
-    run: async (user) => {
+      "Every application access request with its approvers and outcome. Filter by application, status or department, then download each request as a PDF to hand an auditor the sample they ask for.",
+    filters: async (user) => {
+      const [applications, departments] = await Promise.all([
+        db.application.findMany({
+          where: { deletedAt: null, ...companyScope(user) },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true },
+        }),
+        db.department.findMany({
+          where: { deletedAt: null, ...companyScope(user) },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true },
+        }),
+      ]);
+      return [
+        {
+          key: "applicationId",
+          label: "Application",
+          options: applications.map((application) => ({ value: application.id, label: application.name })),
+        },
+        {
+          key: "status",
+          label: "Status",
+          options: [
+            "PENDING_APPROVAL",
+            "IMPLEMENTATION_PENDING",
+            "COMPLETED",
+            "REJECTED",
+            "CANCELLED",
+          ].map((status) => ({ value: status, label: status.replace(/_/g, " ") })),
+        },
+        {
+          key: "departmentName",
+          label: "Department",
+          options: departments.map((department) => ({ value: department.name, label: department.name })),
+        },
+      ];
+    },
+    run: async (user, filters) => {
       const items = await db.requestItem.findMany({
-        where: { itemType: "APPLICATION", request: companyScope(user) },
+        where: {
+          itemType: "APPLICATION",
+          request: companyScope(user),
+          ...(filters?.applicationId ? { applicationId: filters.applicationId } : {}),
+          ...(filters?.status ? { status: filters.status as never } : {}),
+          ...(filters?.departmentName
+            ? { request: { ...companyScope(user), requestedForDepartment: filters.departmentName } }
+            : {}),
+        },
         orderBy: { request: { submittedAt: "desc" } },
         include: {
           application: { select: { name: true } },
@@ -65,6 +123,8 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           "Approvals",
           "Completed",
         ],
+        // Each row links to that request's evidence PDF.
+        rowLinks: items.map((item) => `/api/requests/${item.requestId}/pdf`),
         rows: items.map((item) => {
           // Names come from the snapshot when the live record is gone.
           const application = item.application?.name ?? item.targetNameSnapshot ?? "Removed";
@@ -99,11 +159,13 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
     key: "clearances",
     name: "Employee Clearances",
     category: "Audit evidence",
-    description: "Clearance records with what was recovered, who verified it and the final employment status.",
+    description: "Completed employee clearances with what was recovered and who verified it. Cancelled and in-progress clearances are excluded.",
     run: async (user) => {
       const clearances = await db.clearance.findMany({
-        where: companyScope(user),
-        orderBy: { createdAt: "desc" },
+        // Only completed clearances are audit evidence; cancelled and
+        // in-progress records are not kept here.
+        where: { ...companyScope(user), status: "COMPLETED" },
+        orderBy: { completedAt: "desc" },
         include: {
           person: { include: { company: true, department: true } },
           items: true,

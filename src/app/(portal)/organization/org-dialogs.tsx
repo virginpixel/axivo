@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Plus, Power, Trash2 } from "lucide-react";
+import { Pencil, Plus, Power, Trash2, X } from "lucide-react";
 import {
   createCompanyAction,
   updateCompanyAction,
@@ -18,11 +18,12 @@ import {
   createApprovalRoleAction,
   updateApprovalRoleAction,
   setApprovalRoleActiveAction,
-  assignApprovalRoleAction,
+  assignApprovalRolePeopleAction,
   removeApprovalRoleAssignmentAction,
   assignDepartmentHeadAction,
   removeDepartmentHeadAction,
 } from "@/modules/organization/actions";
+import { Combobox } from "@/shared/ui/combobox";
 import { useAction } from "@/shared/ui/use-action";
 import { Button } from "@/shared/ui/button";
 import { Input, Textarea, Select, Label, FieldError } from "@/shared/ui/input";
@@ -438,7 +439,8 @@ export function AssignRoleDialog({
   const [open, setOpen] = useState(false);
   const [companyId, setCompanyId] = useState(companies[0]?.id ?? "");
   const [approvalRoleId, setApprovalRoleId] = useState(roles[0]?.id ?? "");
-  const [personId, setPersonId] = useState("");
+  const [personIds, setPersonIds] = useState<string[]>([]);
+  const people = peopleByCompany[companyId] ?? [];
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -447,11 +449,11 @@ export function AssignRoleDialog({
           <Plus className="h-4 w-4" /> Assign approver
         </Button>
       </DialogTrigger>
-      <DialogContent title="Assign approval role" description="Approvers act through secure email links and do not need portal accounts.">
+      <DialogContent title="Assign approval role" description="Assign one or more people; approvers act through secure email links and do not need portal accounts.">
         <div className="space-y-3">
           <div>
             <Label htmlFor="assign-company" required>Company</Label>
-            <Select id="assign-company" value={companyId} onChange={(e) => { setCompanyId(e.target.value); setPersonId(""); }}>
+            <Select id="assign-company" value={companyId} onChange={(e) => { setCompanyId(e.target.value); setPersonIds([]); }}>
               {companies.map((company) => (
                 <option key={company.id} value={company.id}>{company.name}</option>
               ))}
@@ -466,23 +468,56 @@ export function AssignRoleDialog({
             </Select>
           </div>
           <div>
-            <Label htmlFor="assign-person" required>Person</Label>
-            <Select id="assign-person" value={personId} onChange={(e) => setPersonId(e.target.value)}>
-              <option value="">Select a person…</option>
-              {(peopleByCompany[companyId] ?? []).map((person) => (
-                <option key={person.id} value={person.id}>{person.name}</option>
-              ))}
-            </Select>
+            <Label htmlFor="assign-person" required>People</Label>
+            {/* Several at once, so a company can have two IT Implementation
+                staff without adding a record each. */}
+            <Combobox
+              id="assign-person"
+              value=""
+              placeholder="Search people to add…"
+              options={people
+                .filter((person) => !personIds.includes(person.id))
+                .map((person) => ({ value: person.id, label: person.name }))}
+              onChange={(value) => {
+                if (value) setPersonIds((current) => [...current, value]);
+              }}
+            />
+            {personIds.length > 0 ? (
+              <ul className="mt-2 flex flex-wrap gap-1">
+                {personIds.map((id) => {
+                  const person = people.find((entry) => entry.id === id);
+                  return (
+                    <li
+                      key={id}
+                      className="flex items-center gap-1 rounded-full border bg-muted/40 py-1 pl-3 pr-1 text-xs"
+                    >
+                      {person?.name ?? id}
+                      <button
+                        type="button"
+                        aria-label={`Remove ${person?.name ?? "person"}`}
+                        className="rounded-full p-0.5 hover:bg-accent"
+                        onClick={() => setPersonIds((current) => current.filter((entry) => entry !== id))}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button
               loading={loading}
-              disabled={!personId}
+              disabled={personIds.length === 0}
               onClick={() =>
-                run(() => assignApprovalRoleAction({ companyId, approvalRoleId, personId }), {
-                  successMessage: "Approver assigned.",
-                  onSuccess: () => setOpen(false),
+                run(() => assignApprovalRolePeopleAction({ companyId, approvalRoleId, personIds }), {
+                  successMessage: personIds.length > 1 ? "Approvers assigned." : "Approver assigned.",
+                  onSuccess: () => {
+                    setPersonIds([]);
+                    setOpen(false);
+                  },
                 })
               }
             >

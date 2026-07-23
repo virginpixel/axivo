@@ -152,11 +152,13 @@ export async function cancelRequestAction(requestId: string, reason: string): Pr
 export async function resendCredentialDeliveryAction(
   deliveryId: string,
   newSecret?: string,
+  overrideEmail?: string,
 ): Promise<ActionResult<undefined>> {
   try {
     const { audit } = await requirePermission("applications.credentials.deliver");
-    await credentialsService.resendDelivery(audit, deliveryId, newSecret || undefined);
-    revalidatePath("/requests");
+    await credentialsService.resendDelivery(audit, deliveryId, newSecret || undefined, overrideEmail || undefined);
+    revalidatePath("/requests", "layout");
+    revalidatePath("/people", "layout");
     return ok(undefined);
   } catch (error) {
     return toActionError(error);

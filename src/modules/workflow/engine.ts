@@ -447,9 +447,37 @@ export async function applyApprovalAction(
   if (stepInstance.stepType === "IT_IMPLEMENTATION") {
     throw new BusinessRuleError("Implementation steps are completed through the IT portal.");
   }
-  const assignment = stepInstance.assignments.find((a) => a.personId === params.actingPersonId);
+  let assignment = stepInstance.assignments.find((a) => a.personId === params.actingPersonId);
   if (!assignment) {
-    throw new AuthorizationError("You are not an assigned approver for this step.");
+    // Approvers are resolved live rather than only from the list frozen at
+    // activation, so someone added to the approval role after the step went
+    // active can still act (Doc 13 Ch6). Materialise their assignment now so
+    // the ANY/ALL rule and acted-at bookkeeping keep working.
+    const ic = await loadInstanceContext(db, stepInstance.workflowInstanceId);
+    const step = await db.workflowStep.findFirst({
+      where: {
+        workflowVersion: { instances: { some: { id: stepInstance.workflowInstanceId } } },
+        stepOrder: stepInstance.stepOrder,
+      },
+    });
+    const currentApprovers = await resolveApprovers(db, {
+      companyId: ic.request.companyId,
+      approvalRoleId: stepInstance.approvalRoleId,
+      requestedForDepartmentId: ic.request.requestedForDepartmentId,
+      allowDelegation: step?.allowDelegation ?? true,
+    });
+    const resolved = currentApprovers.find((approver) => approver.person.id === params.actingPersonId);
+    if (!resolved) {
+      throw new AuthorizationError("You are not an assigned approver for this step.");
+    }
+    assignment = await db.approvalAssignment.create({
+      data: {
+        workflowStepInstanceId: stepInstance.id,
+        personId: resolved.person.id,
+        delegatedFromPersonId: resolved.delegatedFrom?.id ?? null,
+      },
+    });
+    stepInstance.assignments.push(assignment);
   }
   if (assignment.actedAt) {
     throw new BusinessRuleError("You have already acted on this step.");

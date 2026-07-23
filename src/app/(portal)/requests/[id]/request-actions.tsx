@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Send, UserRoundPen, UserPlus, CircleAlert } from "lucide-react";
+import { Send, UserRoundPen, UserPlus, CircleAlert, X } from "lucide-react";
 import {
   cancelRequestAction,
   completeImplementationAction,
@@ -15,6 +15,8 @@ import { useAction } from "@/shared/ui/use-action";
 import { Button } from "@/shared/ui/button";
 import { Input, Textarea, Select, Label, FieldError, HelperText } from "@/shared/ui/input";
 import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
+import { Combobox } from "@/shared/ui/combobox";
+
 
 /** Resend + transfer controls shown next to an active approval step. */
 export function StepAdminControls({
@@ -283,25 +285,46 @@ export function ImplementationPanel({
                 No available assets in this category. Add or free up assets first.
               </p>
             ) : (
-              <div className="mt-1 grid max-h-48 gap-1.5 overflow-y-auto rounded-md border bg-card p-3 sm:grid-cols-2">
-                {assets.map((asset) => (
-                  <label key={asset.id} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={selectedAssets.includes(asset.id)}
-                      onChange={(event) =>
-                        setSelectedAssets((current) =>
-                          event.target.checked
-                            ? [...current, asset.id]
-                            : current.filter((id) => id !== asset.id),
-                        )
-                      }
-                      className="h-4 w-4 accent-[hsl(var(--primary))]"
-                    />
-                    {asset.label}
-                  </label>
-                ))}
-              </div>
+              <>
+                {/* Searchable so it scales past a handful of assets; each pick
+                    becomes a removable tag. */}
+                <Combobox
+                  id={`impl-asset-${requestItemId}`}
+                  value=""
+                  placeholder="Search assets to assign…"
+                  options={assets
+                    .filter((asset) => !selectedAssets.includes(asset.id))
+                    .map((asset) => ({ value: asset.id, label: asset.label }))}
+                  onChange={(value) => {
+                    if (value) setSelectedAssets((current) => [...current, value]);
+                  }}
+                />
+                {selectedAssets.length > 0 ? (
+                  <ul className="mt-2 flex flex-wrap gap-1">
+                    {selectedAssets.map((assetId) => {
+                      const asset = assets.find((entry) => entry.id === assetId);
+                      return (
+                        <li
+                          key={assetId}
+                          className="flex items-center gap-1 rounded-full border bg-muted/40 py-1 pl-3 pr-1 text-xs"
+                        >
+                          {asset?.label ?? assetId}
+                          <button
+                            type="button"
+                            aria-label={`Remove ${asset?.label ?? "asset"}`}
+                            className="rounded-full p-0.5 hover:bg-accent"
+                            onClick={() =>
+                              setSelectedAssets((current) => current.filter((id) => id !== assetId))
+                            }
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : null}
+              </>
             )}
             <FieldError message={fieldErrors.assetIds} />
           </div>
@@ -339,6 +362,7 @@ export function RequestedForResolution({
   requestedForPosition,
   requestedForDepartmentId,
   departments,
+  positions,
 }: {
   requestId: string;
   personId: string | null;
@@ -350,6 +374,7 @@ export function RequestedForResolution({
   requestedForPosition: string | null;
   requestedForDepartmentId: string | null;
   departments: { id: string; name: string }[];
+  positions: string[];
 }) {
   const { run, loading } = useAction();
   const [confirming, setConfirming] = useState(false);
@@ -434,8 +459,17 @@ export function RequestedForResolution({
             </div>
             <div>
               <Label htmlFor="cp-position">Position</Label>
-              <Input id="cp-position" value={draft.positionTitle}
-                onChange={(event) => setDraft({ ...draft, positionTitle: event.target.value })} />
+              {/* Searchable over existing positions; typing a new one creates
+                  it when the employee record is saved. */}
+              <Combobox
+                id="cp-position"
+                value={draft.positionTitle}
+                placeholder="Search or add a position…"
+                options={positions.map((name) => ({ value: name, label: name }))}
+                onChange={(value) => setDraft({ ...draft, positionTitle: value })}
+                onCreate={async (label) => ({ value: label, label })}
+                createNoun="position"
+              />
               <HelperText>Typed by the requester. It is added to the catalogue if it is new.</HelperText>
             </div>
           </div>

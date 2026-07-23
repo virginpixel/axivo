@@ -223,11 +223,15 @@ export async function generateHandoverForAssetsAction(
 }
 
 /** Send the acknowledgement email for a previously generated handover. */
-export async function sendHandoverAction(handoverId: string): Promise<ActionResult<undefined>> {
+export async function sendHandoverAction(
+  handoverId: string,
+  overrideEmail?: string,
+): Promise<ActionResult<undefined>> {
   try {
     const { audit } = await requirePermission("assets.assignments.manage");
-    await service.sendHandover(audit, handoverId);
+    await service.sendHandover(audit, handoverId, overrideEmail || undefined);
     revalidatePath("/people", "layout");
+    revalidatePath("/requests", "layout");
     return ok(undefined);
   } catch (error) {
     return toActionError(error);
