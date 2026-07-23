@@ -45,10 +45,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     (kind: ToastKind, message: string) => {
       const id = Date.now() + Math.random();
       setToasts((current) => [...current, { id, kind, message }]);
-      // Errors persist until dismissed; others auto-dismiss (Doc 03 Ch8).
-      if (kind !== "error") {
-        setTimeout(() => dismiss(id), 5000);
-      }
+      // Every toast auto-dismisses; errors linger a little longer so they can be read.
+      setTimeout(() => dismiss(id), kind === "error" ? 7000 : 4000);
     },
     [dismiss],
   );
@@ -57,7 +55,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={{ toast }}>
       {children}
       <div
-        className="pointer-events-none fixed bottom-4 right-4 z-[100] flex w-full max-w-sm flex-col gap-2"
+        className="pointer-events-none fixed left-1/2 top-4 z-[100] flex w-full max-w-md -translate-x-1/2 flex-col items-center gap-2 px-4"
         role="region"
         aria-label="Notifications"
       >
@@ -66,9 +64,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             key={item.id}
             role="status"
             className={cn(
-              "pointer-events-auto flex items-start gap-2 rounded-lg border bg-card p-3 shadow-lg",
+              "pointer-events-auto flex w-full items-start gap-2 rounded-lg border bg-card p-3 shadow-lg",
+              "animate-in fade-in slide-in-from-top-2",
               item.kind === "error" && "border-destructive/40",
               item.kind === "success" && "border-success/40",
+              item.kind === "warning" && "border-warning/40",
             )}
           >
             <span className="mt-0.5">{ICONS[item.kind]}</span>

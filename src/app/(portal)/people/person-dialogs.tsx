@@ -13,7 +13,23 @@ import {
 } from "@/modules/people/actions";
 import { useAction } from "@/shared/ui/use-action";
 import { Button } from "@/shared/ui/button";
+import { quickCreateDepartmentAction, quickCreatePositionAction, quickCreateLocationAction } from "@/modules/catalogs/actions";
+import { useToast } from "@/shared/ui/toast";
 import { Input, Select, Label, FieldError, HelperText } from "@/shared/ui/input";
+import { Combobox } from "@/shared/ui/combobox";
+import type { ActionResult } from "@/shared/errors";
+
+function useCreateHandler() {
+  const { toast } = useToast();
+  return function handler(fn: (label: string) => Promise<ActionResult<{ value: string; label: string }>>) {
+    return async (label: string) => {
+      const result = await fn(label);
+      if (result.ok) return result.data;
+      toast("error", result.error);
+      return null;
+    };
+  };
+}
 import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
 
 export interface OrgData {
@@ -41,6 +57,7 @@ export interface PersonRecord {
 
 export function PersonDialog({ orgData, person }: { orgData: OrgData; person?: PersonRecord }) {
   const { run, loading, fieldErrors } = useAction();
+  const createHandler = useCreateHandler();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     companyId: person?.companyId ?? orgData.companies[0]?.id ?? "",
@@ -99,16 +116,13 @@ export function PersonDialog({ orgData, person }: { orgData: OrgData; person?: P
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <Label htmlFor="p-company" required>Company</Label>
-            <Select
+            <Combobox
               id="p-company"
               value={form.companyId}
               disabled={!!person}
-              onChange={(e) => setForm({ ...form, companyId: e.target.value, departmentId: "", positionId: "", locationId: "" })}
-            >
-              {orgData.companies.map((company) => (
-                <option key={company.id} value={company.id}>{company.name}</option>
-              ))}
-            </Select>
+              options={orgData.companies.map((company) => ({ value: company.id, label: company.name }))}
+              onChange={(value) => setForm({ ...form, companyId: value, departmentId: "", positionId: "", locationId: "" })}
+            />
             {person ? <HelperText>Use the company transfer function on the profile page.</HelperText> : null}
           </div>
           <div>
@@ -137,31 +151,37 @@ export function PersonDialog({ orgData, person }: { orgData: OrgData; person?: P
           </div>
           <div>
             <Label htmlFor="p-department">Department</Label>
-            <Select id="p-department" value={form.departmentId} onChange={(e) => setForm({ ...form, departmentId: e.target.value })}>
-              <option value="">No department</option>
-              {departments.map((department) => (
-                <option key={department.id} value={department.id}>{department.name}</option>
-              ))}
-            </Select>
+            <Combobox
+              id="p-department" value={form.departmentId}
+              placeholder="No department" emptyLabel="No department"
+              options={departments.map((department) => ({ value: department.id, label: department.name }))}
+              onChange={(value) => setForm({ ...form, departmentId: value })}
+              onCreate={form.companyId ? createHandler((label) => quickCreateDepartmentAction(form.companyId, label)) : undefined}
+              createNoun="department"
+            />
             <FieldError message={fieldErrors.departmentId} />
           </div>
           <div>
             <Label htmlFor="p-position">Position</Label>
-            <Select id="p-position" value={form.positionId} onChange={(e) => setForm({ ...form, positionId: e.target.value })}>
-              <option value="">No position</option>
-              {positions.map((position) => (
-                <option key={position.id} value={position.id}>{position.name}</option>
-              ))}
-            </Select>
+            <Combobox
+              id="p-position" value={form.positionId}
+              placeholder="No position" emptyLabel="No position"
+              options={positions.map((position) => ({ value: position.id, label: position.name }))}
+              onChange={(value) => setForm({ ...form, positionId: value })}
+              onCreate={form.companyId ? createHandler((label) => quickCreatePositionAction(form.companyId, label)) : undefined}
+              createNoun="position"
+            />
           </div>
           <div>
             <Label htmlFor="p-location">Location</Label>
-            <Select id="p-location" value={form.locationId} onChange={(e) => setForm({ ...form, locationId: e.target.value })}>
-              <option value="">No location</option>
-              {locations.map((location) => (
-                <option key={location.id} value={location.id}>{location.name}</option>
-              ))}
-            </Select>
+            <Combobox
+              id="p-location" value={form.locationId}
+              placeholder="No location" emptyLabel="No location"
+              options={locations.map((location) => ({ value: location.id, label: location.name }))}
+              onChange={(value) => setForm({ ...form, locationId: value })}
+              onCreate={form.companyId ? createHandler((label) => quickCreateLocationAction(form.companyId, label)) : undefined}
+              createNoun="location"
+            />
           </div>
           <div>
             <Label htmlFor="p-phone">Phone</Label>
@@ -281,12 +301,12 @@ export function AccountControls({
   const [newPassword, setNewPassword] = useState("");
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex w-full flex-col items-stretch gap-2 sm:w-44">
       <Select
         value={currentRoleId}
         disabled={loading}
         aria-label="Change system role"
-        className="w-48"
+        className="w-full"
         onChange={(event) =>
           run(() => changeSystemUserRoleAction({ systemUserId, systemRoleId: event.target.value }), {
             successMessage: "System role updated.",
@@ -300,6 +320,7 @@ export function AccountControls({
       <Button
         variant="outline"
         size="sm"
+        className="w-full justify-center"
         loading={loading}
         onClick={() =>
           run(() => setSystemUserEnabledAction(systemUserId, !isEnabled), {
@@ -311,7 +332,7 @@ export function AccountControls({
       </Button>
       <Dialog open={resetOpen} onOpenChange={setResetOpen}>
         <DialogTrigger asChild>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" className="w-full justify-center">
             <KeyRound className="h-4 w-4" /> Reset password
           </Button>
         </DialogTrigger>

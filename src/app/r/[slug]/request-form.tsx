@@ -7,6 +7,7 @@ import { isFieldVisible } from "@/modules/forms/visibility";
 import type { VisibilityRule } from "@/modules/forms/validators";
 import { Button } from "@/shared/ui/button";
 import { Input, Textarea, Select, Label, FieldError, HelperText } from "@/shared/ui/input";
+import { Combobox } from "@/shared/ui/combobox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { useToast } from "@/shared/ui/toast";
 
@@ -15,7 +16,7 @@ import { useToast } from "@/shared/ui/toast";
  * visibility, multiple request items each processed independently.
  */
 
-interface PublicField {
+export interface PublicField {
   fieldKey: string;
   label: string;
   fieldType: string;
@@ -35,10 +36,14 @@ interface PublicApplication {
 
 interface ItemDraft {
   key: number;
+  /** Only set on an all-in-one form, where each row picks its own kind. */
+  rowType?: "APPLICATION" | "ASSET";
   applicationId?: string;
   applicationRoleId?: string;
   assetCategoryId?: string;
   description?: string;
+  /** Answers to the request fields defined on the chosen application/category. */
+  fieldValues: Record<string, string | string[]>;
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -48,7 +53,8 @@ interface ParticipantDraft {
   email: string;
   employeeId: string;
   departmentId: string;
-  positionId: string;
+  /** Free text: the position may not exist in the catalogue yet. */
+  positionTitle: string;
 }
 
 const EMPTY_PARTICIPANT: ParticipantDraft = {
@@ -56,7 +62,7 @@ const EMPTY_PARTICIPANT: ParticipantDraft = {
   email: "",
   employeeId: "",
   departmentId: "",
-  positionId: "",
+  positionTitle: "",
 };
 
 export function PublicRequestForm({
@@ -67,19 +73,43 @@ export function PublicRequestForm({
   assetCategories,
   departments,
   positions,
+  companies,
+  formCompanyId,
+  requestFieldsByTarget,
+  allowsMixedItems,
+  fixedApplicationId,
+  fixedAssetCategoryId,
 }: {
   slug: string;
   requestTypeKind: string;
   fields: PublicField[];
   applications: PublicApplication[];
   assetCategories: { id: string; name: string }[];
-  departments: { id: string; name: string }[];
-  positions: { id: string; name: string }[];
+  departments: { id: string; name: string; companyId: string }[];
+  positions: { id: string; name: string; companyId: string }[];
+  companies: { id: string; name: string }[];
+  formCompanyId: string;
+  /** Extra questions keyed by application id or asset category id (Doc 08/11). */
+  requestFieldsByTarget: Record<string, PublicField[]>;
+  /** All-in-one form: each row chooses its own kind. */
+  allowsMixedItems: boolean;
+  /** Dedicated form: the target is fixed and never shown as a choice. */
+  fixedApplicationId: string | null;
+  fixedAssetCategoryId: string | null;
 }) {
   const { toast } = useToast();
   const [requester, setRequester] = useState<ParticipantDraft>(EMPTY_PARTICIPANT);
   const [requestedFor, setRequestedFor] = useState<ParticipantDraft>(EMPTY_PARTICIPANT);
+  const [requesterCompanyId, setRequesterCompanyId] = useState(formCompanyId);
+  const [requestedForCompanyId, setRequestedForCompanyId] = useState(formCompanyId);
   const [sameAsRequester, setSameAsRequester] = useState(false);
+
+  // Each participant names their own company, since a form may be shared across
+  // companies; their department and position lists follow that choice.
+  const requesterDepartments = departments.filter((entry) => entry.companyId === requesterCompanyId);
+  const requesterPositions = positions.filter((entry) => entry.companyId === requesterCompanyId);
+  const requestedForDepartments = departments.filter((entry) => entry.companyId === requestedForCompanyId);
+  const requestedForPositions = positions.filter((entry) => entry.companyId === requestedForCompanyId);
   const [values, setValues] = useState<Record<string, string | string[]>>(() => {
     const initial: Record<string, string | string[]> = {};
     for (const field of fields) {
@@ -87,7 +117,15 @@ export function PublicRequestForm({
     }
     return initial;
   });
-  const [items, setItems] = useState<ItemDraft[]>([{ key: 1 }]);
+  const [items, setItems] = useState<ItemDraft[]>([
+    {
+      key: 1,
+      fieldValues: {},
+      ...(allowsMixedItems ? { rowType: "APPLICATION" as const } : {}),
+      ...(fixedApplicationId ? { applicationId: fixedApplicationId } : {}),
+      ...(fixedAssetCategoryId ? { assetCategoryId: fixedAssetCategoryId } : {}),
+    },
+  ]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState<{ requestNumber: string; message: string | null } | null>(null);
@@ -118,7 +156,7 @@ export function PublicRequestForm({
       if (!EMAIL_PATTERN.test(participant.email)) nextErrors[`${prefix}Email`] = "Enter a valid email address.";
       if (!participant.employeeId.trim()) nextErrors[`${prefix}EmployeeId`] = "Employee ID is required.";
       if (!participant.departmentId) nextErrors[`${prefix}DepartmentId`] = "Select a department.";
-      if (!participant.positionId) nextErrors[`${prefix}PositionId`] = "Select a position.";
+      if (!participant.positionTitle.trim()) nextErrors[`${prefix}PositionTitle`] = "Enter a position.";
     };
     checkParticipant("requester", requester);
     checkParticipant("requestedFor", effectiveRequestedFor);
@@ -136,11 +174,26 @@ export function PublicRequestForm({
       }
     }
     items.forEach((item, index) => {
-      if (itemMode === "APPLICATION" && !item.applicationId) {
+      const rowMode = allowsMixedItems ? (item.rowType ?? "APPLICATION") : itemMode;
+      if (rowMode === "APPLICATION" && !item.applicationId) {
         nextErrors[`item-${index}`] = "Select an application.";
       }
-      if (itemMode === "ASSET" && !item.assetCategoryId) {
+      // A role is required whenever the chosen application defines any.
+      if (rowMode === "APPLICATION" && item.applicationId && !item.applicationRoleId) {
+        const roles = applications.find((application) => application.id === item.applicationId)?.roles ?? [];
+        if (roles.length > 0) nextErrors[`item-${index}`] = "Select an access role.";
+      }
+      if (rowMode === "ASSET" && !item.assetCategoryId) {
         nextErrors[`item-${index}`] = "Select an asset category.";
+      }
+      // Required questions from the chosen application or category.
+      const targetId = item.applicationId || item.assetCategoryId;
+      for (const field of targetId ? requestFieldsByTarget[targetId] ?? [] : []) {
+        const value = item.fieldValues[field.fieldKey];
+        const empty = value === undefined || value === "" || (Array.isArray(value) && value.length === 0);
+        if (field.isRequired && empty) {
+          nextErrors[`item_${index}_${field.fieldKey}`] = `${field.label} is required.`;
+        }
       }
       if ((itemMode === "ROLE_CHANGE" || itemMode === "GENERAL") && !item.description?.trim()) {
         nextErrors[`item-${index}`] = "Please describe the request.";
@@ -168,20 +221,23 @@ export function PublicRequestForm({
         requesterEmail: requester.email.trim(),
         requesterEmployeeId: requester.employeeId.trim(),
         requesterDepartmentId: requester.departmentId,
-        requesterPositionId: requester.positionId,
+        requesterPositionTitle: requester.positionTitle.trim(),
         requestedForName: effectiveRequestedFor.name.trim(),
         requestedForEmail: effectiveRequestedFor.email.trim(),
         requestedForEmployeeId: effectiveRequestedFor.employeeId.trim(),
+        requesterCompanyId,
+        requestedForCompanyId: sameAsRequester ? requesterCompanyId : requestedForCompanyId,
         requestedForDepartmentId: effectiveRequestedFor.departmentId,
-        requestedForPositionId: effectiveRequestedFor.positionId,
+        requestedForPositionTitle: effectiveRequestedFor.positionTitle.trim(),
         fieldValues: values,
         website: "",
         items: items.map((item) => ({
-          itemType: itemMode,
+          itemType: allowsMixedItems ? (item.rowType ?? "APPLICATION") : itemMode,
           applicationId: item.applicationId || undefined,
           applicationRoleId: item.applicationRoleId || undefined,
           assetCategoryId: item.assetCategoryId || undefined,
           description: item.description || undefined,
+          fieldValues: item.fieldValues,
         })),
       });
       if (result.ok) {
@@ -230,9 +286,25 @@ export function PublicRequestForm({
         prefix="requester"
         participant={requester}
         onChange={setRequester}
-        departments={departments}
-        positions={positions}
+        departments={requesterDepartments}
+        positions={requesterPositions}
         errors={errors}
+        companySelect={
+          <div>
+            <Label htmlFor="requester-company" required>Company</Label>
+            <Combobox
+              id="requester-company"
+              value={requesterCompanyId}
+              options={companies.map((company) => ({ value: company.id, label: company.name }))}
+              onChange={(value) => {
+                setRequesterCompanyId(value);
+                // Department and position belong to the company; reset them.
+                setRequester((current) => ({ ...current, departmentId: "" }));
+              }}
+            />
+            <FieldError message={errors.requesterCompanyId} />
+          </div>
+        }
       />
 
       <Card>
@@ -251,13 +323,27 @@ export function PublicRequestForm({
           </div>
         </CardHeader>
         {!sameAsRequester ? (
-          <CardContent>
+          <CardContent className="space-y-3">
+            <div>
+              <Label htmlFor="requestedFor-company" required>Company</Label>
+              <Combobox
+              id="requestedFor-company"
+              value={requestedForCompanyId}
+              options={companies.map((company) => ({ value: company.id, label: company.name }))}
+              onChange={(value) => {
+                setRequestedForCompanyId(value);
+                // Department and position belong to the company; reset them.
+                setRequestedFor((current) => ({ ...current, departmentId: "" }));
+              }}
+            />
+              <FieldError message={errors.requestedForCompanyId} />
+            </div>
             <ParticipantFields
               prefix="requestedFor"
               participant={requestedFor}
               onChange={setRequestedFor}
-              departments={departments}
-              positions={positions}
+              departments={requestedForDepartments}
+              positions={requestedForPositions}
               errors={errors}
             />
           </CardContent>
@@ -277,7 +363,9 @@ export function PublicRequestForm({
               ? "Applications requested"
               : itemMode === "ASSET"
                 ? "Assets requested"
-                : "Request items"}
+                : allowsMixedItems
+                  ? "What do you need?"
+                  : "Request items"}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -285,77 +373,105 @@ export function PublicRequestForm({
             <div key={item.key} className="rounded-md border p-3">
               <div className="flex items-start gap-3">
                 <div className="grid flex-1 gap-3 sm:grid-cols-2">
-                  {itemMode === "APPLICATION" ? (
-                    <>
-                      <div>
-                        <Label htmlFor={`field-item-${index}`} required>Application</Label>
-                        <Select
-                          id={`field-item-${index}`}
-                          value={item.applicationId ?? ""}
-                          onChange={(event) =>
-                            setItems((current) =>
-                              current.map((entry, i) =>
-                                i === index
-                                  ? { ...entry, applicationId: event.target.value, applicationRoleId: undefined }
-                                  : entry,
-                              ),
-                            )
-                          }
-                        >
-                          <option value="">Select an application…</option>
-                          {applications.map((application) => (
-                            <option key={application.id} value={application.id}>
-                              {application.name}
-                            </option>
-                          ))}
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor={`field-item-role-${index}`}>Access role</Label>
-                        <Select
-                          id={`field-item-role-${index}`}
-                          value={item.applicationRoleId ?? ""}
-                          onChange={(event) =>
-                            setItems((current) =>
-                              current.map((entry, i) =>
-                                i === index ? { ...entry, applicationRoleId: event.target.value || undefined } : entry,
-                              ),
-                            )
-                          }
-                          disabled={!item.applicationId}
-                        >
-                          <option value="">Default access</option>
-                          {(applications.find((application) => application.id === item.applicationId)?.roles ?? []).map(
-                            (role) => (
-                              <option key={role.id} value={role.id}>
-                                {role.name}
-                              </option>
-                            ),
-                          )}
-                        </Select>
-                      </div>
-                    </>
-                  ) : itemMode === "ASSET" ? (
+                  {/* An all-in-one row picks its own kind first. */}
+                  {allowsMixedItems ? (
                     <div className="sm:col-span-2">
-                      <Label htmlFor={`field-item-${index}`} required>Asset category</Label>
+                      <Label htmlFor={`field-item-kind-${index}`} required>What do you need?</Label>
                       <Select
-                        id={`field-item-${index}`}
-                        value={item.assetCategoryId ?? ""}
+                        id={`field-item-kind-${index}`}
+                        value={item.rowType ?? "APPLICATION"}
                         onChange={(event) =>
                           setItems((current) =>
                             current.map((entry, i) =>
-                              i === index ? { ...entry, assetCategoryId: event.target.value } : entry,
+                              i === index
+                                ? {
+                                    ...entry,
+                                    rowType: event.target.value as "APPLICATION" | "ASSET",
+                                    applicationId: undefined,
+                                    applicationRoleId: undefined,
+                                    assetCategoryId: undefined,
+                                    fieldValues: {},
+                                  }
+                                : entry,
                             ),
                           )
                         }
                       >
-                        <option value="">Select a category…</option>
-                        {assetCategories.map((category) => (
-                          <option key={category.id} value={category.id}>
-                            {category.name}
-                          </option>
-                        ))}
+                        <option value="APPLICATION">Application access</option>
+                        <option value="ASSET">Asset</option>
                       </Select>
+                    </div>
+                  ) : null}
+                  {(allowsMixedItems ? (item.rowType ?? "APPLICATION") === "APPLICATION" : itemMode === "APPLICATION") ? (
+                    <>
+                      <div>
+                        <Label htmlFor={`field-item-${index}`} required>Application</Label>
+                        <Combobox
+                          id={`field-item-${index}`}
+                          value={item.applicationId ?? ""}
+                          placeholder="Select an application…"
+                          options={applications.map((application) => ({
+                            value: application.id,
+                            label: application.name,
+                          }))}
+                          onChange={(value) =>
+                            setItems((current) =>
+                              current.map((entry, i) =>
+                                i === index
+                                  ? { ...entry, applicationId: value, applicationRoleId: undefined, fieldValues: {} }
+                                  : entry,
+                              ),
+                            )
+                          }
+                        />
+                      </div>
+                      <div>
+                        <Label
+                          htmlFor={`field-item-role-${index}`}
+                          required={
+                            (applications.find((application) => application.id === item.applicationId)?.roles ?? [])
+                              .length > 0
+                          }
+                        >
+                          Access role
+                        </Label>
+<Combobox
+                          id={`field-item-role-${index}`}
+                          value={item.applicationRoleId ?? ""}
+                          placeholder="Select a role…"
+                          disabled={!item.applicationId}
+                          options={(
+                            applications.find((application) => application.id === item.applicationId)?.roles ?? []
+                          ).map((role) => ({ value: role.id, label: role.name }))}
+                          onChange={(value) =>
+                            setItems((current) =>
+                              current.map((entry, i) =>
+                                i === index ? { ...entry, applicationRoleId: value || undefined } : entry,
+                              ),
+                            )
+                          }
+                        />
+                      </div>
+                    </>
+                  ) : (allowsMixedItems ? item.rowType === "ASSET" : itemMode === "ASSET") ? (
+                    <div className="sm:col-span-2">
+                      <Label htmlFor={`field-item-${index}`} required>Asset category</Label>
+                      <Combobox
+                        id={`field-item-${index}`}
+                        value={item.assetCategoryId ?? ""}
+                        placeholder="Select a category…"
+                        options={assetCategories.map((category) => ({
+                          value: category.id,
+                          label: category.name,
+                        }))}
+                        onChange={(value) =>
+                          setItems((current) =>
+                            current.map((entry, i) =>
+                              i === index ? { ...entry, assetCategoryId: value, fieldValues: {} } : entry,
+                            ),
+                          )
+                        }
+                      />
                     </div>
                   ) : (
                     <div className="sm:col-span-2">
@@ -403,17 +519,57 @@ export function PublicRequestForm({
                   </button>
                 ) : null}
               </div>
+              {/* Questions defined on the chosen application or category, so an
+                  all-in-one form asks exactly what that target needs. */}
+              {(() => {
+                const targetId = item.applicationId || item.assetCategoryId;
+                const targetFields = targetId ? requestFieldsByTarget[targetId] ?? [] : [];
+                if (targetFields.length === 0) return null;
+                return (
+                  <div className="mt-3 grid gap-4 border-t pt-3 sm:grid-cols-2">
+                    {targetFields.map((field) => (
+                      <DynamicField
+                        key={field.fieldKey}
+                        field={field}
+                        idPrefix={`item-${index}`}
+                        value={item.fieldValues[field.fieldKey]}
+                        error={errors[`item_${index}_${field.fieldKey}`]}
+                        onChange={(value) =>
+                          setItems((current) =>
+                            current.map((entry, i) =>
+                              i === index
+                                ? { ...entry, fieldValues: { ...entry.fieldValues, [field.fieldKey]: value } }
+                                : entry,
+                            ),
+                          )
+                        }
+                      />
+                    ))}
+                  </div>
+                );
+              })()}
               <FieldError message={errors[`item-${index}`]} />
             </div>
           ))}
-          <Button
+          {fixedApplicationId || fixedAssetCategoryId ? null : (
+            <Button
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => setItems((current) => [...current, { key: Date.now() }])}
+            onClick={() => setItems((current) => [
+              ...current,
+              {
+                fieldValues: {},
+                key: Date.now(),
+                ...(allowsMixedItems ? { rowType: "APPLICATION" as const } : {}),
+                ...(fixedApplicationId ? { applicationId: fixedApplicationId } : {}),
+                ...(fixedAssetCategoryId ? { assetCategoryId: fixedAssetCategoryId } : {}),
+              },
+            ])}
           >
             <Plus className="h-4 w-4" /> Add another item
           </Button>
+          )}
           <p className="text-xs text-muted-foreground">
             Each item is approved and implemented independently.
           </p>
@@ -454,6 +610,7 @@ function ParticipantCard({
   departments,
   positions,
   errors,
+  companySelect,
 }: {
   title: string;
   prefix: string;
@@ -462,13 +619,16 @@ function ParticipantCard({
   departments: { id: string; name: string }[];
   positions: { id: string; name: string }[];
   errors: Record<string, string>;
+  /** Company picker rendered above the participant's other fields. */
+  companySelect?: React.ReactNode;
 }) {
   return (
     <Card>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-3">
+        {companySelect}
         <ParticipantFields
           prefix={prefix}
           participant={participant}
@@ -532,33 +692,34 @@ function ParticipantFields({
       </div>
       <div>
         <Label htmlFor={`field-${prefix}DepartmentId`} required>Department</Label>
-        <Select
+        <Combobox
           id={`field-${prefix}DepartmentId`}
           value={participant.departmentId}
-          onChange={(event) => onChange({ ...participant, departmentId: event.target.value })}
+          placeholder="Select…"
           aria-invalid={!!errors[`${prefix}DepartmentId`]}
-        >
-          <option value="">Select…</option>
-          {departments.map((department) => (
-            <option key={department.id} value={department.id}>{department.name}</option>
-          ))}
-        </Select>
+          options={departments.map((department) => ({ value: department.id, label: department.name }))}
+          onChange={(value) => onChange({ ...participant, departmentId: value })}
+        />
         <FieldError message={errors[`${prefix}DepartmentId`]} />
       </div>
       <div>
-        <Label htmlFor={`field-${prefix}PositionId`} required>Position</Label>
-        <Select
-          id={`field-${prefix}PositionId`}
-          value={participant.positionId}
-          onChange={(event) => onChange({ ...participant, positionId: event.target.value })}
-          aria-invalid={!!errors[`${prefix}PositionId`]}
-        >
-          <option value="">Select…</option>
+        <Label htmlFor={`field-${prefix}PositionTitle`} required>Position</Label>
+        {/* Free text with suggestions: a new joiner may need a position that is
+            not in the catalogue yet, which IT confirms before creating them. */}
+        <Input
+          id={`field-${prefix}PositionTitle`}
+          list={`positions-${prefix}`}
+          value={participant.positionTitle}
+          placeholder="e.g. Front Office Agent"
+          onChange={(event) => onChange({ ...participant, positionTitle: event.target.value })}
+          aria-invalid={!!errors[`${prefix}PositionTitle`]}
+        />
+        <datalist id={`positions-${prefix}`}>
           {positions.map((position) => (
-            <option key={position.id} value={position.id}>{position.name}</option>
+            <option key={position.id} value={position.name} />
           ))}
-        </Select>
-        <FieldError message={errors[`${prefix}PositionId`]} />
+        </datalist>
+        <FieldError message={errors[`${prefix}PositionTitle`]} />
       </div>
     </div>
   );
@@ -569,13 +730,16 @@ function DynamicField({
   value,
   error,
   onChange,
+  idPrefix = "field",
 }: {
   field: PublicField;
   value: string | string[] | undefined;
   error?: string;
   onChange: (value: string | string[]) => void;
+  /** Set when the same field renders once per request item. */
+  idPrefix?: string;
 }) {
-  const id = `field-${field.fieldKey}`;
+  const id = `${idPrefix}-${field.fieldKey}`;
   const wide = ["PARAGRAPH", "MULTI_SELECT", "CHECKBOX"].includes(field.fieldType);
 
   return (

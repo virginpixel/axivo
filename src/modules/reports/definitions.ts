@@ -45,10 +45,10 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           fullName(person),
           person.email,
           person.company.name,
-          person.department?.name ?? "—",
-          person.position?.name ?? "—",
+          person.department?.name ?? "None",
+          person.position?.name ?? "None",
           person.employmentStatus,
-          person.systemUser ? person.systemUser.username : "—",
+          person.systemUser ? person.systemUser.username : "None",
         ]),
       };
     },
@@ -67,7 +67,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
       return {
         headers: ["Employee ID", "Name", "Email", "Company", "Department"],
         rows: people.map((person) => [
-          person.employeeId, fullName(person), person.email, person.company.name, person.department?.name ?? "—",
+          person.employeeId, fullName(person), person.email, person.company.name, person.department?.name ?? "None",
         ]),
       };
     },
@@ -93,8 +93,8 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           assignment.application.name,
           assignment.application.company.name,
           fullName(assignment.person),
-          assignment.applicationRole?.name ?? "—",
-          assignment.username ?? "—",
+          assignment.applicationRole?.name ?? "None",
+          assignment.username ?? "None",
           assignment.status,
           formatDate(assignment.assignedAt),
         ]),
@@ -146,7 +146,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           String(request.items.length),
           request.status,
           formatDateTime(request.submittedAt),
-          request.completedAt ? formatDateTime(request.completedAt) : "—",
+          request.completedAt ? formatDateTime(request.completedAt) : "None",
         ]),
       };
     },
@@ -176,7 +176,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           const hours =
             step.activatedAt && step.completedAt
               ? ((step.completedAt.getTime() - step.activatedAt.getTime()) / 3_600_000).toFixed(1)
-              : "—";
+              : "None";
           return [
             step.workflowInstance.requestItem.request.requestNumber,
             step.stepName,
@@ -248,7 +248,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           purchase.license.company.name,
           String(purchase.quantity),
           formatDate(purchase.expiryDate),
-          purchase.supplier ?? "—",
+          purchase.supplier ?? "None",
         ]),
       };
     },
@@ -276,14 +276,14 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
       return {
         headers: ["Asset", "Category", "Company", "Manufacturer/model", "Serial", "Status", "Assigned to", "Warranty"],
         rows: assets.map((asset) => [
-          asset.name || (asset.assetTag ?? "—"),
+          asset.name || (asset.assetTag ?? "None"),
           asset.category.name,
           asset.company.name,
-          [asset.manufacturer, asset.model].filter(Boolean).join(" ") || "—",
-          asset.serialNumber ?? "—",
+          [asset.manufacturer, asset.model].filter(Boolean).join(" ") || "None",
+          asset.serialNumber ?? "None",
           asset.status,
-          asset.assignments[0] ? fullName(asset.assignments[0].person) : "—",
-          asset.warrantyExpiry ? formatDate(asset.warrantyExpiry) : "—",
+          asset.assignments[0] ? fullName(asset.assignments[0].person) : "None",
+          asset.warrantyExpiry ? formatDate(asset.warrantyExpiry) : "None",
         ]),
       };
     },
@@ -307,10 +307,10 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
       return {
         headers: ["Asset", "Category", "Company", "Model", "Warranty expires"],
         rows: assets.map((asset) => [
-          asset.name || (asset.assetTag ?? "—"),
+          asset.name || (asset.assetTag ?? "None"),
           asset.category.name,
           asset.company.name,
-          asset.model ?? "—",
+          asset.model ?? "None",
           formatDate(asset.warrantyExpiry),
         ]),
       };
@@ -339,14 +339,14 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
       return {
         headers: ["Contract", "Name", "Vendor", "Company", "End date", "Renewal date", "Cost", "Owner"],
         rows: contracts.map((contract) => [
-          contract.contractNumber ?? "—",
+          contract.contractNumber ?? "None",
           contract.name,
           contract.vendor,
           contract.company.name,
-          contract.endDate ? formatDate(contract.endDate) : "—",
-          contract.renewalDate ? formatDate(contract.renewalDate) : "—",
-          contract.cost ? `${Number(contract.cost).toLocaleString()} ${contract.currency ?? ""}` : "—",
-          contract.owner ? fullName(contract.owner) : "—",
+          contract.endDate ? formatDate(contract.endDate) : "None",
+          contract.renewalDate ? formatDate(contract.renewalDate) : "None",
+          contract.cost ? `${Number(contract.cost).toLocaleString()} ${contract.currency ?? ""}` : "None",
+          contract.owner ? fullName(contract.owner) : "None",
         ]),
       };
     },
@@ -395,8 +395,8 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           delivery.application.name,
           delivery.username,
           delivery.status,
-          delivery.sentAt ? formatDateTime(delivery.sentAt) : "—",
-          delivery.acknowledgedAt ? formatDateTime(delivery.acknowledgedAt) : "—",
+          delivery.sentAt ? formatDateTime(delivery.sentAt) : "None",
+          delivery.acknowledgedAt ? formatDateTime(delivery.acknowledgedAt) : "None",
         ]),
       };
     },

@@ -27,6 +27,36 @@ export async function createPersonAction(raw: unknown): Promise<ActionResult<{ i
   }
 }
 
+/** Remove a document from a person's profile (unlinks it; the file stays in Documents). */
+export async function removePersonDocumentAction(personId: string, documentId: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("people.manage");
+    const { db } = await import("@/shared/db");
+    await db.documentLink.updateMany({
+      where: { entityType: "person", entityId: personId, documentId, removedAt: null },
+      data: { removedAt: new Date(), removedById: audit.actorUserId ?? null },
+    });
+    revalidatePath(`/people/${personId}`);
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+/** Quick-create a person inline from a dropdown; returns the option to select. */
+export async function quickCreatePersonAction(raw: unknown): Promise<ActionResult<{ value: string; label: string }>> {
+  try {
+    const { audit } = await requirePermission("people.manage");
+    const person = await service.createPerson(audit, parse(personSchema, raw));
+    revalidatePath("/people", "layout");
+    revalidatePath("/assets", "layout");
+    revalidatePath("/contracts", "layout");
+    return ok({ value: person.id, label: `${person.firstName} ${person.lastName}` });
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
 export async function updatePersonAction(id: string, raw: unknown): Promise<ActionResult<{ id: string }>> {
   try {
     const { audit } = await requirePermission("people.manage");

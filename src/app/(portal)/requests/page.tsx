@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requirePermission } from "@/shared/auth/guard";
 import { db } from "@/shared/db";
+import { LiveSearch } from "@/shared/ui/live-search";
 import { PageHeader, Pagination } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge } from "@/shared/ui/badge";
@@ -89,9 +90,8 @@ export default async function RequestsPage({
       <PageHeader title="Requests" description="All business requests and their workflow progress." />
 
       <form method="get" className="mb-4 flex flex-wrap items-end gap-2">
-        <div className="w-full sm:w-64">
-          <Input name="q" placeholder="Search number, requester, employee…" defaultValue={params.q ?? ""} aria-label="Search requests" />
-        </div>
+        <LiveSearch placeholder="Search number, requester, employee" className="w-full sm:w-64" />
+        <input type="hidden" name="q" value={params.q ?? ""} />
         <Select name="status" defaultValue={params.status ?? ""} className="w-full sm:w-52" aria-label="Filter by status">
           <option value="">All statuses</option>
           {REQUEST_STATUSES.map((status) => (

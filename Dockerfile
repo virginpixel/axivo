@@ -25,10 +25,13 @@ FROM node:22-alpine AS web
 WORKDIR /app
 # HOSTNAME=0.0.0.0 is required: Docker sets HOSTNAME to the container id and
 # the Next.js standalone server would otherwise bind only to that interface.
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000 STORAGE_PATH=/var/lib/axivo/storage
 RUN addgroup -S axivo && adduser -S axivo -G axivo
 COPY --from=builder --chown=axivo:axivo /app/.next/standalone ./
 COPY --from=builder --chown=axivo:axivo /app/.next/static ./.next/static
+# Pre-create the storage path owned by axivo so the named volume Docker
+# initializes from it inherits that ownership (uploads run as the axivo user).
+RUN mkdir -p /var/lib/axivo/storage && chown -R axivo:axivo /var/lib/axivo
 USER axivo
 EXPOSE 3000
 CMD ["node", "server.js"]
@@ -38,12 +41,12 @@ CMD ["node", "server.js"]
 # -----------------------------------------------------------------------------
 FROM node:22-alpine AS worker
 WORKDIR /app
-ENV NODE_ENV=production
+ENV NODE_ENV=production STORAGE_PATH=/var/lib/axivo/storage
 RUN addgroup -S axivo && adduser -S axivo -G axivo
 COPY --from=deps --chown=axivo:axivo /app/node_modules ./node_modules
 COPY --chown=axivo:axivo package.json tsconfig.json ./
 COPY --chown=axivo:axivo prisma ./prisma
 COPY --chown=axivo:axivo src ./src
-RUN npx prisma generate
+RUN npx prisma generate && mkdir -p /var/lib/axivo/storage && chown -R axivo:axivo /var/lib/axivo
 USER axivo
 CMD ["npx", "tsx", "src/workers/index.ts"]

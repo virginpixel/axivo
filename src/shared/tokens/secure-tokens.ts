@@ -121,8 +121,12 @@ export async function revokeTokensForTarget(
   return result.count;
 }
 
-/** Build the absolute action URL embedded in emails. */
-export function tokenActionUrl(path: string, token: string): string {
-  const base = env().APP_URL.replace(/\/+$/, "");
+/**
+ * Build the absolute action URL embedded in emails. Uses the Public base URL
+ * from Settings when configured, falling back to the APP_URL env var.
+ */
+export async function tokenActionUrl(path: string, token: string): Promise<string> {
+  const { publicBaseUrl } = await import("@/shared/settings/runtime");
+  const base = await publicBaseUrl();
   return `${base}${path}?token=${encodeURIComponent(token)}`;
 }

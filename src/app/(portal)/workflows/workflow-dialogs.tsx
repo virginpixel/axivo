@@ -105,7 +105,7 @@ export function WorkflowDialog({
       () => (workflow ? updateWorkflowAction(workflow.id, payload) : createWorkflowAction(payload)),
       {
         successMessage: workflow
-          ? "Workflow updated — a new version was created."
+          ? "Workflow updated. A new version was created."
           : "Workflow created.",
         onSuccess: () => setOpen(false),
       },

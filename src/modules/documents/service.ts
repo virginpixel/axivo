@@ -131,12 +131,41 @@ export interface CreateGeneratedPdfInput {
  * (Doc 12 Ch6). Regeneration through an approved business process creates a
  * new version; historical versions remain.
  */
+/** Read the configured generated-document logos from storage, if any. */
+async function loadGeneratedLogos(): Promise<{ left?: Buffer; center?: Buffer; right?: Buffer } | null> {
+  try {
+    const { getSetting, SETTING_KEYS } = await import("@/shared/settings/settings");
+    const config = await getSetting<Record<string, { storageKey: string } | null>>(SETTING_KEYS.GENERATED_LOGOS);
+    const positions = ["left", "center", "right"] as const;
+    const result: { left?: Buffer; center?: Buffer; right?: Buffer } = {};
+    let any = false;
+    for (const position of positions) {
+      const key = config[position]?.storageKey;
+      if (!key) continue;
+      try {
+        result[position] = await storage.read(key);
+        any = true;
+      } catch {
+        /* ignore missing file */
+      }
+    }
+    return any ? result : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function createGeneratedPdf(
   context: AuditContext,
   input: CreateGeneratedPdfInput,
   client: DbClient = db,
 ): Promise<Document> {
-  const pdf = await renderPdf(input.definition);
+  // Stamp the configured generated-document logos (left/center/right) onto the PDF header.
+  const logos = await loadGeneratedLogos();
+  const definition = logos
+    ? { ...input.definition, branding: { ...input.definition.branding, logos } }
+    : input.definition;
+  const pdf = await renderPdf(definition);
   const stored = await storage.save(pdf, "pdf", "generated");
 
   const run = async (tx: DbClient): Promise<Document> => {

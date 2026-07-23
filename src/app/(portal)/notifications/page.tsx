@@ -1,5 +1,6 @@
 import { requirePermission } from "@/shared/auth/guard";
 import { db } from "@/shared/db";
+import { LiveSearch } from "@/shared/ui/live-search";
 import { PageHeader, StatCard, Pagination } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge } from "@/shared/ui/badge";
@@ -80,7 +81,8 @@ export default async function NotificationsPage({
       </div>
 
       <form method="get" className="mb-4 flex flex-wrap items-end gap-2">
-        <Input name="q" defaultValue={q} placeholder="Search subject, event, recipient…" className="w-full sm:w-72" aria-label="Search notifications" />
+        <LiveSearch placeholder="Search subject, event, recipient" className="w-full sm:w-72" />
+        <input type="hidden" name="q" value={q} />
         <Select name="status" defaultValue={params.status ?? ""} className="w-full sm:w-40" aria-label="Filter by status">
           <option value="">All statuses</option>
           {STATUSES.map((status) => (

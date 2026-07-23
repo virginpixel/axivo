@@ -54,9 +54,9 @@ export default async function HandoverActionPage({
               {handover.assets.map((entry) => (
                 <TR key={entry.id}>
                   <TD className="font-medium">{entry.assetAssignment.asset.assetTag}</TD>
-                  <TD>{entry.assetAssignment.asset.serialNumber ?? "—"}</TD>
-                  <TD>{entry.assetAssignment.asset.manufacturer ?? "—"}</TD>
-                  <TD>{entry.assetAssignment.asset.model ?? "—"}</TD>
+                  <TD>{entry.assetAssignment.asset.serialNumber ?? "None"}</TD>
+                  <TD>{entry.assetAssignment.asset.manufacturer ?? "None"}</TD>
+                  <TD>{entry.assetAssignment.asset.model ?? "None"}</TD>
                   <TD>{formatDate(entry.assetAssignment.assignedAt)}</TD>
                 </TR>
               ))}

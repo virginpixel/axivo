@@ -97,8 +97,8 @@ describe("end-to-end request lifecycle", () => {
 
     // --- Application (Doc 08) ---
     const application = await appService.createApplication(actor, {
-      companyId: company.id, name: "Email System", description: undefined, category: undefined,
-      loginUrl: undefined, icon: undefined, allowMultipleAssignments: false, requiresLicense: false,
+      companyId: company.id, name: "Email System", description: undefined,
+      allowMultipleAssignments: false, requiresLicense: false, isShared: false,
     });
 
     // --- Workflow: HOD approval → IT implementation (Doc 13) ---
@@ -124,7 +124,7 @@ describe("end-to-end request lifecycle", () => {
       name: "IT Access Request",
       description: undefined,
       confirmationMessage: "Thank you!",
-      allowedAssetCategoryIds: [],
+      allowedAssetCategoryIds: [], allowsMixedItems: false,
       fields: [
         { fieldKey: "justification", label: "Justification", fieldType: "TEXT", isRequired: true, placeholder: undefined, helpText: undefined, defaultValue: undefined, options: undefined, validation: undefined, visibilityRules: undefined },
       ],
@@ -143,15 +143,17 @@ describe("end-to-end request lifecycle", () => {
         requesterName: "Requester Person",
         requesterEmail: "requester@test.local",
         requesterEmployeeId: "E-900",
+        requesterCompanyId: company.id,
         requesterDepartmentId: department.id,
-        requesterPositionId: position.id,
+        requesterPositionTitle: position.name,
         requestedForName: "New Employee",
         requestedForEmail: "employee@test.local",
         requestedForEmployeeId: "E-200",
+        requestedForCompanyId: company.id,
         requestedForDepartmentId: department.id,
-        requestedForPositionId: position.id,
+        requestedForPositionTitle: position.name,
         fieldValues: { justification: "New hire" },
-        items: [{ itemType: "APPLICATION", applicationId: application.id, applicationRoleId: undefined, assetCategoryId: undefined, description: undefined }],
+        items: [{ itemType: "APPLICATION", applicationId: application.id, applicationRoleId: undefined, assetCategoryId: undefined, description: undefined, fieldValues: {} }],
         website: "",
       },
     );
@@ -256,6 +258,7 @@ describe("end-to-end request lifecycle", () => {
     // Build a second request with two items via direct service calls.
     const requestsService = await import("@/modules/requests/service");
     const form = await db.form.findFirstOrThrow({ where: { status: "PUBLISHED" } });
+    const company = await db.company.findFirstOrThrow({ where: { id: form.companyId } });
     const application = await db.application.findFirstOrThrow();
     const hod = await db.person.findFirstOrThrow({ where: { employeeId: "E-100" } });
 
@@ -268,17 +271,19 @@ describe("end-to-end request lifecycle", () => {
         requesterName: "Requester",
         requesterEmail: "requester2@test.local",
         requesterEmployeeId: "E-901",
+        requesterCompanyId: company.id,
         requesterDepartmentId: department.id,
-        requesterPositionId: position.id,
+        requesterPositionTitle: position.name,
         requestedForName: "New Employee",
         requestedForEmail: "employee@test.local",
         requestedForEmployeeId: "E-200",
+        requestedForCompanyId: company.id,
         requestedForDepartmentId: department.id,
-        requestedForPositionId: position.id,
+        requestedForPositionTitle: position.name,
         fieldValues: { justification: "Two items" },
         items: [
-          { itemType: "APPLICATION", applicationId: application.id, applicationRoleId: undefined, assetCategoryId: undefined, description: undefined },
-          { itemType: "GENERAL", applicationId: undefined, applicationRoleId: undefined, assetCategoryId: undefined, description: "Other request" },
+          { itemType: "APPLICATION", applicationId: application.id, applicationRoleId: undefined, assetCategoryId: undefined, description: undefined, fieldValues: {} },
+          { itemType: "GENERAL", applicationId: undefined, applicationRoleId: undefined, assetCategoryId: undefined, description: "Other request", fieldValues: {} },
         ],
         website: "",
       },
@@ -353,7 +358,7 @@ describe("end-to-end request lifecycle", () => {
     const [personA, personB] = await db.person.findMany({ where: { companyId: company.id }, take: 2 });
 
     const category = await assetsService.createAssetCategory(actor, {
-      companyId: company.id, name: "Laptop", description: undefined,
+      name: "Laptop", description: undefined,
       requireHandoverAcceptance: false, requireClearanceRecovery: true,
     });
     const asset = await assetsService.createAsset(actor, {

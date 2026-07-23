@@ -1,12 +1,13 @@
 import { requirePermission } from "@/shared/auth/guard";
 import { db } from "@/shared/db";
+import { LiveSearch } from "@/shared/ui/live-search";
 import { PageHeader, Pagination } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { Badge, StatusBadge } from "@/shared/ui/badge";
 import { Input, Select } from "@/shared/ui/input";
 import { formatDateTime } from "@/shared/utils";
 import { UploadDocumentDialog, NewVersionDialog } from "./document-dialogs";
-import { Download } from "lucide-react";
+import { Download, Eye } from "lucide-react";
 import type { Prisma } from "@prisma/client";
 
 export const metadata = { title: "Documents" };
@@ -34,7 +35,7 @@ export default async function DocumentsPage({
     ...(q ? { name: { contains: q, mode: "insensitive" } } : {}),
   };
 
-  const [documents, total, categories, companies] = await Promise.all([
+  const [documents, total, categories, companies, linkableAssets] = await Promise.all([
     db.document.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -57,6 +58,13 @@ export default async function DocumentsPage({
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
+    // Offered on upload so one form can be linked to every asset it covers.
+    db.asset.findMany({
+      where: { deletedAt: null, ...companyScope },
+      orderBy: { name: "asc" },
+      take: 500,
+      select: { id: true, name: true, assetTag: true, company: { select: { name: true } } },
+    }),
   ]);
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
@@ -70,13 +78,20 @@ export default async function DocumentsPage({
             <UploadDocumentDialog
               companies={companies}
               categories={categories.map((category) => ({ id: category.id, name: category.name, companyId: category.companyId }))}
+              assets={linkableAssets.map((asset) => ({
+                id: asset.id,
+                name: asset.name,
+                assetTag: asset.assetTag,
+                companyName: asset.company.name,
+              }))}
             />
           ) : undefined
         }
       />
 
       <form method="get" className="mb-4 flex flex-wrap items-end gap-2">
-        <Input name="q" defaultValue={q} placeholder="Search documents…" className="w-full sm:w-64" aria-label="Search documents" />
+        <LiveSearch placeholder="Search documents" className="w-full sm:w-64" />
+        <input type="hidden" name="q" value={q} />
         <Select name="category" defaultValue={params.category ?? ""} className="w-full sm:w-48" aria-label="Filter by category">
           <option value="">All categories</option>
           {categories.map((category) => (
@@ -122,7 +137,7 @@ export default async function DocumentsPage({
                         </p>
                       ) : null}
                     </TD>
-                    <TD>{document.category?.name ?? "—"}</TD>
+                    <TD>{document.category?.name ?? "None"}</TD>
                     <TD>{document.company.name}</TD>
                     <TD>
                       <Badge variant={document.isGenerated ? "primary" : "default"}>
@@ -134,6 +149,18 @@ export default async function DocumentsPage({
                     <TD className="whitespace-nowrap text-xs">{formatDateTime(document.createdAt)}</TD>
                     <TD className="text-right">
                       <div className="flex justify-end gap-1">
+                        {/* Viewable types open in the browser; the route sets
+                            Content-Disposition inline for ?inline=1. */}
+                        <a
+                          href={`/api/documents/${document.id}/download?inline=1`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent"
+                          aria-label={`View ${document.name}`}
+                          title="View in browser"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </a>
                         <a
                           href={`/api/documents/${document.id}/download`}
                           className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent"

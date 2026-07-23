@@ -51,7 +51,7 @@ export default async function LicenseDetailPage({ params }: { params: Promise<{ 
         title={license.name}
         breadcrumbs={[{ label: "Licenses", href: "/licenses" }, { label: license.name }]}
         description={[
-          license.application?.name ?? "Standalone license",
+          license.application?.name ?? undefined,
           license.company.name,
           license.licenseType.toLowerCase(),
           license.vendor ?? undefined,
@@ -98,7 +98,7 @@ export default async function LicenseDetailPage({ params }: { params: Promise<{ 
                     <TR key={assignment.id}>
                       <TD className="font-medium">{fullName(assignment.person)}</TD>
                       <TD>{formatDate(assignment.assignedAt)}</TD>
-                      <TD>{assignment.removedAt ? formatDate(assignment.removedAt) : "—"}</TD>
+                      <TD>{assignment.removedAt ? formatDate(assignment.removedAt) : "None"}</TD>
                       <TD><StatusBadge status={assignment.status} /></TD>
                       {canAssign ? (
                         <TD className="text-right">
@@ -129,10 +129,10 @@ export default async function LicenseDetailPage({ params }: { params: Promise<{ 
                       <TD>{purchase.purchaseType.replace(/_/g, " ").toLowerCase()}</TD>
                       <TD>{purchase.quantity}</TD>
                       <TD>{formatDate(purchase.purchaseDate)}</TD>
-                      <TD>{purchase.startDate ? formatDate(purchase.startDate) : "—"}</TD>
-                      <TD>{purchase.expiryDate ? formatDate(purchase.expiryDate) : "—"}</TD>
-                      <TD>{purchase.price ? `${Number(purchase.price).toLocaleString()} ${purchase.currency ?? ""}` : "—"}</TD>
-                      <TD>{purchase.supplier ?? "—"}</TD>
+                      <TD>{purchase.startDate ? formatDate(purchase.startDate) : "None"}</TD>
+                      <TD>{purchase.expiryDate ? formatDate(purchase.expiryDate) : "None"}</TD>
+                      <TD>{purchase.price ? `${Number(purchase.price).toLocaleString()} ${purchase.currency ?? ""}` : "None"}</TD>
+                      <TD>{purchase.supplier ?? "None"}</TD>
                     </TR>
                   ))}
                 </TBody>

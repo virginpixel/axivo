@@ -16,6 +16,9 @@ const uploadMetaSchema = z
     categoryName: z.string().trim().max(100).optional(),
     linkEntityType: z.string().trim().max(50).optional(),
     linkEntityId: uuidSchema.optional(),
+    // A single form (a signed discard form, for instance) often covers several
+    // assets, so an upload may be linked to a whole batch at once.
+    linkAssetIds: z.array(uuidSchema).default([]),
     notes: z.string().trim().max(2000).optional(),
   })
   .strict();
@@ -33,6 +36,7 @@ export async function uploadDocumentAction(formData: FormData): Promise<ActionRe
       categoryName: formData.get("categoryName") || undefined,
       linkEntityType: formData.get("linkEntityType") || undefined,
       linkEntityId: formData.get("linkEntityId") || undefined,
+      linkAssetIds: formData.getAll("linkAssetIds").filter((value) => typeof value === "string" && value),
       notes: formData.get("notes") || undefined,
     });
     const content = Buffer.from(await file.arrayBuffer());
@@ -43,12 +47,15 @@ export async function uploadDocumentAction(formData: FormData): Promise<ActionRe
       fileName: file.name,
       content,
       notes: meta.notes,
-      links:
-        meta.linkEntityType && meta.linkEntityId
+      links: [
+        ...(meta.linkEntityType && meta.linkEntityId
           ? [{ entityType: meta.linkEntityType, entityId: meta.linkEntityId }]
-          : [],
+          : []),
+        ...meta.linkAssetIds.map((assetId) => ({ entityType: "asset", entityId: assetId })),
+      ],
     });
     revalidatePath("/documents");
+    revalidatePath("/assets", "layout");
     return ok({ id: document.id });
   } catch (error) {
     return toActionError(error);

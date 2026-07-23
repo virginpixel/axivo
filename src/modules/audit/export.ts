@@ -54,7 +54,7 @@ export async function buildAuditXlsx(events: AuditEvent[], meta: AuditExportMeta
   workbook.creator = "Axivo";
   workbook.created = meta.exportedAt;
   const sheet = workbook.addWorksheet("Audit Log");
-  sheet.addRow([`Axivo audit export — by ${meta.exportedBy} at ${meta.exportedAt.toISOString()}`]);
+  sheet.addRow([`Axivo audit export by ${meta.exportedBy} at ${meta.exportedAt.toISOString()}`]);
   sheet.addRow([`Filters: ${JSON.stringify(meta.filters)}`]);
   sheet.addRow([]);
   const headerRow = sheet.addRow(HEADERS);

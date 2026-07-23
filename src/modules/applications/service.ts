@@ -12,7 +12,7 @@ import type {
 /**
  * Applications module business logic (SDS Doc 08).
  * Application catalogue, role templates, custom credential fields and
- * assignment lifecycle. Passwords are never stored here — credential delivery
+ * assignment lifecycle. Passwords are never stored here - credential delivery
  * handles temporary secrets separately.
  */
 
@@ -37,7 +37,7 @@ export async function createApplication(context: AuditContext, input: Applicatio
   }
   return db.$transaction(async (tx) => {
     const application = await tx.application.create({
-      data: { ...input, createdById: context.actorUserId ?? null },
+      data: { ...input, workflowId: input.workflowId ?? null, createdById: context.actorUserId ?? null },
     });
     await recordAudit(
       { ...context, companyId: input.companyId },
@@ -91,7 +91,7 @@ export async function updateApplication(context: AuditContext, id: string, input
         fieldChanges: diffRecords(
           existing as unknown as Record<string, unknown>,
           application as unknown as Record<string, unknown>,
-          ["name", "description", "category", "loginUrl", "allowMultipleAssignments", "requiresLicense"],
+          ["name", "description", "allowMultipleAssignments", "requiresLicense", "isShared"],
         ),
       },
       tx,
@@ -317,7 +317,9 @@ export async function createAssignment(
   if (!person.isActive) throw new BusinessRuleError("Only active employees may receive new assignments.");
   if (!application) throw new NotFoundError("Application not found.");
   if (!application.isActive) throw new BusinessRuleError("Disabled applications cannot be assigned.");
-  if (person.companyId !== application.companyId) {
+  // Shared applications (e.g. a group-wide system) may be assigned to anyone;
+  // company-scoped applications must match the employee's company.
+  if (!application.isShared && person.companyId !== application.companyId) {
     throw new BusinessRuleError("The employee and application must belong to the same company.");
   }
   if (input.applicationRoleId) {

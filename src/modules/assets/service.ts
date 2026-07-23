@@ -1,9 +1,11 @@
 import { db, type DbClient } from "@/shared/db";
+import { formatDateTimeWithZone } from "@/shared/utils";
 import { recordAudit, diffRecords, type AuditContext } from "@/shared/audit/audit";
 import { BusinessRuleError, NotFoundError, ValidationError } from "@/shared/errors";
 import { createGeneratedPdf } from "@/modules/documents/service";
 import { queueNotification } from "@/modules/notifications/service";
 import { issueToken, tokenActionUrl } from "@/shared/tokens/secure-tokens";
+import { validateCustomFieldValue, type CustomFieldFormat } from "@/modules/catalogs/format";
 import type { AssetStatus } from "@prisma/client";
 import type {
   AssetCategoryInput,
@@ -11,6 +13,7 @@ import type {
   AssetAssignmentInput,
   MaintenanceInput,
   DisposalInput,
+  AssetTransferInput,
   ClearanceVerifyInput,
 } from "./validators";
 
@@ -31,20 +34,19 @@ const MODULE = "assets";
 export async function createAssetCategory(context: AuditContext, input: AssetCategoryInput) {
   const duplicate = await db.assetCategory.findFirst({
     where: {
-      companyId: input.companyId,
       name: { equals: input.name, mode: "insensitive" },
       deletedAt: null,
     },
   });
   if (duplicate) {
-    throw new ValidationError(undefined, { name: "A category with this name already exists in this company." });
+    throw new ValidationError(undefined, { name: "A category with this name already exists." });
   }
   return db.$transaction(async (tx) => {
     const category = await tx.assetCategory.create({
       data: { ...input, createdById: context.actorUserId ?? null },
     });
     await recordAudit(
-      { ...context, companyId: input.companyId },
+      context,
       {
         module: MODULE,
         eventType: "category.created",
@@ -62,19 +64,15 @@ export async function createAssetCategory(context: AuditContext, input: AssetCat
 export async function updateAssetCategory(context: AuditContext, id: string, input: AssetCategoryInput) {
   const existing = await db.assetCategory.findFirst({ where: { id, deletedAt: null } });
   if (!existing) throw new NotFoundError("Asset category not found.");
-  if (existing.companyId !== input.companyId) {
-    throw new BusinessRuleError("Categories cannot be moved between companies.");
-  }
   const duplicate = await db.assetCategory.findFirst({
     where: {
-      companyId: input.companyId,
       name: { equals: input.name, mode: "insensitive" },
       deletedAt: null,
       id: { not: id },
     },
   });
   if (duplicate) {
-    throw new ValidationError(undefined, { name: "A category with this name already exists in this company." });
+    throw new ValidationError(undefined, { name: "A category with this name already exists." });
   }
   return db.$transaction(async (tx) => {
     const category = await tx.assetCategory.update({
@@ -82,7 +80,7 @@ export async function updateAssetCategory(context: AuditContext, id: string, inp
       data: { ...input, updatedById: context.actorUserId ?? null },
     });
     await recordAudit(
-      { ...context, companyId: input.companyId },
+      context,
       {
         module: MODULE,
         eventType: "category.updated",
@@ -108,7 +106,7 @@ export async function setAssetCategoryActive(context: AuditContext, id: string, 
   return db.$transaction(async (tx) => {
     const category = await tx.assetCategory.update({ where: { id }, data: { isActive } });
     await recordAudit(
-      { ...context, companyId: category.companyId },
+      context,
       {
         module: MODULE,
         eventType: isActive ? "category.enabled" : "category.disabled",
@@ -127,11 +125,42 @@ export async function setAssetCategoryActive(context: AuditContext, id: string, 
 // Assets (Doc 11 Ch2/4)
 // ---------------------------------------------------------------------------
 
+/**
+ * Validate and clean custom field values against the asset model's fieldset.
+ * Enforces required fields and per-field formats; returns only recognised keys.
+ */
+async function normalizeAssetCustomFields(
+  modelName: string | null | undefined,
+  values: Record<string, string> | undefined,
+): Promise<Record<string, string> | undefined> {
+  if (!modelName) return undefined;
+  const model = await db.assetModel.findFirst({
+    where: { name: modelName, deletedAt: null },
+    include: { fieldSet: { include: { fields: { orderBy: { sortOrder: "asc" }, include: { customField: true } } } } },
+  });
+  const fields = model?.fieldSet?.fields ?? [];
+  if (fields.length === 0) return undefined;
+  const clean: Record<string, string> = {};
+  for (const field of fields) {
+    const raw = (values?.[field.customFieldId] ?? "").trim();
+    if (!raw) {
+      if (field.required) {
+        throw new ValidationError(undefined, { [`cf_${field.customFieldId}`]: `${field.customField.name} is required.` });
+      }
+      continue;
+    }
+    const error = validateCustomFieldValue(field.customField.format as CustomFieldFormat, raw);
+    if (error) throw new ValidationError(undefined, { [`cf_${field.customFieldId}`]: error });
+    clean[field.customFieldId] = raw;
+  }
+  return clean;
+}
+
 export async function createAsset(context: AuditContext, input: AssetInput) {
   const category = await db.assetCategory.findFirst({
-    where: { id: input.categoryId, companyId: input.companyId, deletedAt: null },
+    where: { id: input.categoryId, deletedAt: null },
   });
-  if (!category) throw new BusinessRuleError("Asset category must belong to the same company.");
+  if (!category) throw new BusinessRuleError("Asset category not found.");
   if (!category.isActive) throw new BusinessRuleError("Disabled categories cannot receive new assets.");
   if (input.assetTag) {
     const duplicateTag = await db.asset.findFirst({
@@ -151,9 +180,10 @@ export async function createAsset(context: AuditContext, input: AssetInput) {
     });
     if (!location) throw new BusinessRuleError("The location must belong to the same company.");
   }
+  const customFields = await normalizeAssetCustomFields(input.model, input.customFields);
   return db.$transaction(async (tx) => {
     const asset = await tx.asset.create({
-      data: { ...input, assetTag: input.assetTag ?? null, createdById: context.actorUserId ?? null },
+      data: { ...input, customFields: customFields ?? undefined, assetTag: input.assetTag ?? null, createdById: context.actorUserId ?? null },
     });
     await recordAudit(
       { ...context, companyId: input.companyId },
@@ -190,10 +220,11 @@ export async function updateAsset(context: AuditContext, id: string, input: Asse
       throw new ValidationError(undefined, { assetTag: "This asset tag already exists in this company." });
     }
   }
+  const customFields = await normalizeAssetCustomFields(input.model, input.customFields);
   return db.$transaction(async (tx) => {
     const asset = await tx.asset.update({
       where: { id },
-      data: { ...input, assetTag: input.assetTag ?? null, updatedById: context.actorUserId ?? null },
+      data: { ...input, customFields: customFields ?? undefined, assetTag: input.assetTag ?? null, updatedById: context.actorUserId ?? null },
     });
     await recordAudit(
       { ...context, companyId: input.companyId },
@@ -267,7 +298,7 @@ export async function setAssetStatus(context: AuditContext, id: string, status: 
 export async function assignAsset(
   context: AuditContext,
   input: AssetAssignmentInput,
-  options: { requestItemId?: string; skipHandover?: boolean } = {},
+  options: { requestItemId?: string; skipHandover?: boolean; allowCrossCompany?: boolean } = {},
   client?: DbClient,
 ) {
   const run = async (tx: DbClient) => {
@@ -278,7 +309,7 @@ export async function assignAsset(
     if (!asset) throw new NotFoundError("Asset not found.");
     if (!person) throw new NotFoundError("Employee not found.");
     if (!person.isActive) throw new BusinessRuleError("Only active employees may receive assets.");
-    if (asset.companyId !== person.companyId) {
+    if (asset.companyId !== person.companyId && !options.allowCrossCompany) {
       throw new BusinessRuleError("Assets cannot be assigned across companies unless explicitly transferred.");
     }
     if (asset.status !== "AVAILABLE" && asset.status !== "RESERVED") {
@@ -320,9 +351,14 @@ export async function assignAsset(
   if (client) return run(client);
   const result = await db.$transaction(async (tx) => run(tx));
   // Handover generation happens after the assignment transaction commits so a
-  // PDF/email failure never rolls back the assignment (Doc 02 Ch13).
+  // PDF/email failure never rolls back the assignment (Doc 02 Ch13). A failure
+  // here must not surface as an error - the assignment already succeeded.
   if (result.requiresHandover) {
-    await createHandoverForAssignments(context, result.assignment.personId, [result.assignment.id]);
+    try {
+      await createHandoverForAssignments(context, result.assignment.personId, [result.assignment.id]);
+    } catch (error) {
+      console.error("[axivo] Asset assigned but handover generation failed:", error);
+    }
   }
   return result;
 }
@@ -376,6 +412,7 @@ export async function createHandoverForAssignments(
   context: AuditContext,
   personId: string,
   assignmentIds: string[],
+  send = true,
 ) {
   const person = await db.person.findFirst({
     where: { id: personId, deletedAt: null },
@@ -389,6 +426,11 @@ export async function createHandoverForAssignments(
   if (assignments.length === 0) {
     throw new BusinessRuleError("No eligible assignments for handover.");
   }
+  // Active licenses are listed on the handover form for a complete record.
+  const licenseAssignments = await db.licenseAssignment.findMany({
+    where: { personId, status: { in: ["ACTIVE", "PENDING"] }, deletedAt: null },
+    include: { license: { include: { application: true } } },
+  });
 
   const handover = await db.$transaction(async (tx) => {
     const created = await tx.handover.create({
@@ -434,7 +476,7 @@ export async function createHandoverForAssignments(
           fields: [
             { label: "Name", value: `${person.firstName} ${person.lastName}` },
             { label: "Employee ID", value: person.employeeId },
-            { label: "Department", value: person.department?.name ?? "—" },
+            { label: "Department", value: person.department?.name ?? "None" },
             { label: "Email", value: person.email },
           ],
         },
@@ -444,13 +486,28 @@ export async function createHandoverForAssignments(
             headers: ["Asset", "Tag", "Serial Number", "Model", "Assigned"],
             rows: assignments.map((a) => [
               a.asset.name,
-              a.asset.assetTag ?? "—",
-              a.asset.serialNumber ?? "—",
-              a.asset.model ?? "—",
+              a.asset.assetTag ?? "None",
+              a.asset.serialNumber ?? "None",
+              a.asset.model ?? "None",
               a.assignedAt.toISOString().slice(0, 10),
             ]),
           },
         },
+        ...(licenseAssignments.length > 0
+          ? [
+              {
+                heading: "Software Licenses",
+                table: {
+                  headers: ["License", "Application", "Assigned"],
+                  rows: licenseAssignments.map((la) => [
+                    la.license.name,
+                    la.license.application?.name ?? "None",
+                    la.assignedAt.toISOString().slice(0, 10),
+                  ]),
+                },
+              },
+            ]
+          : []),
         {
           heading: "Terms of Responsibility",
           paragraphs: [
@@ -464,32 +521,60 @@ export async function createHandoverForAssignments(
 
   await db.handover.update({ where: { id: handover.id }, data: { documentId: document.id } });
 
-  // Secure acknowledgement email (Doc 05 Ch8).
+  // When generated manually the form is previewed first, then sent explicitly
+  // via sendHandover. Automatic (assignment-triggered) handovers send now.
+  if (send) {
+    await sendHandover(context, handover.id);
+  }
+  return db.handover.findUniqueOrThrow({ where: { id: handover.id } });
+}
+
+/** Send (or resend) the secure acknowledgement email for a generated handover. */
+export async function sendHandover(context: AuditContext, handoverId: string) {
+  const handover = await db.handover.findFirst({
+    where: { id: handoverId },
+    include: { person: true, assets: true },
+  });
+  if (!handover) throw new NotFoundError("Handover not found.");
+  if (handover.status === "ACKNOWLEDGED") {
+    throw new BusinessRuleError("This handover has already been acknowledged.");
+  }
+  const person = handover.person;
   const { token } = await issueToken({
     purpose: "ASSET_HANDOVER",
     email: person.email,
-    personId,
+    personId: person.id,
     targetType: "handover",
     targetId: handover.id,
   });
-  const url = tokenActionUrl("/action/handover", token);
+  const url = await tokenActionUrl("/action/handover", token);
   await queueNotification({
-    companyId: person.companyId,
+    companyId: handover.companyId,
     eventType: "ASSET_HANDOVER",
     templateKey: "asset_handover",
     variables: {
       employeeName: `${person.firstName} ${person.lastName}`,
-      assetCount: String(assignments.length),
+      assetCount: String(handover.assets.length),
       actionUrl: url,
     },
     subject: "Asset handover acknowledgement required",
     body: `Dear ${person.firstName},<br/><br/>Company assets have been assigned to you. Please review and acknowledge receipt using the secure link below.<br/><br/><a href="${url}">Review and acknowledge asset handover</a>`,
-    recipients: [{ email: person.email, name: `${person.firstName} ${person.lastName}`, personId }],
+    recipients: [{ email: person.email, name: `${person.firstName} ${person.lastName}`, personId: person.id }],
     entityType: "handover",
     entityId: handover.id,
-    dedupeKey: `handover:${handover.id}:sent`,
+    dedupeKey: `handover:${handover.id}:sent:${handover.sentAt ? "resend" : "first"}`,
   });
   await db.handover.update({ where: { id: handover.id }, data: { sentAt: new Date() } });
+  await recordAudit(
+    { ...context, companyId: handover.companyId },
+    {
+      module: MODULE,
+      eventType: "handover.sent",
+      action: `Sent handover acknowledgement to ${person.firstName} ${person.lastName}`,
+      targetType: "handover",
+      targetId: handover.id,
+    },
+  );
   return handover;
 }
 
@@ -540,11 +625,14 @@ export async function startClearance(context: AuditContext, personId: string, no
   if (openClearance) {
     throw new BusinessRuleError("A clearance is already in progress for this employee.");
   }
-  // All actively assigned assets are identified automatically (Doc 11 Ch7).
-  const activeAssignments = await db.assetAssignment.findMany({
-    where: { personId, status: "ASSIGNED", deletedAt: null },
-    include: { asset: true },
-  });
+  // Every open assignment is identified automatically: assets, application
+  // access and license seats (Doc 11 Ch7). Each becomes a clearance item.
+  const [assetAssignments, appAssignments, licenseAssignments] = await Promise.all([
+    db.assetAssignment.findMany({ where: { personId, status: "ASSIGNED", deletedAt: null }, include: { asset: true } }),
+    db.applicationAssignment.findMany({ where: { personId, status: "ACTIVE", deletedAt: null }, include: { application: true } }),
+    db.licenseAssignment.findMany({ where: { personId, status: "ACTIVE", deletedAt: null }, include: { license: true } }),
+  ]);
+  const totalItems = assetAssignments.length + appAssignments.length + licenseAssignments.length;
 
   return db.$transaction(async (tx) => {
     const clearance = await tx.clearance.create({
@@ -556,9 +644,11 @@ export async function startClearance(context: AuditContext, personId: string, no
         itRepresentativeId: context.actorUserId ?? null,
         createdById: context.actorUserId ?? null,
         items: {
-          create: activeAssignments.map((assignment) => ({
-            assetAssignmentId: assignment.id,
-          })),
+          create: [
+            ...assetAssignments.map((assignment) => ({ kind: "ASSET" as const, assetAssignmentId: assignment.id })),
+            ...appAssignments.map((assignment) => ({ kind: "APPLICATION" as const, applicationAssignmentId: assignment.id })),
+            ...licenseAssignments.map((assignment) => ({ kind: "LICENSE" as const, licenseAssignmentId: assignment.id })),
+          ],
         },
       },
     });
@@ -567,7 +657,7 @@ export async function startClearance(context: AuditContext, personId: string, no
       {
         module: MODULE,
         eventType: "clearance.started",
-        action: `Started clearance for ${person.firstName} ${person.lastName} (${activeAssignments.length} asset(s))`,
+        action: `Started clearance for ${person.firstName} ${person.lastName} (${totalItems} item(s))`,
         targetType: "clearance",
         targetId: clearance.id,
       },
@@ -577,18 +667,63 @@ export async function startClearance(context: AuditContext, personId: string, no
   });
 }
 
+/** Cancel an in-progress clearance without changing any assignments (Doc 11 Ch7). */
+export async function cancelClearance(context: AuditContext, clearanceId: string) {
+  const clearance = await db.clearance.findFirst({ where: { id: clearanceId }, include: { person: true } });
+  if (!clearance) throw new NotFoundError("Clearance not found.");
+  if (clearance.status !== "IN_PROGRESS") throw new BusinessRuleError("This clearance is no longer in progress.");
+  await db.clearance.update({ where: { id: clearanceId }, data: { status: "CANCELLED" } });
+  await recordAudit(
+    { ...context, companyId: clearance.companyId },
+    {
+      module: MODULE,
+      eventType: "clearance.cancelled",
+      action: `Cancelled clearance for ${clearance.person.firstName} ${clearance.person.lastName}`,
+      targetType: "clearance",
+      targetId: clearanceId,
+    },
+  );
+  return clearance.id;
+}
+
+/** Remove a single item from an in-progress clearance (e.g. handled separately). */
+export async function removeClearanceItem(context: AuditContext, clearanceItemId: string) {
+  const item = await db.clearanceItem.findFirst({ where: { id: clearanceItemId }, include: { clearance: true } });
+  if (!item) throw new NotFoundError("Clearance item not found.");
+  if (item.clearance.status !== "IN_PROGRESS") throw new BusinessRuleError("This clearance is no longer in progress.");
+  await db.clearanceItem.delete({ where: { id: clearanceItemId } });
+  await recordAudit(
+    { ...context, companyId: item.clearance.companyId },
+    {
+      module: MODULE,
+      eventType: "clearance.item_removed",
+      action: `Removed an item from clearance`,
+      targetType: "clearance",
+      targetId: item.clearanceId,
+    },
+  );
+  return item.clearanceId;
+}
+
 export async function verifyClearanceItem(context: AuditContext, input: ClearanceVerifyInput) {
   const item = await db.clearanceItem.findFirst({
     where: { id: input.clearanceItemId },
     include: {
       clearance: true,
       assetAssignment: { include: { asset: true } },
+      applicationAssignment: { include: { application: true } },
+      licenseAssignment: { include: { license: true } },
     },
   });
   if (!item) throw new NotFoundError("Clearance item not found.");
   if (item.clearance.status !== "IN_PROGRESS") {
     throw new BusinessRuleError("This clearance is no longer in progress.");
   }
+  const label =
+    item.assetAssignment?.asset.name ??
+    item.applicationAssignment?.application.name ??
+    item.licenseAssignment?.license.name ??
+    "item";
   return db.$transaction(async (tx) => {
     await tx.clearanceItem.update({
       where: { id: item.id },
@@ -603,11 +738,11 @@ export async function verifyClearanceItem(context: AuditContext, input: Clearanc
       { ...context, companyId: item.clearance.companyId },
       {
         module: MODULE,
-        eventType: "clearance.asset_verified",
-        action: `Verified asset "${item.assetAssignment.asset.name}" as ${input.status}`,
+        eventType: "clearance.item_verified",
+        action: `Verified ${item.kind.toLowerCase()} "${label}" as ${input.status}`,
         targetType: "clearance_item",
         targetId: item.id,
-        targetLabel: item.assetAssignment.asset.name,
+        targetLabel: label,
         details: input.comments ? { comments: input.comments } : undefined,
       },
       tx,
@@ -615,12 +750,22 @@ export async function verifyClearanceItem(context: AuditContext, input: Clearanc
   });
 }
 
-export async function completeClearance(context: AuditContext, clearanceId: string) {
+export async function completeClearance(
+  context: AuditContext,
+  clearanceId: string,
+  finalStatus: "RESIGNED" | "TERMINATED" = "RESIGNED",
+) {
   const clearance = await db.clearance.findFirst({
     where: { id: clearanceId },
     include: {
       person: { include: { company: true, department: true } },
-      items: { include: { assetAssignment: { include: { asset: true } } } },
+      items: {
+        include: {
+          assetAssignment: { include: { asset: true } },
+          applicationAssignment: { include: { application: true } },
+          licenseAssignment: { include: { license: true } },
+        },
+      },
     },
   });
   if (!clearance) throw new NotFoundError("Clearance not found.");
@@ -630,7 +775,7 @@ export async function completeClearance(context: AuditContext, clearanceId: stri
   const unverified = clearance.items.filter((item) => item.status === "PENDING");
   if (unverified.length > 0) {
     throw new BusinessRuleError(
-      `${unverified.length} asset(s) have not been verified yet. Verify every asset before completing clearance.`,
+      `${unverified.length} item(s) have not been verified yet. Verify every item before completing clearance.`,
     );
   }
 
@@ -641,24 +786,39 @@ export async function completeClearance(context: AuditContext, clearanceId: stri
       data: { status: "COMPLETED", completedAt: now, completedById: context.actorUserId ?? null },
     });
     for (const item of clearance.items) {
-      // Received assets are returned to the pool; missing/damaged get an
-      // operational status. Historical assignments remain unchanged.
-      await tx.assetAssignment.update({
-        where: { id: item.assetAssignmentId },
-        data: { status: "RETURNED", returnedAt: now, returnedById: context.actorUserId ?? null },
-      });
-      const newStatus: AssetStatus = item.status === "RECEIVED" ? "AVAILABLE" : "OUT_OF_ORDER";
-      await tx.asset.update({
-        where: { id: item.assetAssignment.assetId },
-        data: { status: newStatus },
-      });
+      if (item.kind === "ASSET" && item.assetAssignment) {
+        // Received assets return to the pool; missing/damaged go out of order.
+        await tx.assetAssignment.update({
+          where: { id: item.assetAssignment.id },
+          data: { status: "RETURNED", returnedAt: now, returnedById: context.actorUserId ?? null },
+        });
+        const newStatus: AssetStatus = item.status === "RECEIVED" ? "AVAILABLE" : "OUT_OF_ORDER";
+        await tx.asset.update({ where: { id: item.assetAssignment.assetId }, data: { status: newStatus } });
+      } else if (item.kind === "APPLICATION" && item.applicationAssignment) {
+        // Revoke application access as part of clearance.
+        await tx.applicationAssignment.update({
+          where: { id: item.applicationAssignment.id },
+          data: { status: "REMOVED", removedAt: now, removalReason: "Employee clearance" },
+        });
+      } else if (item.kind === "LICENSE" && item.licenseAssignment) {
+        // Return the license seat to the pool.
+        await tx.licenseAssignment.update({
+          where: { id: item.licenseAssignment.id },
+          data: { status: "REMOVED", removedAt: now, removedById: context.actorUserId ?? null },
+        });
+      }
     }
+    // The departing employee's status is set to the chosen outcome.
+    await tx.person.update({
+      where: { id: clearance.personId },
+      data: { employmentStatus: finalStatus, isActive: false },
+    });
     await recordAudit(
       { ...context, companyId: clearance.companyId },
       {
         module: MODULE,
         eventType: "clearance.completed",
-        action: `Completed clearance for ${clearance.person.firstName} ${clearance.person.lastName}`,
+        action: `Completed clearance for ${clearance.person.firstName} ${clearance.person.lastName} (${finalStatus.toLowerCase()})`,
         targetType: "clearance",
         targetId: clearanceId,
       },
@@ -666,7 +826,9 @@ export async function completeClearance(context: AuditContext, clearanceId: stri
     );
   });
 
-  // Generate the permanent clearance document after commit.
+  // Generate the permanent clearance document after commit. A failure here must
+  // not surface as an error - the clearance is already completed in the database.
+  try {
   const document = await createGeneratedPdf(context, {
     companyId: clearance.companyId,
     name: `Clearance - ${clearance.person.firstName} ${clearance.person.lastName} - ${now.toISOString().slice(0, 10)}`,
@@ -685,25 +847,33 @@ export async function completeClearance(context: AuditContext, clearanceId: stri
           fields: [
             { label: "Name", value: `${clearance.person.firstName} ${clearance.person.lastName}` },
             { label: "Employee ID", value: clearance.person.employeeId },
-            { label: "Department", value: clearance.person.department?.name ?? "—" },
+            { label: "Department", value: clearance.person.department?.name ?? "None" },
           ],
         },
         {
-          heading: "Asset Inventory",
+          heading: "Recovered Items",
           table: {
-            headers: ["Asset", "Tag", "Status", "Comments"],
-            rows: clearance.items.map((item) => [
-              item.assetAssignment.asset.name,
-              item.assetAssignment.asset.assetTag ?? "—",
-              item.status,
-              item.comments ?? "—",
-            ]),
+            headers: ["Type", "Item", "Reference", "Status", "Comments"],
+            rows: clearance.items.map((item) => {
+              const type = item.kind.charAt(0) + item.kind.slice(1).toLowerCase();
+              if (item.kind === "ASSET" && item.assetAssignment) {
+                return [type, item.assetAssignment.asset.name, item.assetAssignment.asset.assetTag ?? "None", item.status, item.comments ?? "None"];
+              }
+              if (item.kind === "APPLICATION" && item.applicationAssignment) {
+                return [type, item.applicationAssignment.application.name, item.applicationAssignment.username ?? "None", item.status, item.comments ?? "None"];
+              }
+              if (item.kind === "LICENSE" && item.licenseAssignment) {
+                return [type, item.licenseAssignment.license.name, "seat", item.status, item.comments ?? "None"];
+              }
+              return [type, "None", "None", item.status, item.comments ?? "None"];
+            }),
           },
         },
         {
           heading: "Completion",
           fields: [
-            { label: "Completed at", value: now.toISOString().replace("T", " ").slice(0, 16) + " UTC" },
+            { label: "Completed at", value: formatDateTimeWithZone(now) },
+            { label: "Outcome", value: finalStatus.charAt(0) + finalStatus.slice(1).toLowerCase() },
             { label: "IT representative", value: context.actorLabel },
           ],
         },
@@ -712,6 +882,9 @@ export async function completeClearance(context: AuditContext, clearanceId: stri
     },
   });
   await db.clearance.update({ where: { id: clearanceId }, data: { documentId: document.id } });
+  } catch (error) {
+    console.error("[axivo] Clearance completed but document generation failed:", error);
+  }
   return clearance.id;
 }
 
@@ -809,60 +982,193 @@ export async function setMaintenanceStatus(
 // Disposal (Doc 11 Ch9)
 // ---------------------------------------------------------------------------
 
-export async function disposeAsset(context: AuditContext, input: DisposalInput) {
-  const asset = await db.asset.findFirst({ where: { id: input.assetId, deletedAt: null } });
-  if (!asset) throw new NotFoundError("Asset not found.");
-  if (asset.status === "ASSIGNED") {
-    throw new BusinessRuleError("Assets cannot be discarded while actively assigned.");
+/**
+ * Discard one or more assets against a single approved discard form (Doc 11
+ * Ch9). One signed form routinely covers a whole batch, so the document is
+ * linked to every asset in the batch and each asset keeps its own disposal
+ * record.
+ */
+export async function discardAssets(context: AuditContext, input: DisposalInput) {
+  const assets = await db.asset.findMany({ where: { id: { in: input.assetIds }, deletedAt: null } });
+  if (assets.length !== input.assetIds.length) throw new NotFoundError("One of the selected assets was not found.");
+  for (const asset of assets) {
+    if (asset.status === "ASSIGNED") {
+      throw new BusinessRuleError(`"${asset.name}" is still assigned. Return it before discarding.`);
+    }
+    if (asset.status === "DISCARDED") {
+      throw new BusinessRuleError(`"${asset.name}" has already been discarded.`);
+    }
   }
-  if (asset.status === "DISCARDED") {
-    throw new BusinessRuleError("This asset has already been discarded.");
-  }
-  // A completed disposal document is required (Doc 11 Ch9).
-  const document = await db.document.findFirst({
-    where: { id: input.documentId, companyId: asset.companyId },
-  });
-  if (!document) {
-    throw new BusinessRuleError("A disposal document belonging to the same company is required.");
-  }
+  // A completed disposal document is required (Doc 11 Ch9). Discard forms live
+  // in the shared document repository so one form can cover several companies.
+  const document = await db.document.findFirst({ where: { id: input.documentId } });
+  if (!document) throw new BusinessRuleError("An approved discard form is required.");
 
   return db.$transaction(async (tx) => {
-    const disposal = await tx.assetDisposal.create({
-      data: {
-        assetId: input.assetId,
-        disposalDate: input.disposalDate,
-        method: input.method,
-        reason: input.reason,
-        disposalValue: input.disposalValue ?? null,
-        currency: input.currency ?? null,
-        documentId: input.documentId,
-        approvedById: context.actorUserId ?? null,
-        notes: input.notes ?? null,
-        createdById: context.actorUserId ?? null,
-      },
-    });
-    await tx.asset.update({ where: { id: input.assetId }, data: { status: "DISCARDED" } });
-    await tx.documentLink.create({
-      data: {
-        documentId: input.documentId,
-        entityType: "asset",
-        entityId: input.assetId,
-        createdById: context.actorUserId ?? null,
-      },
+    for (const asset of assets) {
+      await tx.assetDisposal.create({
+        data: {
+          assetId: asset.id,
+          disposalDate: input.disposalDate,
+          method: input.method,
+          reason: input.reason,
+          disposalValue: input.disposalValue ?? null,
+          currency: input.currency ?? null,
+          documentId: input.documentId,
+          approvedById: context.actorUserId ?? null,
+          notes: input.notes ?? null,
+          createdById: context.actorUserId ?? null,
+        },
+      });
+      await tx.asset.update({ where: { id: asset.id }, data: { status: "DISCARDED" } });
+      const existingLink = await tx.documentLink.findFirst({
+        where: { documentId: input.documentId, entityType: "asset", entityId: asset.id },
+      });
+      if (!existingLink) {
+        await tx.documentLink.create({
+          data: {
+            documentId: input.documentId,
+            entityType: "asset",
+            entityId: asset.id,
+            createdById: context.actorUserId ?? null,
+          },
+        });
+      }
+      await recordAudit(
+        { ...context, companyId: asset.companyId },
+        {
+          module: MODULE,
+          eventType: "asset.discarded",
+          action: `Discarded asset "${asset.name}" (${input.method})`,
+          targetType: "asset",
+          targetId: asset.id,
+          targetLabel: asset.name,
+          details: { reason: input.reason, method: input.method, documentId: input.documentId },
+        },
+        tx,
+      );
+    }
+    return { count: assets.length };
+  });
+}
+
+/**
+ * Permanently remove an asset record. Used for records created in error; real
+ * end-of-life goes through the Discarded status so the disposal history stays.
+ */
+export async function deleteAsset(context: AuditContext, id: string) {
+  const asset = await db.asset.findFirst({ where: { id, deletedAt: null } });
+  if (!asset) throw new NotFoundError("Asset not found.");
+  const activeAssignment = await db.assetAssignment.findFirst({
+    where: { assetId: id, status: { in: ["PENDING", "ASSIGNED"] }, deletedAt: null },
+  });
+  if (activeAssignment) {
+    throw new BusinessRuleError("Return the asset from its current holder before deleting the record.");
+  }
+  return db.$transaction(async (tx) => {
+    await tx.asset.update({
+      where: { id },
+      data: { deletedAt: new Date(), updatedById: context.actorUserId ?? null },
     });
     await recordAudit(
       { ...context, companyId: asset.companyId },
       {
         module: MODULE,
-        eventType: "asset.discarded",
-        action: `Discarded asset "${asset.name}" (${input.method})`,
+        eventType: "asset.deleted",
+        action: `Deleted asset record "${asset.name}"`,
         targetType: "asset",
-        targetId: input.assetId,
+        targetId: id,
         targetLabel: asset.name,
-        details: { reason: input.reason, method: input.method },
       },
       tx,
     );
-    return disposal;
+    return { id };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Transfers
+// ---------------------------------------------------------------------------
+
+/**
+ * Move an asset to another company, location and/or holder in one step, the way
+ * it happens in practice when someone physically carries it somewhere else.
+ * The current assignment is only closed when the caller asks for it: a person in
+ * one company may legitimately keep holding an asset owned by another.
+ */
+export async function transferAsset(context: AuditContext, input: AssetTransferInput) {
+  const asset = await db.asset.findFirst({ where: { id: input.assetId, deletedAt: null } });
+  if (!asset) throw new NotFoundError("Asset not found.");
+  if (asset.status === "DISCARDED") throw new BusinessRuleError("Discarded assets cannot be transferred.");
+
+  const targetCompanyId = input.companyId ?? asset.companyId;
+  if (input.companyId && input.companyId !== asset.companyId) {
+    const company = await db.company.findFirst({ where: { id: input.companyId, deletedAt: null, isActive: true } });
+    if (!company) throw new BusinessRuleError("The destination company is not available.");
+  }
+  if (input.locationId) {
+    const location = await db.location.findFirst({
+      where: { id: input.locationId, deletedAt: null, isActive: true, companyId: targetCompanyId },
+    });
+    if (!location) throw new BusinessRuleError("The destination location must belong to the destination company.");
+  }
+
+  const activeAssignment = await db.assetAssignment.findFirst({
+    where: { assetId: input.assetId, status: { in: ["PENDING", "ASSIGNED"] }, deletedAt: null },
+  });
+  if (input.personId && activeAssignment && !input.returnCurrentAssignment) {
+    throw new BusinessRuleError("Return the current assignment before handing the asset to someone else.");
+  }
+  if (activeAssignment && input.returnCurrentAssignment) {
+    await returnAsset(context, activeAssignment.id, input.notes);
+  }
+
+  const changes: string[] = [];
+  await db.$transaction(async (tx) => {
+    const data: { companyId?: string; locationId?: string | null } = {};
+    if (input.companyId && input.companyId !== asset.companyId) {
+      data.companyId = input.companyId;
+      changes.push("company");
+      // A location belongs to a single company, so a stale one must not survive.
+      data.locationId = input.locationId ?? null;
+    }
+    if (input.locationId && input.locationId !== asset.locationId) {
+      data.locationId = input.locationId;
+      if (!changes.includes("company")) changes.push("location");
+    }
+    if (Object.keys(data).length > 0) {
+      await tx.asset.update({ where: { id: input.assetId }, data: { ...data, updatedById: context.actorUserId ?? null } });
+    }
+    await recordAudit(
+      { ...context, companyId: targetCompanyId },
+      {
+        module: MODULE,
+        eventType: "asset.transferred",
+        action: `Transferred asset "${asset.name}"`,
+        targetType: "asset",
+        targetId: input.assetId,
+        targetLabel: asset.name,
+        details: {
+          fromCompanyId: asset.companyId,
+          toCompanyId: targetCompanyId,
+          toLocationId: input.locationId ?? null,
+          toPersonId: input.personId ?? null,
+          returnedPreviousAssignment: !!(activeAssignment && input.returnCurrentAssignment),
+        },
+      },
+      tx,
+    );
+  });
+
+  if (input.personId) {
+    // Cross-company holding is intentional here: the transfer is the explicit
+    // approval that assignAsset's same-company rule normally asks for.
+    await assignAsset(
+      context,
+      { assetId: input.assetId, personId: input.personId, notes: input.notes },
+      { allowCrossCompany: true },
+    );
+    changes.push("holder");
+  }
+  return { id: input.assetId, changes };
 }

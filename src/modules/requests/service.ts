@@ -1,4 +1,4 @@
-import { db } from "@/shared/db";
+import { db, type DbClient } from "@/shared/db";
 import { recordAudit, type AuditContext } from "@/shared/audit/audit";
 import { BusinessRuleError, NotFoundError, RateLimitedError, ValidationError } from "@/shared/errors";
 import { nextRequestNumber } from "@/shared/counters";
@@ -6,6 +6,7 @@ import { getSetting, SETTING_KEYS } from "@/shared/settings/settings";
 import { matchPersonByEmail } from "@/modules/people/service";
 import { getPublicForm } from "@/modules/forms/service";
 import { validateSubmissionValues } from "@/modules/forms/submission-validation";
+import { listActiveRequestFieldsFor } from "@/modules/request-fields/service";
 import * as engine from "@/modules/workflow/engine";
 import * as applications from "@/modules/applications/service";
 import * as licenses from "@/modules/licenses/service";
@@ -69,11 +70,28 @@ export async function submitPublicRequest(
     throw new ValidationError(undefined, fieldErrors);
   }
 
-  // Validate items against the form's company catalogue.
-  for (const item of input.items) {
+  // Validate items against the form's company catalogue, then validate each
+  // item's answers against the request fields defined on the application or
+  // asset category it targets (Doc 08/11). Errors are keyed per item so the
+  // form can show them against the right row.
+  const itemPayloads: {
+    itemData: Record<string, unknown> | null;
+    workflowId: string;
+  }[] = [];
+  const itemFieldErrors: Record<string, string> = {};
+
+  for (const [index, item] of input.items.entries()) {
+    let workflowId = form.workflowId;
+    let targetFields: Awaited<ReturnType<typeof listActiveRequestFieldsFor>> = [];
+
     if (item.itemType === "APPLICATION") {
       const application = await db.application.findFirst({
-        where: { id: item.applicationId, companyId: form.companyId, isActive: true, deletedAt: null },
+        where: {
+          id: item.applicationId,
+          isActive: true,
+          deletedAt: null,
+          OR: [{ companyId: form.companyId }, { isShared: true }],
+        },
       });
       if (!application) throw new BusinessRuleError("A selected application is not available.");
       if (item.applicationRoleId) {
@@ -81,32 +99,70 @@ export async function submitPublicRequest(
           where: { id: item.applicationRoleId, applicationId: item.applicationId, isActive: true, deletedAt: null },
         });
         if (!role) throw new BusinessRuleError("A selected application role is not available.");
+      } else {
+        // Only applications with no roles defined may be requested without one.
+        const roleCount = await db.applicationRole.count({
+          where: { applicationId: application.id, isActive: true, deletedAt: null },
+        });
+        if (roleCount > 0) {
+          throw new BusinessRuleError(`Select an access role for "${application.name}".`);
+        }
       }
+      // The application's own approval chain wins over the form's, so a mixed
+      // request routes each item to the people who actually own it.
+      if (application.workflowId) workflowId = application.workflowId;
+      targetFields = await listActiveRequestFieldsFor([application.id], []);
     }
+
     if (item.itemType === "ASSET") {
       const category = await db.assetCategory.findFirst({
-        where: { id: item.assetCategoryId, companyId: form.companyId, isActive: true, deletedAt: null },
+        where: { id: item.assetCategoryId, isActive: true, deletedAt: null },
       });
       if (!category) throw new BusinessRuleError("A selected asset category is not available.");
+      if (category.workflowId) workflowId = category.workflowId;
+      targetFields = await listActiveRequestFieldsFor([], [category.id]);
     }
+
+    let itemData: Record<string, unknown> | null = null;
+    if (targetFields.length > 0) {
+      const result = validateSubmissionValues(
+        targetFields,
+        (item.fieldValues ?? {}) as Record<string, string | string[]>,
+        {},
+      );
+      for (const [key, message] of Object.entries(result.fieldErrors)) {
+        itemFieldErrors[`item_${index}_${key}`] = message;
+      }
+      itemData = result.values;
+    }
+    itemPayloads.push({ itemData, workflowId });
+  }
+  if (Object.keys(itemFieldErrors).length > 0) {
+    throw new ValidationError(undefined, itemFieldErrors);
   }
 
-  // Departments and positions selected on the form must belong to the form's
-  // company; their names are stored as immutable snapshots and the Requested
-  // For department drives Department Head routing (Doc 06 Ch3).
-  const [requesterDepartment, requestedForDepartment, requesterPosition, requestedForPosition] =
+  // Both participants name their own company (forms may be shared), so each
+  // one's department and position are validated against their own company.
+  const [requesterCompany, requestedForCompany] = await Promise.all([
+    db.company.findFirst({ where: { id: input.requesterCompanyId, deletedAt: null, isActive: true } }),
+    db.company.findFirst({ where: { id: input.requestedForCompanyId, deletedAt: null, isActive: true } }),
+  ]);
+  if (!requesterCompany) {
+    throw new ValidationError(undefined, { requesterCompanyId: "Please select a valid company." });
+  }
+  if (!requestedForCompany) {
+    throw new ValidationError(undefined, { requestedForCompanyId: "Please select a valid company." });
+  }
+
+  // Departments and positions are stored as immutable name snapshots; the
+  // Requested For department drives Department Head routing (Doc 06 Ch3).
+  const [requesterDepartment, requestedForDepartment] =
     await Promise.all([
       db.department.findFirst({
-        where: { id: input.requesterDepartmentId, companyId: form.companyId, deletedAt: null },
+        where: { id: input.requesterDepartmentId, companyId: requesterCompany.id, deletedAt: null },
       }),
       db.department.findFirst({
-        where: { id: input.requestedForDepartmentId, companyId: form.companyId, deletedAt: null },
-      }),
-      db.position.findFirst({
-        where: { id: input.requesterPositionId, companyId: form.companyId, deletedAt: null },
-      }),
-      db.position.findFirst({
-        where: { id: input.requestedForPositionId, companyId: form.companyId, deletedAt: null },
+        where: { id: input.requestedForDepartmentId, companyId: requestedForCompany.id, deletedAt: null },
       }),
     ]);
   if (!requesterDepartment || !requestedForDepartment) {
@@ -114,16 +170,20 @@ export async function submitPublicRequest(
       requestedForDepartmentId: "Please select a valid department.",
     });
   }
-  if (!requesterPosition || !requestedForPosition) {
-    throw new ValidationError(undefined, {
-      requestedForPositionId: "Please select a valid position.",
-    });
-  }
 
-  // Match participants to People where possible (Doc 00 §6).
+  // Match participants to People (Doc 00 §6): company + employee ID first,
+  // then email as a fallback. This is what implementation later assigns to.
+  const matchByEmployeeId = (companyId: string, employeeId: string) =>
+    db.person.findFirst({
+      where: { companyId, employeeId: { equals: employeeId, mode: "insensitive" }, deletedAt: null },
+    });
+  const [requesterById, requestedForById] = await Promise.all([
+    matchByEmployeeId(requesterCompany.id, input.requesterEmployeeId),
+    matchByEmployeeId(requestedForCompany.id, input.requestedForEmployeeId),
+  ]);
   const [requesterMatch, requestedForMatch] = await Promise.all([
-    matchPersonByEmail(form.companyId, input.requesterEmail),
-    matchPersonByEmail(form.companyId, input.requestedForEmail),
+    requesterById ?? matchPersonByEmail(requesterCompany.id, input.requesterEmail),
+    requestedForById ?? matchPersonByEmail(requestedForCompany.id, input.requestedForEmail),
   ]);
 
   const { requestId, requestNumber, instanceIds } = await db.$transaction(async (tx) => {
@@ -140,21 +200,24 @@ export async function submitPublicRequest(
         requesterEmail: input.requesterEmail,
         requesterEmployeeId: input.requesterEmployeeId,
         requesterDepartment: requesterDepartment.name,
-        requesterPosition: requesterPosition.name,
+        requesterPosition: input.requesterPositionTitle,
+        requesterCompanyId: requesterCompany.id,
         requestedForPersonId: requestedForMatch?.id ?? null,
         requestedForName: input.requestedForName,
         requestedForEmail: input.requestedForEmail,
         requestedForEmployeeId: input.requestedForEmployeeId,
         requestedForDepartment: requestedForDepartment.name,
-        requestedForPosition: requestedForPosition.name,
+        requestedForPosition: input.requestedForPositionTitle,
         requestedForDepartmentId: requestedForDepartment.id,
+        requestedForCompanyId: requestedForCompany.id,
         fieldData: values as Prisma.InputJsonValue,
         sourceIp: context.ipAddress,
       },
     });
 
     const createdInstanceIds: string[] = [];
-    for (const item of input.items) {
+    for (const [index, item] of input.items.entries()) {
+      const payload = itemPayloads[index]!;
       const requestItem = await tx.requestItem.create({
         data: {
           requestId: request.id,
@@ -163,11 +226,13 @@ export async function submitPublicRequest(
           applicationRoleId: item.applicationRoleId ?? null,
           assetCategoryId: item.assetCategoryId ?? null,
           description: item.description ?? null,
+          itemData: (payload.itemData ?? undefined) as Prisma.InputJsonValue | undefined,
           status: "PENDING_APPROVAL",
         },
       });
-      // Every item gets its own workflow instance from the form's workflow (Doc 00 §4).
-      const instanceId = await engine.createInstanceForItem(tx, requestItem.id, form.workflowId);
+      // Every item runs its own workflow instance (Doc 00 §4), taken from the
+      // application or category when it names one and the form's otherwise.
+      const instanceId = await engine.createInstanceForItem(tx, requestItem.id, payload.workflowId);
       createdInstanceIds.push(instanceId);
     }
 
@@ -323,6 +388,55 @@ async function assertUserMayImplement(user: AuthenticatedUser, requestItemId: st
 }
 
 /**
+ * Pick the license a seat is taken from when implementing an application item
+ * (Doc 10 Ch7). The application's own linked licenses are the only candidates,
+ * so unrelated licenses can never be consumed by mistake. Only an application
+ * with several linked licenses in the employee's company needs a choice.
+ */
+async function resolveLicenseForApplication(
+  tx: DbClient,
+  applicationId: string | null,
+  personId: string,
+  chosenLicenseId: string | undefined,
+): Promise<string> {
+  const person = await tx.person.findFirst({ where: { id: personId }, select: { companyId: true } });
+  if (!person) throw new NotFoundError("Employee not found.");
+  const candidates = await tx.license.findMany({
+    where: {
+      applicationId,
+      companyId: person.companyId,
+      status: "ACTIVE",
+      isActive: true,
+      deletedAt: null,
+    },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
+
+  if (candidates.length === 0) {
+    throw new BusinessRuleError(
+      "This application requires a license but has none linked in the employee's company. Link a license to the application first.",
+    );
+  }
+  if (chosenLicenseId) {
+    if (!candidates.some((candidate: { id: string }) => candidate.id === chosenLicenseId)) {
+      throw new ValidationError(undefined, {
+        licenseId: "Choose one of the licenses linked to this application.",
+      });
+    }
+    return chosenLicenseId;
+  }
+  if (candidates.length > 1) {
+    throw new ValidationError(undefined, {
+      licenseId: `This application has ${candidates.length} linked licenses. Select which one to assign.`,
+    });
+  }
+  const only = candidates[0];
+  if (!only) throw new BusinessRuleError("No license is linked to this application.");
+  return only.id;
+}
+
+/**
  * Complete IT implementation for an approved request item: create the
  * application/license/asset assignments, prepare credential delivery, close
  * the workflow instance and progress the item (Doc 09 Ch8, Doc 10 Ch7,
@@ -377,15 +491,19 @@ export async function completeImplementation(
         tx,
       );
       // License consumption (Doc 10 Ch7): assigned during implementation only.
+      // The application already names its licenses, so a seat is taken from the
+      // linked license automatically rather than making the implementer pick
+      // one out of every license in the company.
       if (item.application?.requiresLicense) {
-        if (!input.licenseId) {
-          throw new ValidationError(undefined, {
-            licenseId: "This application requires a license. Select the license to assign.",
-          });
-        }
+        const licenseId = await resolveLicenseForApplication(
+          tx,
+          item.applicationId,
+          requestedForPersonId,
+          input.licenseId,
+        );
         await licenses.assignLicense(
           context,
-          { licenseId: input.licenseId, personId: requestedForPersonId, notes: undefined },
+          { licenseId, personId: requestedForPersonId, notes: undefined },
           { requestItemId: item.id },
           tx,
         );

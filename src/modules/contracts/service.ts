@@ -13,6 +13,15 @@ import type { ContractInput, ContractRenewalInput, ContractLinkInput } from "./v
 
 const MODULE = "contracts";
 
+/**
+ * Derive the renewal date from the end date and renewal type. Auto-renewing
+ * contracts are due for renewal on their end date; manual contracts have none.
+ */
+function computeRenewalDate(endDate: Date | null | undefined, renewalType: string): Date | null {
+  if (!endDate || renewalType === "MANUAL") return null;
+  return endDate;
+}
+
 export async function createContract(context: AuditContext, input: ContractInput) {
   const company = await db.company.findFirst({
     where: { id: input.companyId, deletedAt: null, isActive: true },
@@ -41,6 +50,7 @@ export async function createContract(context: AuditContext, input: ContractInput
       data: {
         ...input,
         contractNumber: input.contractNumber ?? null,
+        renewalDate: computeRenewalDate(input.endDate, input.renewalType),
         reminderDays: input.reminderDays ?? undefined,
         status: "DRAFT",
         createdById: context.actorUserId ?? null,
@@ -87,6 +97,7 @@ export async function updateContract(context: AuditContext, id: string, input: C
       data: {
         ...input,
         contractNumber: input.contractNumber ?? null,
+        renewalDate: computeRenewalDate(input.endDate, input.renewalType),
         reminderDays: input.reminderDays ?? undefined,
         updatedById: context.actorUserId ?? null,
       },

@@ -8,17 +8,11 @@ export const applicationSchema = z
     companyId: uuidSchema,
     name: requiredText("Application name"),
     description: optionalText(),
-    category: optionalText(100),
-    loginUrl: z
-      .string()
-      .trim()
-      .url("Please enter a valid URL.")
-      .max(500)
-      .optional()
-      .or(z.literal("").transform(() => undefined)),
-    icon: optionalText(100),
     allowMultipleAssignments: z.boolean().default(false),
     requiresLicense: z.boolean().default(false),
+    isShared: z.boolean().default(false),
+    /** Approval chain for items requesting this app; falls back to the form's. */
+    workflowId: uuidSchema.optional().or(z.literal("").transform(() => undefined)),
   })
   .strict();
 

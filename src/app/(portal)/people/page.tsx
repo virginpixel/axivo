@@ -5,6 +5,7 @@ import { PageHeader, Pagination } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge } from "@/shared/ui/badge";
 import { Input, Select } from "@/shared/ui/input";
+import { LiveSearch } from "@/shared/ui/live-search";
 import { fullName } from "@/shared/utils";
 import { PersonDialog } from "./person-dialogs";
 import type { Prisma } from "@prisma/client";
@@ -91,26 +92,29 @@ export default async function PeoplePage({
         actions={canManage ? <PersonDialog orgData={orgData} /> : undefined}
       />
 
-      <form method="get" className="mb-4 flex flex-wrap items-end gap-2">
-        <Input name="q" placeholder="Search ID, name, email…" defaultValue={params.q ?? ""} className="w-full sm:w-64" aria-label="Search people" />
-        {isGlobalAdmin ? (
-          <Select name="company" defaultValue={params.company ?? ""} className="w-full sm:w-48" aria-label="Filter by company">
-            <option value="">All companies</option>
-            {companies.map((company) => (
-              <option key={company.id} value={company.id}>{company.name}</option>
+      <div className="mb-4 flex flex-wrap items-end gap-2">
+        <LiveSearch placeholder="Search ID, name, email" className="w-full sm:w-64" />
+        <form method="get" className="flex flex-wrap items-end gap-2">
+          <input type="hidden" name="q" value={params.q ?? ""} />
+          {isGlobalAdmin ? (
+            <Select name="company" defaultValue={params.company ?? ""} className="w-full sm:w-48" aria-label="Filter by company">
+              <option value="">All companies</option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>{company.name}</option>
+              ))}
+            </Select>
+          ) : null}
+          <Select name="status" defaultValue={params.status ?? ""} className="w-full sm:w-44" aria-label="Filter by employment status">
+            <option value="">All statuses</option>
+            {["ACTIVE", "ON_LEAVE", "SUSPENDED", "RESIGNED", "TERMINATED"].map((status) => (
+              <option key={status} value={status}>{status.replace("_", " ")}</option>
             ))}
           </Select>
-        ) : null}
-        <Select name="status" defaultValue={params.status ?? ""} className="w-full sm:w-44" aria-label="Filter by employment status">
-          <option value="">All statuses</option>
-          {["ACTIVE", "ON_LEAVE", "SUSPENDED", "RESIGNED", "TERMINATED"].map((status) => (
-            <option key={status} value={status}>{status.replace("_", " ")}</option>
-          ))}
-        </Select>
-        <button type="submit" className="h-9 rounded-md border bg-card px-4 text-sm hover:bg-accent">
-          Filter
-        </button>
-      </form>
+          <button type="submit" className="h-9 rounded-md border bg-card px-4 text-sm hover:bg-accent">
+            Filter
+          </button>
+        </form>
+      </div>
 
       {rows.length === 0 ? (
         <EmptyState
@@ -137,8 +141,8 @@ export default async function PeoplePage({
                   </TD>
                   <TD>{person.employeeId}</TD>
                   <TD>{person.company.name}</TD>
-                  <TD>{person.department?.name ?? "—"}</TD>
-                  <TD>{person.position?.name ?? "—"}</TD>
+                  <TD>{person.department?.name ?? "None"}</TD>
+                  <TD>{person.position?.name ?? "None"}</TD>
                   <TD>
                     {person.systemUser ? (
                       <span className="text-xs">
@@ -146,7 +150,7 @@ export default async function PeoplePage({
                         {!person.systemUser.isEnabled ? <span className="text-destructive">(disabled)</span> : null}
                       </span>
                     ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
+                      <span className="text-xs text-muted-foreground">None</span>
                     )}
                   </TD>
                   <TD><StatusBadge status={person.employmentStatus} /></TD>

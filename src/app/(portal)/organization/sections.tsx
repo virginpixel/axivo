@@ -1,5 +1,6 @@
 import { db } from "@/shared/db";
-import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
+import { EmptyState } from "@/shared/ui/table";
+import { SortableTable } from "@/shared/ui/sortable-table";
 import { fullName } from "@/shared/utils";
 import { AssignRoleDialog, RemoveAssignmentButton } from "./org-dialogs";
 
@@ -50,29 +51,28 @@ export async function AssignmentManager({
           description="Assign approvers per company so workflow steps can resolve who approves."
         />
       ) : (
-        <Table>
-          <THead>
-            <TR>
-              <TH>Company</TH><TH>Approval role</TH><TH>Person</TH><TH>Email</TH>
-              {canManage ? <TH className="text-right">Actions</TH> : null}
-            </TR>
-          </THead>
-          <TBody>
-            {assignments.map((assignment) => (
-              <TR key={assignment.id}>
-                <TD>{assignment.company.name}</TD>
-                <TD className="font-medium">{assignment.approvalRole.name}</TD>
-                <TD>{fullName(assignment.person)}</TD>
-                <TD>{assignment.person.email}</TD>
-                {canManage ? (
-                  <TD className="text-right">
-                    <RemoveAssignmentButton assignmentId={assignment.id} />
-                  </TD>
-                ) : null}
-              </TR>
-            ))}
-          </TBody>
-        </Table>
+        <SortableTable
+          initialSort={{ key: "company", dir: "asc" }}
+          columns={[
+            { key: "company", label: "Company" },
+            { key: "role", label: "Approval role" },
+            { key: "person", label: "Person" },
+            { key: "email", label: "Email" },
+            ...(canManage ? [{ key: "actions", label: "Actions", sortable: false, align: "right" as const }] : []),
+          ]}
+          rows={assignments.map((assignment) => ({
+            key: assignment.id,
+            cells: {
+              company: { sortValue: assignment.company.name, node: assignment.company.name },
+              role: { sortValue: assignment.approvalRole.name, node: assignment.approvalRole.name, className: "font-medium" },
+              person: { sortValue: fullName(assignment.person), node: fullName(assignment.person) },
+              email: { sortValue: assignment.person.email, node: assignment.person.email },
+              ...(canManage
+                ? { actions: { node: <RemoveAssignmentButton assignmentId={assignment.id} /> } }
+                : {}),
+            },
+          }))}
+        />
       )}
     </section>
   );

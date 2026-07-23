@@ -84,6 +84,9 @@ export async function acknowledgeHandoverAction(token: string): Promise<ActionRe
     for (const itemId of itemIds) {
       await service.maybeCompleteItem(context, itemId);
     }
+    // The item may have just reached COMPLETED; without this the requests list
+    // keeps serving a cached "Implementation Pending".
+    revalidatePath("/requests", "layout");
     return ok(undefined);
   } catch (error) {
     return toActionError(error);
@@ -111,6 +114,7 @@ export async function acknowledgeCredentialsAction(
     if (delivery?.requestItemId) {
       await service.maybeCompleteItem(context, delivery.requestItemId);
     }
+    revalidatePath("/requests", "layout");
     return ok(revealed);
   } catch (error) {
     return toActionError(error);
@@ -165,6 +169,107 @@ export async function revokeCredentialDeliveryAction(deliveryId: string): Promis
     await credentialsService.revokeDelivery(audit, deliveryId);
     revalidatePath("/requests");
     return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+/**
+ * Create the People record for a request's Requested For employee (using the
+ * details captured on the form) and link it, so implementation can proceed.
+ */
+export async function createRequestedForPersonAction(
+  requestId: string,
+  overrides?: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    employeeId?: string;
+    departmentId?: string;
+    positionTitle?: string;
+  },
+): Promise<ActionResult<{ personId: string }>> {
+  try {
+    const { audit } = await requirePermission("people.manage");
+    const request = await db.request.findFirst({ where: { id: requestId } });
+    if (!request) throw new BusinessRuleError("Request not found.");
+    if (request.requestedForPersonId) {
+      return ok({ personId: request.requestedForPersonId });
+    }
+    const companyId = request.requestedForCompanyId ?? request.companyId;
+    // IT confirms and may correct the submitted details before the record is
+    // created, so the overrides win over what the requester typed.
+    const employeeId = (overrides?.employeeId ?? request.requestedForEmployeeId ?? "").trim();
+    const email = (overrides?.email ?? request.requestedForEmail ?? "").trim();
+    if (!employeeId) {
+      throw new BusinessRuleError("This request has no employee ID for the Requested For employee.");
+    }
+
+    // Reuse an existing record when one now matches, otherwise create it.
+    const existing = await db.person.findFirst({
+      where: {
+        companyId,
+        OR: [
+          { employeeId: { equals: employeeId, mode: "insensitive" } },
+          { email: { equals: email, mode: "insensitive" } },
+        ],
+        deletedAt: null,
+      },
+    });
+
+    let personId: string;
+    if (existing) {
+      personId = existing.id;
+    } else {
+      const [submittedFirst, ...submittedRest] = (request.requestedForName ?? "").trim().split(/\s+/);
+      const firstName = (overrides?.firstName ?? submittedFirst ?? "").trim() || request.requestedForName;
+      const lastName =
+        (overrides?.lastName ?? submittedRest.join(" ")).trim() || firstName;
+      const departmentId = overrides?.departmentId ?? request.requestedForDepartmentId ?? null;
+      const department = departmentId
+        ? await db.department.findFirst({ where: { id: departmentId, companyId, deletedAt: null } })
+        : null;
+
+      // The position was typed freely on the form, so create it in the
+      // catalogue on first use rather than dropping it.
+      const positionTitle = (overrides?.positionTitle ?? request.requestedForPosition ?? "").trim();
+      let position = positionTitle
+        ? await db.position.findFirst({
+            where: { companyId, name: { equals: positionTitle, mode: "insensitive" }, deletedAt: null },
+          })
+        : null;
+      if (positionTitle && !position) {
+        position = await db.position.create({
+          data: { companyId, name: positionTitle, createdById: audit.actorUserId ?? null },
+        });
+      }
+      const created = await db.person.create({
+        data: {
+          companyId,
+          employeeId,
+          firstName,
+          lastName,
+          email,
+          departmentId: department?.id ?? null,
+          positionId: position?.id ?? null,
+          createdById: audit.actorUserId ?? null,
+        },
+      });
+      personId = created.id;
+      await recordAudit(audit, {
+        module: "people",
+        eventType: "person.created",
+        action: `Created employee "${request.requestedForName}" from request ${request.requestNumber}`,
+        targetType: "person",
+        targetId: personId,
+        targetLabel: request.requestedForName,
+      });
+    }
+
+    await db.request.update({ where: { id: requestId }, data: { requestedForPersonId: personId } });
+    revalidatePath(`/requests/${requestId}`);
+    revalidatePath("/people", "layout");
+    return ok({ personId });
   } catch (error) {
     return toActionError(error);
   }

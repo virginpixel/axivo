@@ -92,10 +92,29 @@ export const formSchema = z
     confirmationMessage: optionalText(2000),
     /** ASSET_REQUEST forms: restrict requestable asset categories (empty = all). */
     allowedAssetCategoryIds: z.array(uuidSchema).max(100).default([]),
+    /** Dedicated form: the requester never picks the target, only its details. */
+    applicationId: uuidSchema.optional().or(z.literal("").transform(() => undefined)),
+    assetCategoryId: uuidSchema.optional().or(z.literal("").transform(() => undefined)),
+    /** All-in-one form: each item row chooses Application or Asset. */
+    allowsMixedItems: z.boolean().default(false),
     fields: z.array(formFieldSchema).max(200),
   })
   .strict()
   .superRefine((form, ctx) => {
+    if (form.applicationId && form.assetCategoryId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["applicationId"],
+        message: "A form targets either one application or one asset category, not both.",
+      });
+    }
+    if (form.allowsMixedItems && (form.applicationId || form.assetCategoryId)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["allowsMixedItems"],
+        message: "An all-in-one form cannot also be locked to a single target.",
+      });
+    }
     const keys = new Set<string>();
     form.fields.forEach((field, index) => {
       if (keys.has(field.fieldKey)) {

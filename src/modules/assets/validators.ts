@@ -5,11 +5,12 @@ import { uuidSchema, requiredText, optionalText, dateSchema, nonNegativeDecimal 
 
 export const assetCategorySchema = z
   .object({
-    companyId: uuidSchema,
     name: requiredText("Category name"),
     description: optionalText(),
     requireHandoverAcceptance: z.boolean().default(false),
     requireClearanceRecovery: z.boolean().default(true),
+    /** Approval chain for items requesting this category; falls back to the form's. */
+    workflowId: uuidSchema.optional().or(z.literal("").transform(() => undefined)),
   })
   .strict();
 
@@ -28,6 +29,8 @@ export const assetSchema = z
     purchasePrice: nonNegativeDecimal("Purchase price").optional(),
     currency: optionalText(10),
     warrantyExpiry: dateSchema.optional(),
+    /** Custom field values keyed by CustomField id (from the model's fieldset). */
+    customFields: z.record(z.string(), z.string()).optional(),
     notes: optionalText(),
   })
   .strict();
@@ -72,9 +75,10 @@ export const maintenanceSchema = z
     }
   });
 
+/** One approved discard form can cover a whole batch, hence a list of assets. */
 export const disposalSchema = z
   .object({
-    assetId: uuidSchema,
+    assetIds: z.array(uuidSchema).min(1, "Select at least one asset to discard."),
     disposalDate: dateSchema,
     method: requiredText("Disposal method", 200),
     reason: requiredText("Disposal reason", 2000),
@@ -84,6 +88,27 @@ export const disposalSchema = z
     notes: optionalText(),
   })
   .strict();
+
+/** Transfers move any combination of company, location and holder at once. */
+export const assetTransferSchema = z
+  .object({
+    assetId: uuidSchema,
+    companyId: uuidSchema.optional(),
+    locationId: uuidSchema.optional(),
+    personId: uuidSchema.optional(),
+    returnCurrentAssignment: z.boolean().default(false),
+    notes: optionalText(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (!value.companyId && !value.locationId && !value.personId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["companyId"],
+        message: "Choose a destination company, location or employee.",
+      });
+    }
+  });
 
 export const clearanceItemStatusSchema = z.enum(["RECEIVED", "MISSING", "DAMAGED"]);
 
@@ -110,4 +135,5 @@ export type AssetInput = z.infer<typeof assetSchema>;
 export type AssetAssignmentInput = z.infer<typeof assetAssignmentSchema>;
 export type MaintenanceInput = z.infer<typeof maintenanceSchema>;
 export type DisposalInput = z.infer<typeof disposalSchema>;
+export type AssetTransferInput = z.infer<typeof assetTransferSchema>;
 export type ClearanceVerifyInput = z.infer<typeof clearanceVerifySchema>;

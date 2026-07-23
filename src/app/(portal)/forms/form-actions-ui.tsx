@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Copy, Pencil, Plus, Rocket, Archive, Files } from "lucide-react";
+import { Copy, Pencil, Plus, Rocket, Archive, Files, Trash2 } from "lucide-react";
 import {
   publishFormAction,
   archiveFormAction,
   duplicateFormAction,
+  deleteFormAction,
   createRequestTypeAction,
 } from "@/modules/forms/actions";
 import { useAction } from "@/shared/ui/use-action";
@@ -82,6 +83,19 @@ export function FormRowActions({ formId, status }: { formId: string; status: str
           <Archive className="h-4 w-4 text-muted-foreground" />
         </Button>
       ) : null}
+      <Button
+        variant="ghost"
+        size="icon"
+        loading={loading}
+        aria-label="Delete form"
+        title="Delete"
+        onClick={() => {
+          if (!window.confirm("Delete this form? Forms with submitted requests can only be archived.")) return;
+          run(() => deleteFormAction(formId), { successMessage: "Form deleted." });
+        }}
+      >
+        <Trash2 className="h-4 w-4 text-destructive" />
+      </Button>
     </div>
   );
 }

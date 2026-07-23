@@ -34,7 +34,6 @@ export default async function DashboardPage() {
     expiringContracts,
     pendingDeliveries,
     recentRequests,
-    failedNotifications,
     assetsByStatus,
     requestsByStatus,
     categoryCounts,
@@ -63,13 +62,11 @@ export default async function DashboardPage() {
       take: 8,
       include: { items: { select: { id: true } } },
     }),
-    // Failed notifications an administrator has not yet cleared.
-    db.notification.count({ where: { status: "FAILED", archivedAt: null } }),
     db.asset.groupBy({ by: ["status"], where: { ...companyFilter, deletedAt: null }, _count: true }),
     db.request.groupBy({ by: ["status"], where: companyFilter, _count: true }),
     db.asset.groupBy({ by: ["categoryId"], where: { ...companyFilter, deletedAt: null }, _count: true }),
     db.assetCategory.findMany({
-      where: { deletedAt: null, ...companyFilter },
+      where: { deletedAt: null },
       select: { id: true, name: true },
     }),
   ]);
@@ -116,16 +113,6 @@ export default async function DashboardPage() {
           <StatCard label="Credential acks pending" value={pendingDeliveries} tone={pendingDeliveries > 0 ? "info" : "default"} />
         </Link>
       </div>
-
-      {failedNotifications > 0 ? (
-        <div className="mt-4 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm">
-          <strong className="text-destructive">{failedNotifications} notification(s) failed to deliver.</strong>{" "}
-          <Link href="/notifications?status=FAILED" className="text-primary underline">
-            Review, resend or clear them
-          </Link>{" "}
-          and verify SMTP settings.
-        </div>
-      ) : null}
 
       <div className="mt-6 grid gap-5 lg:grid-cols-3">
         <Card>

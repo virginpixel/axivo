@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const securityHeaders = [
-  { key: "X-Frame-Options", value: "DENY" },
+  // SAMEORIGIN (not DENY) so first-party previews, such as the generated
+  // handover/clearance PDFs, can be embedded; other origins still cannot frame us.
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   {
@@ -17,7 +19,8 @@ const securityHeaders = [
       "img-src 'self' data: blob:",
       "font-src 'self' data:",
       "connect-src 'self'",
-      "frame-ancestors 'none'",
+      // Same-origin framing enables the in-app PDF preview; cross-origin is still blocked.
+      "frame-ancestors 'self'",
       "form-action 'self'",
       "base-uri 'self'",
     ].join("; "),

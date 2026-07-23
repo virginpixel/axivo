@@ -8,8 +8,7 @@ import { StatusBadge } from "@/shared/ui/badge";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
 import { formatDate, formatDateTime, fullName } from "@/shared/utils";
 import { PersonDialog, EmploymentStatusSelect, CreateAccountDialog, AccountControls } from "../person-dialogs";
-import { StartClearanceButton, ReturnAssetButton } from "./person-clearance";
-import { ClearancePanel } from "../../assets/asset-dialogs";
+import { ReturnAssetButton, GenerateHandoverButton, ClearanceControl, PersonDocumentDelete } from "./person-clearance";
 import { AssignmentRowActions } from "../../applications/application-dialogs";
 import { LicenseAssignmentActions } from "../../licenses/license-dialogs";
 
@@ -49,8 +48,53 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
 
   const openClearance = await db.clearance.findFirst({
     where: { personId: person.id, status: "IN_PROGRESS" },
-    include: { items: { include: { assetAssignment: { include: { asset: true } } } } },
+    include: {
+      items: {
+        include: {
+          assetAssignment: { include: { asset: true } },
+          applicationAssignment: { include: { application: true } },
+          licenseAssignment: { include: { license: true } },
+        },
+      },
+    },
   });
+
+  // Documents linked to this person (handover / clearance forms and any others).
+  const personDocumentLinks = await db.documentLink.findMany({
+    where: { entityType: "person", entityId: person.id, removedAt: null },
+    include: { document: { select: { id: true, name: true, kind: true, currentVersion: true, createdAt: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+  const personDocuments = personDocumentLinks
+    .filter((link) => link.document)
+    .map((link) => link.document);
+
+  // Assets currently assigned to this person, offered when generating a handover.
+  const assignedAssets = person.assetAssignments
+    .filter((assignment) => assignment.status === "ASSIGNED")
+    .map((assignment) => ({
+      assignmentId: assignment.id,
+      label: assignment.asset.name || assignment.asset.assetTag || "Asset",
+      reference: assignment.asset.assetTag ?? assignment.asset.model ?? null,
+    }));
+
+  const clearanceItems = (openClearance?.items ?? []).map((item) => ({
+    id: item.id,
+    kind: item.kind,
+    label:
+      item.assetAssignment?.asset.name ??
+      item.applicationAssignment?.application.name ??
+      item.licenseAssignment?.license.name ??
+      "Item",
+    reference:
+      item.kind === "ASSET"
+        ? item.assetAssignment?.asset.assetTag ?? item.assetAssignment?.asset.model ?? null
+        : item.kind === "APPLICATION"
+          ? item.applicationAssignment?.username ?? null
+          : "seat",
+    status: item.status,
+    comments: item.comments,
+  }));
 
   const [orgCompanies, orgDepartments, orgPositions, orgLocations, systemRoles] = await Promise.all([
     db.company.findMany({
@@ -72,7 +116,17 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
         actions={
           canManage || canManageAssets ? (
             <div className="flex items-center gap-2">
-              {canManageAssets && !openClearance ? <StartClearanceButton personId={person.id} /> : null}
+              {canManageAssets ? (
+                <GenerateHandoverButton personId={person.id} assets={assignedAssets} />
+              ) : null}
+              {canManageAssets ? (
+                <ClearanceControl
+                  personId={person.id}
+                  personName={fullName(person)}
+                  clearance={openClearance ? { id: openClearance.id, items: clearanceItems } : null}
+                  canManage={canManageAssets}
+                />
+              ) : null}
               <EmploymentStatusSelect personId={person.id} current={person.employmentStatus} />
               <PersonDialog
                 orgData={{ companies: orgCompanies, departments: orgDepartments, positions: orgPositions, locations: orgLocations }}
@@ -97,45 +151,31 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
         }
       />
 
-      {openClearance ? (
-        <div className="mb-5">
-          <ClearancePanel
-            clearanceId={openClearance.id}
-            personName={fullName(person)}
-            items={openClearance.items.map((item) => ({
-              id: item.id,
-              assetTag: item.assetAssignment.asset.assetTag ?? item.assetAssignment.asset.name,
-              model: item.assetAssignment.asset.model,
-              status: item.status,
-              comments: item.comments,
-            }))}
-            canManage={canManageAssets}
-          />
-        </div>
-      ) : null}
-
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid gap-5 lg:grid-cols-2">
         <Card>
           <CardHeader><CardTitle>Profile</CardTitle></CardHeader>
           <CardContent>
-            <dl className="space-y-2 text-sm">
+            <dl className="grid grid-cols-1 gap-x-6 gap-y-2.5 text-sm sm:grid-cols-2">
               <ProfileRow label="Status" value={<StatusBadge status={person.employmentStatus} />} />
+              <ProfileRow label="Employee ID" value={person.employeeId} />
               <ProfileRow label="Work email" value={person.email} />
-              <ProfileRow label="Personal email" value={person.personalEmail ?? "—"} />
-              <ProfileRow label="Phone" value={person.phone ?? "—"} />
-              <ProfileRow label="Department" value={person.department?.name ?? "—"} />
-              <ProfileRow label="Position" value={person.position?.name ?? "—"} />
-              <ProfileRow label="Location" value={person.location?.name ?? "—"} />
+              <ProfileRow label="Personal email" value={person.personalEmail ?? "None"} />
+              <ProfileRow label="Phone" value={person.phone ?? "None"} />
+              <ProfileRow label="Extension" value={person.extension ?? "None"} />
+              <ProfileRow label="Company" value={person.company.name} />
+              <ProfileRow label="Department" value={person.department?.name ?? "None"} />
+              <ProfileRow label="Position" value={person.position?.name ?? "None"} />
+              <ProfileRow label="Location" value={person.location?.name ?? "None"} />
             </dl>
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2">
+        <Card>
           <CardHeader><CardTitle>Portal account</CardTitle></CardHeader>
           <CardContent>
             {person.systemUser ? (
-              <div className="space-y-3 text-sm">
-                <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-3">
+              <div className="flex flex-col gap-4 text-sm sm:flex-row sm:items-start sm:justify-between">
+                <dl className="space-y-2">
                   <ProfileRow label="Username" value={person.systemUser.username} />
                   <ProfileRow label="Role" value={person.systemUser.systemRole.name} />
                   <ProfileRow
@@ -153,7 +193,7 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                 ) : null}
               </div>
             ) : (
-              <div className="flex items-center justify-between">
+              <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">
                   No portal account. This person interacts with Axivo through email links only.
                 </p>
@@ -184,8 +224,8 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                   {person.applicationAssignments.map((assignment) => (
                     <TR key={assignment.id}>
                       <TD className="font-medium">{assignment.application.name}</TD>
-                      <TD>{assignment.applicationRole?.name ?? "—"}</TD>
-                      <TD>{assignment.username ?? "—"}</TD>
+                      <TD>{assignment.applicationRole?.name ?? "None"}</TD>
+                      <TD>{assignment.username ?? "None"}</TD>
                       <TD><StatusBadge status={assignment.status} /></TD>
                       {canManageAppAssignments ? (
                         <TD className="text-right">
@@ -225,7 +265,7 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                         </p>
                       </TD>
                       <TD>{formatDate(assignment.assignedAt)}</TD>
-                      <TD>{assignment.returnedAt ? formatDate(assignment.returnedAt) : "—"}</TD>
+                      <TD>{assignment.returnedAt ? formatDate(assignment.returnedAt) : "None"}</TD>
                       <TD><StatusBadge status={assignment.status} /></TD>
                       {canManageAssets ? (
                         <TD className="text-right">
@@ -287,8 +327,40 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                     <TR key={delivery.id}>
                       <TD className="font-medium">{delivery.application.name}</TD>
                       <TD>{delivery.username}</TD>
-                      <TD>{delivery.sentAt ? formatDateTime(delivery.sentAt) : "—"}</TD>
+                      <TD>{delivery.sentAt ? formatDateTime(delivery.sentAt) : "None"}</TD>
                       <TD><StatusBadge status={delivery.status} /></TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader><CardTitle>Documents</CardTitle></CardHeader>
+          <CardContent>
+            {personDocuments.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No documents yet. Handover and clearance forms generated for this employee appear here.
+              </p>
+            ) : (
+              <Table>
+                <THead><TR><TH>Document</TH><TH>Type</TH><TH>Version</TH><TH>Created</TH><TH /></TR></THead>
+                <TBody>
+                  {personDocuments.map((document) => (
+                    <TR key={document!.id}>
+                      <TD className="font-medium">{document!.name}</TD>
+                      <TD>{document!.kind.replace(/_/g, " ").toLowerCase()}</TD>
+                      <TD>v{document!.currentVersion}</TD>
+                      <TD>{formatDate(document!.createdAt)}</TD>
+                      <TD className="text-right">
+                        <div className="flex items-center justify-end gap-3 text-sm">
+                          <a href={`/api/documents/${document!.id}/download?inline=1`} target="_blank" rel="noopener" className="text-primary hover:underline">View</a>
+                          <a href={`/api/documents/${document!.id}/download`} className="text-primary hover:underline">Download</a>
+                          {canManage ? <PersonDocumentDelete personId={person.id} documentId={document!.id} /> : null}
+                        </div>
+                      </TD>
                     </TR>
                   ))}
                 </TBody>

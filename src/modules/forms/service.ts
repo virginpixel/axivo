@@ -107,6 +107,9 @@ export async function createForm(context: AuditContext, input: FormInput) {
         description: input.description,
         confirmationMessage: input.confirmationMessage,
         allowedAssetCategoryIds: input.allowedAssetCategoryIds,
+        applicationId: input.applicationId ?? null,
+        assetCategoryId: input.assetCategoryId ?? null,
+        allowsMixedItems: input.allowsMixedItems,
         slug,
         status: "DRAFT",
         createdById: context.actorUserId ?? null,
@@ -190,6 +193,9 @@ export async function updateForm(context: AuditContext, id: string, input: FormI
         workflowId: input.workflowId,
         confirmationMessage: input.confirmationMessage,
         allowedAssetCategoryIds: input.allowedAssetCategoryIds,
+        applicationId: input.applicationId ?? null,
+        assetCategoryId: input.assetCategoryId ?? null,
+        allowsMixedItems: input.allowsMixedItems,
         updatedById: context.actorUserId ?? null,
       },
     });
@@ -326,6 +332,37 @@ export async function archiveForm(context: AuditContext, id: string) {
     );
     return archived;
   });
+}
+
+/**
+ * Delete a form. Forms with submitted requests are preserved for audit and can
+ * only be archived; unused forms are soft-deleted and disappear from the list.
+ */
+export async function deleteForm(context: AuditContext, id: string) {
+  const form = await db.form.findFirst({
+    where: { id, deletedAt: null },
+    include: { _count: { select: { requests: true } } },
+  });
+  if (!form) throw new NotFoundError("Form not found.");
+  if (form._count.requests > 0) {
+    throw new BusinessRuleError("This form has submitted requests and cannot be deleted. Archive it instead.");
+  }
+  await db.form.update({
+    where: { id },
+    data: { deletedAt: new Date(), isActive: false, status: "ARCHIVED", deletedById: context.actorUserId ?? null },
+  });
+  await recordAudit(
+    { ...context, companyId: form.companyId },
+    {
+      module: MODULE,
+      eventType: "form.deleted",
+      action: `Deleted form "${form.name}"`,
+      targetType: "form",
+      targetId: id,
+      targetLabel: form.name,
+    },
+  );
+  return { id };
 }
 
 export async function duplicateForm(context: AuditContext, id: string) {

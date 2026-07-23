@@ -26,6 +26,10 @@ export const SETTING_KEYS = {
 
   // Branding (Doc 17 Ch6)
   BRANDING: "branding.global",
+  /** Logos (left/center/right) stamped onto generated PDFs (handover, clearance). */
+  GENERATED_LOGOS: "branding.generatedLogos",
+  /** Logos (left/center/right) shown in the header of public request forms. */
+  REQUEST_FORM_LOGOS: "branding.requestFormLogos",
 
   // Files (Doc 12)
   UPLOAD_MAX_MB: "files.upload.maxMb",
@@ -88,11 +92,15 @@ const DEFAULTS: Record<string, unknown> = {
     pdfLogoDocumentIds: [],
     loginBackgroundDocumentId: null,
   },
+  [SETTING_KEYS.GENERATED_LOGOS]: { left: null, center: null, right: null },
+  [SETTING_KEYS.REQUEST_FORM_LOGOS]: { left: null, center: null, right: null },
   [SETTING_KEYS.GENERAL]: {
     defaultTimezone: "UTC",
     defaultCurrency: "USD",
     dateFormat: "yyyy-MM-dd",
     timeFormat: "HH:mm",
+    /** Overrides APP_URL for links in emails and public forms; empty uses env. */
+    publicBaseUrl: "",
   },
 };
 

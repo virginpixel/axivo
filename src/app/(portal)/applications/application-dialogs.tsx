@@ -7,30 +7,36 @@ import {
   updateApplicationAction,
   setApplicationActiveAction,
   createApplicationRoleAction,
+  updateApplicationRoleAction,
+  setApplicationRoleActiveAction,
   saveCredentialFieldAction,
+  setCredentialFieldActiveAction,
   createAssignmentAction,
   setAssignmentStatusAction,
   removeAssignmentAction,
 } from "@/modules/applications/actions";
 import { useAction } from "@/shared/ui/use-action";
 import { Button } from "@/shared/ui/button";
-import { Input, Select, Textarea, Label, FieldError } from "@/shared/ui/input";
+import { Input, Select, Textarea, Label, FieldError, HelperText } from "@/shared/ui/input";
+import { Combobox } from "@/shared/ui/combobox";
 import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
 
 export function ApplicationDialog({
   companies,
+  workflows = [],
   application,
 }: {
   companies: { id: string; name: string }[];
+  workflows?: { id: string; name: string; companyId: string }[];
   application?: {
     id: string;
     companyId: string;
     name: string;
     description: string | null;
-    category: string | null;
-    loginUrl: string | null;
     allowMultipleAssignments: boolean;
     requiresLicense: boolean;
+    isShared: boolean;
+    workflowId: string | null;
   };
 }) {
   const { run, loading, fieldErrors } = useAction();
@@ -39,10 +45,10 @@ export function ApplicationDialog({
     companyId: application?.companyId ?? companies[0]?.id ?? "",
     name: application?.name ?? "",
     description: application?.description ?? "",
-    category: application?.category ?? "",
-    loginUrl: application?.loginUrl ?? "",
     allowMultipleAssignments: application?.allowMultipleAssignments ?? false,
     requiresLicense: application?.requiresLicense ?? false,
+    isShared: application?.isShared ?? false,
+    workflowId: application?.workflowId ?? "",
   });
 
   async function submit() {
@@ -50,10 +56,10 @@ export function ApplicationDialog({
       companyId: form.companyId,
       name: form.name,
       description: form.description || undefined,
-      category: form.category || undefined,
-      loginUrl: form.loginUrl || undefined,
+      workflowId: form.workflowId || undefined,
       allowMultipleAssignments: form.allowMultipleAssignments,
       requiresLicense: form.requiresLicense,
+      isShared: form.isShared,
     };
     await run(
       () => (application ? updateApplicationAction(application.id, payload) : createApplicationAction(payload)),
@@ -77,34 +83,56 @@ export function ApplicationDialog({
       <DialogContent title={application ? "Edit application" : "New application"}>
         <div className="space-y-3">
           <div>
-            <Label htmlFor="app-company" required>Company</Label>
-            <Select id="app-company" value={form.companyId} disabled={!!application} onChange={(e) => setForm({ ...form, companyId: e.target.value })}>
-              {companies.map((company) => (
-                <option key={company.id} value={company.id}>{company.name}</option>
-              ))}
-            </Select>
+            <Label htmlFor="app-company" required>Owning company</Label>
+            <Combobox
+              id="app-company"
+              value={form.companyId}
+              disabled={!!application}
+              onChange={(value) => setForm({ ...form, companyId: value })}
+              options={companies.map((company) => ({ value: company.id, label: company.name }))}
+            />
           </div>
           <div>
             <Label htmlFor="app-name" required>Application name</Label>
             <Input id="app-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             <FieldError message={fieldErrors.name} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="app-category">Category</Label>
-              <Input id="app-category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
-            </div>
-            <div>
-              <Label htmlFor="app-url">Login URL</Label>
-              <Input id="app-url" value={form.loginUrl} onChange={(e) => setForm({ ...form, loginUrl: e.target.value })} placeholder="https://…" />
-              <FieldError message={fieldErrors.loginUrl} />
-            </div>
-          </div>
           <div>
             <Label htmlFor="app-description">Description</Label>
             <Textarea id="app-description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+            <HelperText>Add a login URL and any other details as custom credential fields.</HelperText>
           </div>
+          {workflows.length > 0 ? (
+            <div>
+              <Label htmlFor="app-workflow">Approval chain</Label>
+              <Select
+                id="app-workflow"
+                value={form.workflowId}
+                onChange={(e) => setForm({ ...form, workflowId: e.target.value })}
+              >
+                <option value="">Use the form&apos;s approval chain</option>
+                {workflows
+                  .filter((workflow) => workflow.companyId === form.companyId)
+                  .map((workflow) => (
+                    <option key={workflow.id} value={workflow.id}>{workflow.name}</option>
+                  ))}
+              </Select>
+              <HelperText>
+                Set this so requests for this application route to its own approvers, even when they
+                arrive through an all-in-one form.
+              </HelperText>
+            </div>
+          ) : null}
           <div className="flex flex-col gap-2 text-sm">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={form.isShared}
+                onChange={(e) => setForm({ ...form, isShared: e.target.checked })}
+                className="h-4 w-4"
+              />
+              Shared: can be assigned to employees of any company
+            </label>
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -153,20 +181,32 @@ export function ApplicationToggle({ id, isActive }: { id: string; isActive: bool
   );
 }
 
-export function AppRoleDialog({ applicationId }: { applicationId: string }) {
+export function AppRoleDialog({
+  applicationId,
+  role,
+}: {
+  applicationId: string;
+  role?: { id: string; name: string; description: string | null };
+}) {
   const { run, loading, fieldErrors } = useAction();
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+  const [name, setName] = useState(role?.name ?? "");
+  const [description, setDescription] = useState(role?.description ?? "");
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
-          <Plus className="h-3 w-3" /> Add role
-        </Button>
+        {role ? (
+          <Button variant="ghost" size="icon" className="h-6 w-6" aria-label={`Edit ${role.name}`}>
+            <Pencil className="h-3 w-3" />
+          </Button>
+        ) : (
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
+            <Plus className="h-3 w-3" /> Add role
+          </Button>
+        )}
       </DialogTrigger>
-      <DialogContent title="New application role">
+      <DialogContent title={role ? "Edit application role" : "New application role"}>
         <div className="space-y-3">
           <div>
             <Label htmlFor="approle-name" required>Role name</Label>
@@ -182,18 +222,44 @@ export function AppRoleDialog({ applicationId }: { applicationId: string }) {
             <Button
               loading={loading}
               onClick={() =>
-                run(() => createApplicationRoleAction({ applicationId, name, description: description || undefined }), {
-                  successMessage: "Role created.",
-                  onSuccess: () => { setOpen(false); setName(""); setDescription(""); },
-                })
+                run(
+                  () =>
+                    role
+                      ? updateApplicationRoleAction(role.id, { applicationId, name, description: description || undefined })
+                      : createApplicationRoleAction({ applicationId, name, description: description || undefined }),
+                  {
+                    successMessage: role ? "Role updated." : "Role created.",
+                    onSuccess: () => setOpen(false),
+                  },
+                )
               }
             >
-              Create role
+              {role ? "Save changes" : "Create role"}
             </Button>
           </div>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+export function RoleToggle({ id, isActive }: { id: string; isActive: boolean }) {
+  const { run, loading } = useAction();
+  return (
+    <button
+      type="button"
+      disabled={loading}
+      aria-label={isActive ? "Disable role" : "Enable role"}
+      title={isActive ? "Disable role" : "Enable role"}
+      className="text-muted-foreground hover:text-foreground"
+      onClick={() =>
+        run(() => setApplicationRoleActiveAction(id, !isActive), {
+          successMessage: isActive ? "Role disabled." : "Role enabled.",
+        })
+      }
+    >
+      <Power className={`h-3 w-3 ${isActive ? "text-success" : ""}`} />
+    </button>
   );
 }
 
@@ -208,20 +274,37 @@ const CREDENTIAL_FIELD_TYPES = [
   ["NOTES", "Notes"],
 ] as const;
 
-export function CredentialFieldDialog({ applicationId }: { applicationId: string }) {
+export function CredentialFieldDialog({
+  applicationId,
+  field,
+}: {
+  applicationId: string;
+  field?: { id: string; fieldName: string; fieldType: string; isRequired: boolean; helpText: string | null };
+}) {
   const { run, loading, fieldErrors } = useAction();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ fieldName: "", fieldType: "TEXT", isRequired: false, helpText: "" });
+  const [form, setForm] = useState({
+    fieldName: field?.fieldName ?? "",
+    fieldType: field?.fieldType ?? "TEXT",
+    isRequired: field?.isRequired ?? false,
+    helpText: field?.helpText ?? "",
+  });
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
-          <Plus className="h-3 w-3" /> Add field
-        </Button>
+        {field ? (
+          <Button variant="ghost" size="icon" className="h-6 w-6" aria-label={`Edit ${field.fieldName}`}>
+            <Pencil className="h-3 w-3" />
+          </Button>
+        ) : (
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
+            <Plus className="h-3 w-3" /> Add field
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent
-        title="New credential field"
+        title={field ? "Edit credential field" : "New credential field"}
         description="Shown in the secure credential delivery alongside username and temporary password."
       >
         <div className="space-y-3">
@@ -258,19 +341,22 @@ export function CredentialFieldDialog({ applicationId }: { applicationId: string
               onClick={() =>
                 run(
                   () =>
-                    saveCredentialFieldAction({
-                      applicationId,
-                      fieldName: form.fieldName,
-                      fieldType: form.fieldType,
-                      isRequired: form.isRequired,
-                      displayOrder: 0,
-                      helpText: form.helpText || undefined,
-                    }),
+                    saveCredentialFieldAction(
+                      {
+                        applicationId,
+                        fieldName: form.fieldName,
+                        fieldType: form.fieldType,
+                        isRequired: form.isRequired,
+                        displayOrder: 0,
+                        helpText: form.helpText || undefined,
+                      },
+                      field?.id,
+                    ),
                   { successMessage: "Credential field saved.", onSuccess: () => setOpen(false) },
                 )
               }
             >
-              Save field
+              {field ? "Save changes" : "Save field"}
             </Button>
           </div>
         </div>
@@ -279,12 +365,34 @@ export function CredentialFieldDialog({ applicationId }: { applicationId: string
   );
 }
 
+export function CredentialFieldToggle({ id, isActive }: { id: string; isActive: boolean }) {
+  const { run, loading } = useAction();
+  return (
+    <button
+      type="button"
+      disabled={loading}
+      aria-label={isActive ? "Disable field" : "Enable field"}
+      title={isActive ? "Disable field" : "Enable field"}
+      className="text-muted-foreground hover:text-foreground"
+      onClick={() =>
+        run(() => setCredentialFieldActiveAction(id, !isActive), {
+          successMessage: isActive ? "Field disabled." : "Field enabled.",
+        })
+      }
+    >
+      <Power className={`h-3 w-3 ${isActive ? "text-success" : ""}`} />
+    </button>
+  );
+}
+
 export function AssignmentDialog({
   applications,
   peopleByCompany,
+  allPeople,
 }: {
-  applications: { id: string; name: string; companyId: string; roles: { id: string; name: string }[] }[];
+  applications: { id: string; name: string; companyId: string; isShared: boolean; roles: { id: string; name: string }[] }[];
   peopleByCompany: Record<string, { id: string; name: string }[]>;
+  allPeople: { id: string; name: string }[];
 }) {
   const { run, loading, fieldErrors } = useAction();
   const [open, setOpen] = useState(false);
@@ -294,7 +402,12 @@ export function AssignmentDialog({
   const [username, setUsername] = useState("");
 
   const selectedApplication = applications.find((application) => application.id === applicationId);
-  const people = selectedApplication ? (peopleByCompany[selectedApplication.companyId] ?? []) : [];
+  // Shared applications can be assigned to anyone; company apps to their company.
+  const people = selectedApplication
+    ? selectedApplication.isShared
+      ? allPeople
+      : (peopleByCompany[selectedApplication.companyId] ?? [])
+    : [];
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -307,35 +420,38 @@ export function AssignmentDialog({
         <div className="space-y-3">
           <div>
             <Label htmlFor="asg-application" required>Application</Label>
-            <Select
+            <Combobox
               id="asg-application"
               value={applicationId}
-              onChange={(e) => { setApplicationId(e.target.value); setApplicationRoleId(""); setPersonId(""); }}
-            >
-              <option value="">Select…</option>
-              {applications.map((application) => (
-                <option key={application.id} value={application.id}>{application.name}</option>
-              ))}
-            </Select>
+              onChange={(value) => { setApplicationId(value); setApplicationRoleId(""); setPersonId(""); }}
+              options={applications.map((application) => ({
+                value: application.id,
+                label: application.name,
+                hint: application.isShared ? "Shared" : undefined,
+              }))}
+            />
           </div>
           <div>
             <Label htmlFor="asg-person" required>Employee</Label>
-            <Select id="asg-person" value={personId} onChange={(e) => setPersonId(e.target.value)} disabled={!applicationId}>
-              <option value="">Select…</option>
-              {people.map((person) => (
-                <option key={person.id} value={person.id}>{person.name}</option>
-              ))}
-            </Select>
+            <Combobox
+              id="asg-person"
+              value={personId}
+              disabled={!applicationId}
+              onChange={setPersonId}
+              options={people.map((person) => ({ value: person.id, label: person.name }))}
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label htmlFor="asg-role">Access role</Label>
-              <Select id="asg-role" value={applicationRoleId} onChange={(e) => setApplicationRoleId(e.target.value)} disabled={!applicationId}>
-                <option value="">Default access</option>
-                {(selectedApplication?.roles ?? []).map((role) => (
-                  <option key={role.id} value={role.id}>{role.name}</option>
-                ))}
-              </Select>
+              <Combobox
+                id="asg-role"
+                value={applicationRoleId}
+                disabled={!applicationId}
+                emptyLabel="Default access"
+                onChange={setApplicationRoleId}
+                options={(selectedApplication?.roles ?? []).map((role) => ({ value: role.id, label: role.name }))}
+              />
             </div>
             <div>
               <Label htmlFor="asg-username">Username</Label>

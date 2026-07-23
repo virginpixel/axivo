@@ -115,7 +115,7 @@ export async function sendDeliveryEmail(context: AuditContext, deliveryId: strin
     targetType: "credential_delivery",
     targetId: deliveryId,
   });
-  const url = tokenActionUrl("/action/credentials", token);
+  const url = await tokenActionUrl("/action/credentials", token);
   await queueNotification({
     companyId: delivery.person.companyId,
     eventType: "CREDENTIAL_DELIVERY",

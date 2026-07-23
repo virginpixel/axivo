@@ -1,7 +1,7 @@
 /**
  * Runtime branding helpers (SDS Doc 03 Ch2/9): configured brand colors
  * propagate across the application by overriding the design-token CSS
- * variables — layout, spacing and typography are never affected.
+ * variables - layout, spacing and typography are never affected.
  */
 
 /** Convert a #rrggbb hex color to the "H S% L%" triple used by the tokens. */

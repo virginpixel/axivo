@@ -1,8 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Send, UserRoundPen } from "lucide-react";
-import { cancelRequestAction, completeImplementationAction } from "@/modules/requests/actions";
+import { Send, UserRoundPen, UserPlus, CircleAlert } from "lucide-react";
+import {
+  cancelRequestAction,
+  completeImplementationAction,
+  createRequestedForPersonAction,
+} from "@/modules/requests/actions";
 import {
   resendApprovalNotificationsAction,
   transferStepApproverAction,
@@ -208,24 +212,47 @@ export function ImplementationPanel({
                 </HelperText>
               </div>
             </div>
+            {/* A seat is taken from the application's linked license on its own.
+                Only an app with several linked licenses needs a choice here. */}
             {requiresLicense ? (
               <div>
-                <Label htmlFor={`impl-license-${requestItemId}`} required>
-                  License to assign
-                </Label>
-                <Select
-                  id={`impl-license-${requestItemId}`}
-                  value={licenseId}
-                  onChange={(event) => setLicenseId(event.target.value)}
-                >
-                  <option value="">Select a license…</option>
-                  {licenses.map((license) => (
-                    <option key={license.id} value={license.id}>
-                      {license.name}
-                    </option>
-                  ))}
-                </Select>
-                <FieldError message={fieldErrors.licenseId} />
+                {licenses.length === 1 ? (
+                  <>
+                    <Label>License to assign</Label>
+                    <p className="text-sm">
+                      A seat is assigned automatically from <strong>{licenses[0]?.name}</strong>.
+                    </p>
+                    <FieldError message={fieldErrors.licenseId} />
+                  </>
+                ) : licenses.length === 0 ? (
+                  <>
+                    <Label>License to assign</Label>
+                    <p className="text-sm text-destructive">
+                      This application requires a license but none is linked to it in this company.
+                      Link one on the application page before implementing.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <Label htmlFor={`impl-license-${requestItemId}`} required>
+                      License to assign
+                    </Label>
+                    <Select
+                      id={`impl-license-${requestItemId}`}
+                      value={licenseId}
+                      onChange={(event) => setLicenseId(event.target.value)}
+                    >
+                      <option value="">Select a license…</option>
+                      {licenses.map((license) => (
+                        <option key={license.id} value={license.id}>
+                          {license.name}
+                        </option>
+                      ))}
+                    </Select>
+                    <HelperText>This application has more than one license linked.</HelperText>
+                    <FieldError message={fieldErrors.licenseId} />
+                  </>
+                )}
               </div>
             ) : null}
             {credentialFields.length > 0 ? (
@@ -292,6 +319,155 @@ export function ImplementationPanel({
           Mark implementation complete
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Shows which employee an approved item will be assigned to at implementation.
+ * The People record is resolved from the requested-for company + employee ID;
+ * when it does not exist yet it can be created straight from the request.
+ */
+export function RequestedForResolution({
+  requestId,
+  personId,
+  personName,
+  requestedForName,
+  requestedForEmployeeId,
+  companyName,
+  requestedForEmail,
+  requestedForPosition,
+  requestedForDepartmentId,
+  departments,
+}: {
+  requestId: string;
+  personId: string | null;
+  personName: string | null;
+  requestedForName: string;
+  requestedForEmployeeId: string | null;
+  companyName: string | null;
+  requestedForEmail: string;
+  requestedForPosition: string | null;
+  requestedForDepartmentId: string | null;
+  departments: { id: string; name: string }[];
+}) {
+  const { run, loading } = useAction();
+  const [confirming, setConfirming] = useState(false);
+  const [submittedFirst, ...submittedRest] = (requestedForName ?? "").trim().split(/\s+/);
+  const [draft, setDraft] = useState({
+    firstName: submittedFirst ?? "",
+    lastName: submittedRest.join(" "),
+    email: requestedForEmail ?? "",
+    employeeId: requestedForEmployeeId ?? "",
+    departmentId: requestedForDepartmentId ?? "",
+    positionTitle: requestedForPosition ?? "",
+  });
+
+  if (personId) {
+    return (
+      <div className="mb-4 rounded-lg border bg-muted/30 p-3 text-sm">
+        <span className="text-muted-foreground">Will be assigned to </span>
+        <a href={`/people/${personId}`} className="font-medium text-primary hover:underline">
+          {personName}
+        </a>
+        {requestedForEmployeeId ? (
+          <span className="text-muted-foreground"> ({requestedForEmployeeId}{companyName ? `, ${companyName}` : ""})</span>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning/5 p-3 text-sm">
+      <div className="flex items-start gap-2">
+        <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden />
+        <div>
+          <p className="font-medium">No employee record for {requestedForName}</p>
+          <p className="text-muted-foreground">
+            Nothing matched employee ID {requestedForEmployeeId ?? "(none)"}
+            {companyName ? ` in ${companyName}` : ""}. Create the record to continue with implementation.
+          </p>
+        </div>
+      </div>
+      <Button size="sm" onClick={() => setConfirming(true)}>
+        <UserPlus className="h-4 w-4" /> Create employee record
+      </Button>
+
+      {/* IT confirms the submitted details before the profile exists. The
+          position was typed freely on the form, so it is corrected here and
+          added to the catalogue on save. */}
+      <Dialog open={confirming} onOpenChange={setConfirming}>
+        <DialogContent
+          title={`Create employee record for ${requestedForName}`}
+          description="Check the details submitted on the request. Correct anything wrong before the profile is created."
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="cp-first" required>First name</Label>
+              <Input id="cp-first" value={draft.firstName}
+                onChange={(event) => setDraft({ ...draft, firstName: event.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="cp-last" required>Last name</Label>
+              <Input id="cp-last" value={draft.lastName}
+                onChange={(event) => setDraft({ ...draft, lastName: event.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="cp-email" required>Work email</Label>
+              <Input id="cp-email" type="email" value={draft.email}
+                onChange={(event) => setDraft({ ...draft, email: event.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="cp-employee" required>Employee ID</Label>
+              <Input id="cp-employee" value={draft.employeeId}
+                onChange={(event) => setDraft({ ...draft, employeeId: event.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="cp-department">Department</Label>
+              <Select id="cp-department" value={draft.departmentId}
+                onChange={(event) => setDraft({ ...draft, departmentId: event.target.value })}>
+                <option value="">None</option>
+                {departments.map((department) => (
+                  <option key={department.id} value={department.id}>{department.name}</option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="cp-position">Position</Label>
+              <Input id="cp-position" value={draft.positionTitle}
+                onChange={(event) => setDraft({ ...draft, positionTitle: event.target.value })} />
+              <HelperText>Typed by the requester. It is added to the catalogue if it is new.</HelperText>
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">Company: {companyName ?? "Unknown"}</p>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setConfirming(false)}>Cancel</Button>
+            <Button
+              loading={loading}
+              disabled={!draft.firstName.trim() || !draft.email.trim() || !draft.employeeId.trim()}
+              onClick={() =>
+                run(
+                  () =>
+                    createRequestedForPersonAction(requestId, {
+                      firstName: draft.firstName,
+                      lastName: draft.lastName,
+                      email: draft.email,
+                      employeeId: draft.employeeId,
+                      departmentId: draft.departmentId || undefined,
+                      positionTitle: draft.positionTitle || undefined,
+                    }),
+                  {
+                    successMessage: "Employee record created and linked.",
+                    onSuccess: () => setConfirming(false),
+                  },
+                )
+              }
+            >
+              Create employee record
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

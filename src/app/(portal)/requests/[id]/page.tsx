@@ -6,9 +6,10 @@ import { PageHeader } from "@/shared/ui/page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { StatusBadge } from "@/shared/ui/badge";
 import { formatDateTime } from "@/shared/utils";
-import { RequestAdminActions, ImplementationPanel, StepAdminControls } from "./request-actions";
+import { RequestAdminActions, ImplementationPanel, StepAdminControls, RequestedForResolution } from "./request-actions";
 import { AutoRefresh } from "@/shared/ui/auto-refresh";
 import { fullName } from "@/shared/utils";
+import { listActiveRequestFieldsFor } from "@/modules/request-fields/service";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
     where: { id },
     include: {
       company: true,
+      requestedFor: { select: { id: true, firstName: true, lastName: true } },
       form: { select: { name: true } },
       items: {
         include: {
@@ -52,6 +54,11 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
 
   const timeline = await getRequestTimeline(id);
   const canImplement = user.permissions.has("requests.implement");
+
+  // Company of the requested-for employee (forms may be shared across companies).
+  const requestedForCompanyName = request.requestedForCompanyId
+    ? (await db.company.findUnique({ where: { id: request.requestedForCompanyId }, select: { name: true } }))?.name ?? null
+    : request.company.name;
   const canAdmin = user.permissions.has("requests.admin");
   const canWorkflowAdmin = user.permissions.has("workflows.admin");
   const fieldData = (request.fieldData ?? {}) as Record<string, unknown>;
@@ -72,6 +79,20 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
     orderBy: { name: "asc" },
     select: { id: true, name: true, applicationId: true },
   });
+  // Field keys are stored on the item; look up their labels for display.
+  const itemRequestFields = await listActiveRequestFieldsFor(
+    request.items.map((item) => item.applicationId).filter((id): id is string => !!id),
+    request.items.map((item) => item.assetCategoryId).filter((id): id is string => !!id),
+  );
+  const itemFieldLabels = new Map(itemRequestFields.map((field) => [field.fieldKey, field.label]));
+
+  // Offered when IT confirms the details before creating the employee record.
+  const requestedForDepartments = await db.department.findMany({
+    where: { deletedAt: null, companyId: request.requestedForCompanyId ?? request.companyId },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
+
   const availableAssets = await db.asset.findMany({
     where: { companyId: request.companyId, status: "AVAILABLE", deletedAt: null },
     orderBy: { assetTag: "asc" },
@@ -113,14 +134,14 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                 />
                 <Detail
                   label="Requester dept / position"
-                  value={[request.requesterDepartment, request.requesterPosition].filter(Boolean).join(" · ") || "—"}
+                  value={[request.requesterDepartment, request.requesterPosition].filter(Boolean).join(" · ") || "None"}
                 />
                 <Detail
                   label="Requested for dept / position"
-                  value={[request.requestedForDepartment, request.requestedForPosition].filter(Boolean).join(" · ") || "—"}
+                  value={[request.requestedForDepartment, request.requestedForPosition].filter(Boolean).join(" · ") || "None"}
                 />
                 <Detail label="Submitted" value={formatDateTime(request.submittedAt)} />
-                <Detail label="Completed" value={request.completedAt ? formatDateTime(request.completedAt) : "—"} />
+                <Detail label="Completed" value={request.completedAt ? formatDateTime(request.completedAt) : "None"} />
               </dl>
               {Object.keys(fieldData).length > 0 ? (
                 <div className="mt-4 rounded-md border bg-muted/40 p-3">
@@ -132,7 +153,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                       <Detail
                         key={key}
                         label={key.replace(/_/g, " ")}
-                        value={Array.isArray(value) ? value.join(", ") : String(value ?? "—")}
+                        value={Array.isArray(value) ? value.join(", ") : String(value ?? "None")}
                       />
                     ))}
                   </dl>
@@ -140,6 +161,21 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
               ) : null}
             </CardContent>
           </Card>
+
+          {canImplement && request.items.some((item) => item.status === "IMPLEMENTATION_PENDING") ? (
+            <RequestedForResolution
+              requestId={request.id}
+              personId={request.requestedFor?.id ?? null}
+              personName={request.requestedFor ? fullName(request.requestedFor) : null}
+              requestedForEmail={request.requestedForEmail}
+              requestedForPosition={request.requestedForPosition}
+              requestedForDepartmentId={request.requestedForDepartmentId}
+              departments={requestedForDepartments}
+              requestedForName={request.requestedForName}
+              requestedForEmployeeId={request.requestedForEmployeeId}
+              companyName={requestedForCompanyName}
+            />
+          ) : null}
 
           {request.items.map((item, index) => {
             const instance = item.workflowInstances[0];
@@ -167,6 +203,22 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                     {item.applicationRole ? <Detail label="Access role" value={item.applicationRole.name} /> : null}
                     {item.assetCategory ? <Detail label="Asset category" value={item.assetCategory.name} /> : null}
                     {item.description ? <Detail label="Notes" value={item.description} /> : null}
+                    {/* Answers to the questions the application or category defines. */}
+                    {Object.entries((item.itemData as Record<string, unknown> | null) ?? {}).map(
+                      ([key, value]) => (
+                        <Detail
+                          key={key}
+                          label={itemFieldLabels.get(key) ?? key.replace(/_/g, " ")}
+                          value={
+                            Array.isArray(value)
+                              ? value.join(", ")
+                              : value === null || value === ""
+                                ? "None"
+                                : String(value)
+                          }
+                        />
+                      ),
+                    )}
                   </dl>
                   {instance ? (
                     <ol className="space-y-2">
@@ -190,11 +242,11 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                             <div className="flex items-center justify-between gap-2">
                               <p className="text-sm font-medium">{step.stepName}</p>
                               <div className="flex items-center gap-1.5">
-                                {/* An ACTIVE step is awaiting its approver: shown as Pending. */}
-                                <StatusBadge status={step.status === "ACTIVE" ? "PENDING" : step.status} />
                                 {canWorkflowAdmin && step.status === "ACTIVE" && step.stepType !== "IT_IMPLEMENTATION" ? (
                                   <StepAdminControls stepInstanceId={step.id} people={transferOptions} />
                                 ) : null}
+                                {/* An ACTIVE step is awaiting its approver: shown as Pending. */}
+                                <StatusBadge status={step.status === "ACTIVE" ? "PENDING" : step.status} />
                               </div>
                             </div>
                             {step.assignments.length > 0 ? (
@@ -204,9 +256,15 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                                   .map((assignment) => `${assignment.person.firstName} ${assignment.person.lastName}`)
                                   .join(", ")}
                               </p>
-                            ) : step.status === "ACTIVE" ? (
+                            ) : step.status === "ACTIVE" || step.status === "PENDING" ? (
+                              /* Almost always means nobody is assigned to the
+                                 step's approval role yet. */
                               <p className="mt-0.5 text-xs text-destructive">
-                                No approvers resolved — transfer this step to an approver or fix the department heads.
+                                No approvers resolved for this step.{" "}
+                                <a href="/organization" className="underline">
+                                  Assign people to its approval role
+                                </a>
+                                , or transfer this step to a specific approver.
                               </p>
                             ) : null}
                             {step.actions.map((action) => (
@@ -215,7 +273,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                                   {action.person.firstName} {action.person.lastName}
                                 </span>{" "}
                                 {action.action.toLowerCase().replace("_", " ")}
-                                {action.comments ? <span className="text-muted-foreground"> — “{action.comments}”</span> : null}
+                                {action.comments ? <span className="text-muted-foreground">: “{action.comments}”</span> : null}
                               </p>
                             ))}
                           </div>
@@ -269,7 +327,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                         helpText: field.helpText,
                       }))}
                       licenses={activeLicenses
-                        .filter((license) => !license.applicationId || license.applicationId === item.applicationId)
+                        .filter((license) => license.applicationId === item.applicationId)
                         .map((license) => ({ id: license.id, name: license.name }))}
                       assets={availableAssets
                         .filter((asset) => !item.assetCategoryId || asset.categoryId === item.assetCategoryId)

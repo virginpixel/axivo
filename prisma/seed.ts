@@ -4,7 +4,7 @@ import { hash } from "@node-rs/argon2";
 /**
  * Axivo database seed.
  * Creates required platform configuration (system roles with permissions,
- * global approval roles, notification templates) and — on first run only —
+ * global approval roles, notification templates) and - on first run only -
  * an initial company plus the System Administrator account from environment
  * variables. Safe to run repeatedly (idempotent upserts, no demo data).
  */
@@ -192,6 +192,48 @@ async function main(): Promise<void> {
       create: { companyId: company.id, name: "Asset Request", kind: "ASSET_REQUEST", description: "Request company assets such as laptops and phones." },
       update: {},
     });
+  }
+
+  // Deduplicate down to exactly the two standard request types per company.
+  // Legacy/duplicate rows from earlier builds are repointed and soft-deleted.
+  console.log("[seed] Deduplicating request types...");
+  const standardKinds: Array<{ kind: "APPLICATION_ACCESS" | "ASSET_REQUEST"; name: string }> = [
+    { kind: "APPLICATION_ACCESS", name: "Application Access" },
+    { kind: "ASSET_REQUEST", name: "Asset Request" },
+  ];
+  for (const company of allCompanies) {
+    for (const { kind, name } of standardKinds) {
+      const rows = await prisma.requestType.findMany({
+        where: { companyId: company.id, kind, deletedAt: null },
+        orderBy: { createdAt: "asc" },
+      });
+      if (rows.length <= 1) continue;
+      const keep = rows.find((row) => row.name === name) ?? rows[0]!;
+      for (const row of rows) {
+        if (row.id === keep.id) continue;
+        await prisma.form.updateMany({ where: { requestTypeId: row.id }, data: { requestTypeId: keep.id } });
+        await prisma.requestType.update({
+          where: { id: row.id },
+          data: { deletedAt: new Date(), isActive: false, name: `${row.name} (removed ${row.id.slice(0, 8)})` },
+        });
+      }
+    }
+    // Retire request types of any non-standard kind that have no forms attached.
+    const legacy = await prisma.requestType.findMany({
+      where: {
+        companyId: company.id,
+        kind: { notIn: ["APPLICATION_ACCESS", "ASSET_REQUEST"] },
+        deletedAt: null,
+      },
+      include: { _count: { select: { forms: true } } },
+    });
+    for (const row of legacy) {
+      if (row._count.forms > 0) continue;
+      await prisma.requestType.update({
+        where: { id: row.id },
+        data: { deletedAt: new Date(), isActive: false, name: `${row.name} (removed ${row.id.slice(0, 8)})` },
+      });
+    }
   }
 
   console.log("[seed] Seeding default contract categories catalog...");

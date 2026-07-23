@@ -81,7 +81,7 @@ export default async function ApprovalActionPage({
                     <Detail
                       key={key}
                       label={key.replace(/_/g, " ")}
-                      value={Array.isArray(value) ? value.join(", ") : String(value ?? "—")}
+                      value={Array.isArray(value) ? value.join(", ") : String(value ?? "None")}
                     />
                   ))}
                 </dl>
@@ -96,7 +96,7 @@ export default async function ApprovalActionPage({
                 <ul className="space-y-1">
                   {stepInstance.actions.map((action) => (
                     <li key={action.id} className="text-muted-foreground">
-                      {action.person.firstName} {action.person.lastName} — {action.action.toLowerCase().replace("_", " ")}
+                      {action.person.firstName} {action.person.lastName}: {action.action.toLowerCase().replace("_", " ")}
                       {action.comments ? `: "${action.comments}"` : ""}
                     </li>
                   ))}

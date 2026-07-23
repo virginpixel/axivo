@@ -1,6 +1,6 @@
 import { requirePermission } from "@/shared/auth/guard";
 import { db } from "@/shared/db";
-import { PageHeader } from "@/shared/ui/page";
+import { PageHeader, Pagination } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge } from "@/shared/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
@@ -11,15 +11,24 @@ export const metadata = { title: "Workflows" };
 export const dynamic = "force-dynamic";
 
 /** Workflow definitions, versions and delegations (SDS Doc 13). */
-export default async function WorkflowsPage() {
+export default async function WorkflowsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const params = await searchParams;
+  const page = Math.max(1, Number(params.page) || 1);
+  const pageSize = 25;
   const { user } = await requirePermission("workflows.view");
   const isGlobalAdmin = user.systemRoleKey === "SYSTEM_ADMINISTRATOR";
   const canManage = user.permissions.has("workflows.manage");
   const companyScope = isGlobalAdmin ? {} : { companyId: user.companyId };
 
-  const [workflows, approvalRoles, companies, delegations, people] = await Promise.all([
+  const [workflows, workflowTotal, approvalRoles, companies, delegations, people] = await Promise.all([
     db.workflow.findMany({
       where: { deletedAt: null, ...companyScope },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
       orderBy: [{ company: { name: "asc" } }, { name: "asc" }],
       include: {
         company: { select: { name: true } },
@@ -30,6 +39,7 @@ export default async function WorkflowsPage() {
         forms: { where: { deletedAt: null }, select: { id: true, name: true, status: true } },
       },
     }),
+    db.workflow.count({ where: { deletedAt: null, ...companyScope } }),
     db.approvalRole.findMany({
       where: { deletedAt: null, isActive: true },
       orderBy: { name: "asc" },
@@ -83,7 +93,7 @@ export default async function WorkflowsPage() {
                       <CardTitle>
                         {workflow.name}
                         <span className="ml-2 text-sm font-normal text-muted-foreground">
-                          {workflow.company.name} · v{version?.versionNumber ?? "—"}
+                          {workflow.company.name} · v{version?.versionNumber ?? "None"}
                         </span>
                       </CardTitle>
                       {workflow.description ? (
@@ -201,6 +211,16 @@ export default async function WorkflowsPage() {
           </Table>
         )}
       </section>
+      <Pagination
+        page={page}
+        pageCount={Math.max(1, Math.ceil(workflowTotal / pageSize))}
+        total={workflowTotal}
+        buildHref={(next) => {
+          const search = new URLSearchParams();
+          search.set("page", String(next));
+          return `/workflows?${search.toString()}`;
+        }}
+      />
     </div>
   );
 }

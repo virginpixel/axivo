@@ -10,6 +10,8 @@ export const requestItemInputSchema = z
     applicationRoleId: uuidSchema.optional(),
     assetCategoryId: uuidSchema.optional(),
     description: optionalText(1000),
+    /** Answers to the request fields defined on the chosen application or category. */
+    fieldValues: z.record(z.unknown()).default({}),
   })
   .strict()
   .superRefine((item, ctx) => {
@@ -42,13 +44,18 @@ export const publicSubmissionSchema = z
     requesterName: requiredText("Your name", 200),
     requesterEmail: emailSchema,
     requesterEmployeeId: requiredText("Your employee ID", 50),
+    /** Company of the requester; forms may be shared across companies. */
+    requesterCompanyId: uuidSchema,
     requesterDepartmentId: uuidSchema,
-    requesterPositionId: uuidSchema,
+    /** Free text: a requester may need a position that does not exist yet. */
+    requesterPositionTitle: requiredText("Your position", 150),
     requestedForName: requiredText("Requested for name", 200),
     requestedForEmail: emailSchema,
     requestedForEmployeeId: requiredText("Requested for employee ID", 50),
+    /** Company of the requested-for employee; forms may be shared across companies. */
+    requestedForCompanyId: uuidSchema,
     requestedForDepartmentId: uuidSchema,
-    requestedForPositionId: uuidSchema,
+    requestedForPositionTitle: requiredText("Requested for position", 150),
     items: z.array(requestItemInputSchema).min(1, "Select at least one item.").max(20),
     fieldValues: z.record(z.unknown()).default({}),
     /** Honeypot field - must remain empty (Doc 05 Ch7 bot protection). */

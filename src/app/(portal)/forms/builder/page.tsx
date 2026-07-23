@@ -18,7 +18,7 @@ export default async function FormBuilderPage({
   const isGlobalAdmin = user.systemRoleKey === "SYSTEM_ADMINISTRATOR";
   const companyScope = isGlobalAdmin ? {} : { companyId: user.companyId };
 
-  const [companies, requestTypes, workflows, assetCategories] = await Promise.all([
+  const [companies, requestTypes, workflows, assetCategories, applications] = await Promise.all([
     db.company.findMany({
       where: { deletedAt: null, isActive: true, ...(isGlobalAdmin ? {} : { id: user.companyId }) },
       orderBy: { name: "asc" },
@@ -41,9 +41,15 @@ export default async function FormBuilderPage({
       select: { id: true, name: true, companyId: true },
     }),
     db.assetCategory.findMany({
-      where: { deletedAt: null, isActive: true, ...companyScope },
+      where: { deletedAt: null, isActive: true },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, companyId: true },
+      select: { id: true, name: true },
+    }),
+    // Offered when a form is dedicated to a single application.
+    db.application.findMany({
+      where: { deletedAt: null, isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, companyId: true, isShared: true },
     }),
   ]);
 
@@ -63,6 +69,9 @@ export default async function FormBuilderPage({
       description: form.description,
       confirmationMessage: form.confirmationMessage,
       allowedAssetCategoryIds: (form.allowedAssetCategoryIds as string[] | null) ?? [],
+      applicationId: form.applicationId,
+      assetCategoryId: form.assetCategoryId,
+      allowsMixedItems: form.allowsMixedItems,
       status: form.status,
       fields: (form.currentVersion?.fields ?? []).map((field) => ({
         fieldKey: field.fieldKey,
@@ -94,6 +103,7 @@ export default async function FormBuilderPage({
         requestTypes={requestTypes}
         workflows={workflows}
         assetCategories={assetCategories}
+        applications={applications}
         existing={existing}
       />
     </div>

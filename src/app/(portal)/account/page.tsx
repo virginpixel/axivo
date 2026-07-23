@@ -32,12 +32,12 @@ export default async function AccountPage() {
               <Row label="Username" value={user.username} />
               <Row label="Email" value={user.email} />
               <Row label="System role" value={user.systemRoleName} />
-              <Row label="Company" value={record?.person.company.name ?? "—"} />
-              <Row label="Department" value={record?.person.department?.name ?? "—"} />
-              <Row label="Last login" value={record?.lastLoginAt ? formatDateTime(record.lastLoginAt) : "—"} />
+              <Row label="Company" value={record?.person.company.name ?? "None"} />
+              <Row label="Department" value={record?.person.department?.name ?? "None"} />
+              <Row label="Last login" value={record?.lastLoginAt ? formatDateTime(record.lastLoginAt) : "None"} />
               <Row
                 label="Password changed"
-                value={record?.passwordChangedAt ? formatDateTime(record.passwordChangedAt) : "—"}
+                value={record?.passwordChangedAt ? formatDateTime(record.passwordChangedAt) : "None"}
               />
               <Row label="Active sessions" value={String(sessions)} />
             </dl>

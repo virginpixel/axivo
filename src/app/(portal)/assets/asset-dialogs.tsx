@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Pencil, Plus, UserPlus, Undo2, Wrench, Trash2, ClipboardCheck } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
@@ -12,27 +13,59 @@ import {
   returnAssetAction,
   createMaintenanceAction,
   setMaintenanceStatusAction,
-  disposeAssetAction,
+  deleteAssetAction,
   startClearanceAction,
   verifyClearanceItemAction,
   completeClearanceAction,
+  cancelClearanceAction,
+  removeClearanceItemAction,
 } from "@/modules/assets/actions";
+import {
+  quickCreateManufacturerAction,
+  quickCreateVendorAction,
+  quickCreateAssetModelAction,
+  quickCreateCategoryAction,
+  quickCreateLocationAction,
+} from "@/modules/catalogs/actions";
 import { useAction } from "@/shared/ui/use-action";
+import { useToast } from "@/shared/ui/toast";
 import { Button } from "@/shared/ui/button";
 import { Input, Select, Textarea, Label, FieldError, HelperText } from "@/shared/ui/input";
+import { Combobox } from "@/shared/ui/combobox";
+import { PersonPicker } from "@/shared/ui/person-picker";
 import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
 import { StatusBadge } from "@/shared/ui/badge";
+import { CUSTOM_FIELD_PLACEHOLDERS, type CustomFieldFormat } from "@/modules/catalogs/format";
+import type { ActionResult } from "@/shared/errors";
+
+/** Wrap a quick-create action into the Combobox onCreate contract, toasting failures. */
+function useCreateHandler() {
+  const { toast } = useToast();
+  return function handler(fn: (label: string) => Promise<ActionResult<{ value: string; label: string }>>) {
+    return async (label: string) => {
+      const result = await fn(label);
+      if (result.ok) return result.data;
+      toast("error", result.error);
+      return null;
+    };
+  };
+}
 
 interface Company { id: string; name: string }
-interface Category { id: string; name: string; companyId: string }
+interface Category { id: string; name: string }
 interface LocationOption { id: string; name: string; companyId: string }
 interface PersonOption { id: string; name: string }
 
-export function CategoryDialog({ companies }: { companies: Company[] }) {
+/** Categories are global, so this dialog has no company selector. */
+export function CategoryDialog({
+  workflows = [],
+}: {
+  workflows?: { id: string; name: string }[];
+}) {
   const { run, loading, fieldErrors } = useAction();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
-    companyId: companies[0]?.id ?? "",
+    workflowId: "",
     name: "",
     description: "",
     requireHandoverAcceptance: true,
@@ -49,14 +82,6 @@ export function CategoryDialog({ companies }: { companies: Company[] }) {
       <DialogContent title="New asset category">
         <div className="space-y-3">
           <div>
-            <Label htmlFor="cat-company" required>Company</Label>
-            <Select id="cat-company" value={form.companyId} onChange={(e) => setForm({ ...form, companyId: e.target.value })}>
-              {companies.map((company) => (
-                <option key={company.id} value={company.id}>{company.name}</option>
-              ))}
-            </Select>
-          </div>
-          <div>
             <Label htmlFor="cat-name" required>Category name</Label>
             <Input id="cat-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Laptop, Mobile Phone, SIM Card" />
             <FieldError message={fieldErrors.name} />
@@ -65,6 +90,22 @@ export function CategoryDialog({ companies }: { companies: Company[] }) {
             <Label htmlFor="cat-description">Description</Label>
             <Textarea id="cat-description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </div>
+          {workflows.length > 0 ? (
+            <div>
+              <Label htmlFor="cat-workflow">Approval chain</Label>
+              <Select id="cat-workflow" value={form.workflowId}
+                onChange={(e) => setForm({ ...form, workflowId: e.target.value })}>
+                <option value="">Use the form&apos;s approval chain</option>
+                {workflows.map((workflow) => (
+                  <option key={workflow.id} value={workflow.id}>{workflow.name}</option>
+                ))}
+              </Select>
+              <HelperText>
+                Set this so requests for this kind of asset route to their own approvers, even from
+                an all-in-one form.
+              </HelperText>
+            </div>
+          ) : null}
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={form.requireHandoverAcceptance}
               onChange={(e) => setForm({ ...form, requireHandoverAcceptance: e.target.checked })} className="h-4 w-4" />
@@ -83,7 +124,7 @@ export function CategoryDialog({ companies }: { companies: Company[] }) {
                 run(
                   () =>
                     createAssetCategoryAction({
-                      companyId: form.companyId,
+                      workflowId: form.workflowId || undefined,
                       name: form.name,
                       description: form.description || undefined,
                       requireHandoverAcceptance: form.requireHandoverAcceptance,
@@ -116,12 +157,19 @@ export interface AssetFormRecord {
   warrantyExpiry: string | null;
   notes: string | null;
   status: string;
+  customFields: Record<string, string> | null;
+}
+
+export interface AssetModelOption {
+  name: string;
+  manufacturer: string | null;
+  fields: { customFieldId: string; name: string; format: CustomFieldFormat; required: boolean; helpText: string | null }[];
 }
 
 export interface AssetCatalogs {
-  manufacturers: { id: string; name: string }[];
-  models: { id: string; name: string; parentId: string | null }[];
-  suppliers: { id: string; name: string }[];
+  manufacturers: { name: string }[];
+  models: AssetModelOption[];
+  vendors: { name: string }[];
 }
 
 export function AssetDialog({
@@ -129,6 +177,7 @@ export function AssetDialog({
   categories,
   locations,
   catalogs,
+  people = [],
   asset,
   triggerIcon,
 }: {
@@ -136,11 +185,14 @@ export function AssetDialog({
   categories: Category[];
   locations: LocationOption[];
   catalogs: AssetCatalogs;
+  people?: { id: string; name: string; companyId: string }[];
   asset?: AssetFormRecord;
   triggerIcon?: boolean;
 }) {
   const { run, loading, fieldErrors } = useAction();
+  const createHandler = useCreateHandler();
   const [open, setOpen] = useState(false);
+  const [assignPersonId, setAssignPersonId] = useState("");
   const [form, setForm] = useState({
     companyId: asset?.companyId ?? companies[0]?.id ?? "",
     categoryId: asset?.categoryId ?? "",
@@ -154,14 +206,13 @@ export function AssetDialog({
     warrantyExpiry: asset?.warrantyExpiry ?? "",
     notes: asset?.notes ?? "",
   });
-  const companyCategories = categories.filter((category) => category.companyId === form.companyId);
+  const [customFields, setCustomFields] = useState<Record<string, string>>(asset?.customFields ?? {});
   const companyLocations = locations.filter((location) => location.companyId === form.companyId);
-  const selectedManufacturer = catalogs.manufacturers.find(
-    (manufacturer) => manufacturer.name === form.manufacturer,
-  );
   const manufacturerModels = catalogs.models.filter(
-    (model) => !selectedManufacturer || model.parentId === selectedManufacturer.id,
+    (model) => !form.manufacturer || model.manufacturer === form.manufacturer || !model.manufacturer,
   );
+  const selectedModel = catalogs.models.find((model) => model.name === form.model);
+  const modelFields = selectedModel?.fields ?? [];
 
   async function submit() {
     const payload = {
@@ -176,11 +227,22 @@ export function AssetDialog({
       supplier: form.supplier || undefined,
       warrantyExpiry: form.warrantyExpiry || undefined,
       notes: form.notes || undefined,
+      customFields: modelFields.length > 0 ? customFields : undefined,
     };
-    await run(
-      () => (asset ? updateAssetAction(asset.id, payload) : createAssetAction(payload)),
-      { successMessage: asset ? "Asset updated." : "Asset created.", onSuccess: () => setOpen(false) },
-    );
+    if (asset) {
+      await run(() => updateAssetAction(asset.id, payload), { successMessage: "Asset updated.", onSuccess: () => setOpen(false) });
+      return;
+    }
+    await run(() => createAssetAction(payload), {
+      successMessage: assignPersonId ? "Asset created and assigned." : "Asset created.",
+      onSuccess: async (data) => {
+        if (assignPersonId) {
+          await assignAssetAction({ assetId: data.id, personId: assignPersonId });
+        }
+        setAssignPersonId("");
+        setOpen(false);
+      },
+    });
   }
 
   return (
@@ -200,21 +262,25 @@ export function AssetDialog({
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <Label htmlFor="asset-company" required>Company</Label>
-            <Select id="asset-company" value={form.companyId} disabled={!!asset}
-              onChange={(e) => setForm({ ...form, companyId: e.target.value, categoryId: "", locationId: "" })}>
-              {companies.map((company) => (
-                <option key={company.id} value={company.id}>{company.name}</option>
-              ))}
-            </Select>
+            <Combobox
+              id="asset-company" value={form.companyId} disabled={!!asset}
+              options={companies.map((company) => ({ value: company.id, label: company.name }))}
+              onChange={(value) => setForm({ ...form, companyId: value, categoryId: "", locationId: "" })}
+            />
+            {asset ? (
+              <HelperText>Use Transfer on the asset page to move it to another company.</HelperText>
+            ) : null}
           </div>
           <div>
             <Label htmlFor="asset-category" required>Category</Label>
-            <Select id="asset-category" value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
-              <option value="">Select…</option>
-              {companyCategories.map((category) => (
-                <option key={category.id} value={category.id}>{category.name}</option>
-              ))}
-            </Select>
+            <Combobox
+              id="asset-category" value={form.categoryId}
+              placeholder="Select category"
+              options={categories.map((category) => ({ value: category.id, label: category.name }))}
+              onChange={(value) => setForm({ ...form, categoryId: value })}
+              onCreate={createHandler((label) => quickCreateCategoryAction(label))}
+              createNoun="category"
+            />
           </div>
           <div>
             <Label htmlFor="asset-name" required>Asset name</Label>
@@ -229,35 +295,38 @@ export function AssetDialog({
           </div>
           <div>
             <Label htmlFor="asset-manufacturer">Manufacturer</Label>
-            <Select
-              id="asset-manufacturer"
-              value={form.manufacturer}
-              onChange={(e) => setForm({ ...form, manufacturer: e.target.value, model: "" })}
-            >
-              <option value="">Select…</option>
-              {catalogs.manufacturers.map((manufacturer) => (
-                <option key={manufacturer.id} value={manufacturer.name}>{manufacturer.name}</option>
-              ))}
-            </Select>
-            <HelperText>Managed in Settings → Catalogs.</HelperText>
+            <Combobox
+              id="asset-manufacturer" value={form.manufacturer}
+              placeholder="Select manufacturer" emptyLabel="None"
+              options={catalogs.manufacturers.map((manufacturer) => ({ value: manufacturer.name, label: manufacturer.name }))}
+              onChange={(value) => setForm({ ...form, manufacturer: value, model: "" })}
+              onCreate={createHandler(quickCreateManufacturerAction)}
+              createNoun="manufacturer"
+            />
+            <HelperText>Managed in Settings, Manufacturers.</HelperText>
           </div>
           <div>
             <Label htmlFor="asset-model">Model</Label>
-            <Select id="asset-model" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })}>
-              <option value="">Select…</option>
-              {manufacturerModels.map((model) => (
-                <option key={model.id} value={model.name}>{model.name}</option>
-              ))}
-            </Select>
+            <Combobox
+              id="asset-model" value={form.model}
+              placeholder="Select model" emptyLabel="None"
+              options={manufacturerModels.map((model) => ({ value: model.name, label: model.name }))}
+              onChange={(value) => setForm({ ...form, model: value })}
+              onCreate={createHandler(quickCreateAssetModelAction)}
+              createNoun="model"
+            />
+            {modelFields.length > 0 ? <HelperText>This model has custom fields below.</HelperText> : null}
           </div>
           <div>
-            <Label htmlFor="asset-supplier">Supplier</Label>
-            <Select id="asset-supplier" value={form.supplier} onChange={(e) => setForm({ ...form, supplier: e.target.value })}>
-              <option value="">Select…</option>
-              {catalogs.suppliers.map((supplier) => (
-                <option key={supplier.id} value={supplier.name}>{supplier.name}</option>
-              ))}
-            </Select>
+            <Label htmlFor="asset-supplier">Vendor</Label>
+            <Combobox
+              id="asset-supplier" value={form.supplier}
+              placeholder="Select vendor" emptyLabel="None"
+              options={catalogs.vendors.map((vendor) => ({ value: vendor.name, label: vendor.name }))}
+              onChange={(value) => setForm({ ...form, supplier: value })}
+              onCreate={createHandler(quickCreateVendorAction)}
+              createNoun="vendor"
+            />
           </div>
           <div>
             <Label htmlFor="asset-serial">Serial number</Label>
@@ -265,13 +334,29 @@ export function AssetDialog({
           </div>
           <div>
             <Label htmlFor="asset-location">Location</Label>
-            <Select id="asset-location" value={form.locationId} onChange={(e) => setForm({ ...form, locationId: e.target.value })}>
-              <option value="">No location</option>
-              {companyLocations.map((location) => (
-                <option key={location.id} value={location.id}>{location.name}</option>
-              ))}
-            </Select>
+            <Combobox
+              id="asset-location" value={form.locationId}
+              placeholder="No location" emptyLabel="No location"
+              options={companyLocations.map((location) => ({ value: location.id, label: location.name }))}
+              onChange={(value) => setForm({ ...form, locationId: value })}
+              onCreate={form.companyId ? createHandler((label) => quickCreateLocationAction(form.companyId, label)) : undefined}
+              createNoun="location"
+            />
           </div>
+          {!asset ? (
+            <div className="sm:col-span-2">
+              <Label htmlFor="asset-assign">Assign to (optional)</Label>
+              <PersonPicker
+                id="asset-assign"
+                value={assignPersonId}
+                companyId={form.companyId}
+                people={people.filter((person) => person.companyId === form.companyId).map((person) => ({ id: person.id, name: person.name }))}
+                placeholder="Leave unassigned"
+                onChange={setAssignPersonId}
+              />
+              <HelperText>The asset will be assigned to this employee after creation. Create a new person with the button if needed.</HelperText>
+            </div>
+          ) : null}
           <div>
             <Label htmlFor="asset-warranty">Warranty expiry</Label>
             <Input id="asset-warranty" type="date" value={form.warrantyExpiry} onChange={(e) => setForm({ ...form, warrantyExpiry: e.target.value })} />
@@ -280,6 +365,28 @@ export function AssetDialog({
             <Label htmlFor="asset-notes">Notes</Label>
             <Textarea id="asset-notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
           </div>
+          {modelFields.length > 0 ? (
+            <div className="sm:col-span-2 rounded-md border bg-muted/30 p-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {selectedModel?.name} details
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {modelFields.map((field) => (
+                  <div key={field.customFieldId}>
+                    <Label htmlFor={`cf-${field.customFieldId}`} required={field.required}>{field.name}</Label>
+                    <Input
+                      id={`cf-${field.customFieldId}`}
+                      value={customFields[field.customFieldId] ?? ""}
+                      placeholder={CUSTOM_FIELD_PLACEHOLDERS[field.format] ?? ""}
+                      onChange={(e) => setCustomFields((current) => ({ ...current, [field.customFieldId]: e.target.value }))}
+                    />
+                    {field.helpText ? <HelperText>{field.helpText}</HelperText> : null}
+                    <FieldError message={fieldErrors[`cf_${field.customFieldId}`]} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
@@ -301,7 +408,6 @@ export function AssetRowActions({
   locations,
   catalogs,
   people,
-  documents,
   permissions,
 }: {
   asset: AssetFormRecord;
@@ -312,16 +418,15 @@ export function AssetRowActions({
   locations: LocationOption[];
   catalogs: AssetCatalogs;
   people: PersonOption[];
-  documents: { id: string; name: string }[];
   permissions: { canManage: boolean; canAssign: boolean; canMaintain: boolean; canDispose: boolean };
 }) {
+  const router = useRouter();
   const { run, loading } = useAction();
   const [assignOpen, setAssignOpen] = useState(false);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
-  const [disposeOpen, setDisposeOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [personId, setPersonId] = useState("");
   const [maintForm, setMaintForm] = useState({ maintenanceType: "Repair", description: "", serviceProvider: "" });
-  const [disposeForm, setDisposeForm] = useState({ method: "", reason: "", documentId: "" });
 
   return (
     <div className="flex justify-end gap-1">
@@ -338,12 +443,12 @@ export function AssetRowActions({
           </DialogTrigger>
           <DialogContent title={`Assign ${asset.name}`} description="A handover acknowledgement email is sent automatically when the category requires it.">
             <Label htmlFor={`assign-person-${asset.id}`} required>Employee</Label>
-            <Select id={`assign-person-${asset.id}`} value={personId} onChange={(e) => setPersonId(e.target.value)}>
-              <option value="">Select…</option>
-              {people.map((person) => (
-                <option key={person.id} value={person.id}>{person.name}</option>
-              ))}
-            </Select>
+            <Combobox
+              id={`assign-person-${asset.id}`} value={personId}
+              placeholder="Select employee…"
+              options={people.map((person) => ({ value: person.id, label: person.name }))}
+              onChange={setPersonId}
+            />
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setAssignOpen(false)}>Cancel</Button>
               <Button
@@ -457,63 +562,34 @@ export function AssetRowActions({
         </Button>
       ) : null}
 
-      {permissions.canDispose && asset.status !== "DISCARDED" && asset.status !== "ASSIGNED" ? (
-        <Dialog open={disposeOpen} onOpenChange={setDisposeOpen}>
+      {permissions.canManage && asset.status !== "ASSIGNED" ? (
+        <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
           <DialogTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Dispose asset" title="Dispose">
+            <Button variant="ghost" size="icon" aria-label="Delete asset" title="Delete">
               <Trash2 className="h-4 w-4 text-destructive" />
             </Button>
           </DialogTrigger>
           <DialogContent
-            title={`Dispose ${asset.name}`}
-            description="A completed disposal document is required before the asset becomes Discarded. This cannot be undone."
+            title={`Delete ${asset.name}`}
+            description="This removes the asset record entirely. To retire an asset while keeping its history, set its status to Discarded instead."
           >
-            <div className="space-y-3">
-              <div>
-                <Label htmlFor={`disp-method-${asset.id}`} required>Disposal method</Label>
-                <Input id={`disp-method-${asset.id}`} value={disposeForm.method}
-                  onChange={(e) => setDisposeForm({ ...disposeForm, method: e.target.value })}
-                  placeholder="e.g. E-waste recycling, Sold, Donated" />
-              </div>
-              <div>
-                <Label htmlFor={`disp-reason-${asset.id}`} required>Disposal reason</Label>
-                <Textarea id={`disp-reason-${asset.id}`} value={disposeForm.reason}
-                  onChange={(e) => setDisposeForm({ ...disposeForm, reason: e.target.value })} />
-              </div>
-              <div>
-                <Label htmlFor={`disp-document-${asset.id}`} required>Disposal document</Label>
-                <Select id={`disp-document-${asset.id}`} value={disposeForm.documentId}
-                  onChange={(e) => setDisposeForm({ ...disposeForm, documentId: e.target.value })}>
-                  <option value="">Select a document…</option>
-                  {documents.map((document) => (
-                    <option key={document.id} value={document.id}>{document.name}</option>
-                  ))}
-                </Select>
-                <HelperText>Upload the signed disposal form in Documents first, then select it here.</HelperText>
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => setDisposeOpen(false)}>Cancel</Button>
-                <Button
-                  variant="destructive"
-                  loading={loading}
-                  disabled={!disposeForm.method || !disposeForm.reason || !disposeForm.documentId}
-                  onClick={() =>
-                    run(
-                      () =>
-                        disposeAssetAction({
-                          assetId: asset.id,
-                          disposalDate: new Date().toISOString().slice(0, 10),
-                          method: disposeForm.method,
-                          reason: disposeForm.reason,
-                          documentId: disposeForm.documentId,
-                        }),
-                      { successMessage: "Asset discarded.", onSuccess: () => setDisposeOpen(false) },
-                    )
-                  }
-                >
-                  Dispose asset
-                </Button>
-              </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+              <Button
+                variant="destructive"
+                loading={loading}
+                onClick={() =>
+                  run(() => deleteAssetAction(asset.id), {
+                    successMessage: "Asset record deleted.",
+                    onSuccess: () => {
+                      setDeleteOpen(false);
+                      router.push("/assets");
+                    },
+                  })
+                }
+              >
+                Delete asset
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -548,20 +624,20 @@ export function StartClearanceDialog({
         <div className="space-y-3">
           <div>
             <Label htmlFor="clr-company" required>Company</Label>
-            <Select id="clr-company" value={companyId} onChange={(e) => { setCompanyId(e.target.value); setPersonId(""); }}>
-              {companies.map((company) => (
-                <option key={company.id} value={company.id}>{company.name}</option>
-              ))}
-            </Select>
+            <Combobox
+              id="clr-company" value={companyId}
+              options={companies.map((company) => ({ value: company.id, label: company.name }))}
+              onChange={(value) => { setCompanyId(value); setPersonId(""); }}
+            />
           </div>
           <div>
             <Label htmlFor="clr-person" required>Employee</Label>
-            <Select id="clr-person" value={personId} onChange={(e) => setPersonId(e.target.value)}>
-              <option value="">Select…</option>
-              {(peopleByCompany[companyId] ?? []).map((person) => (
-                <option key={person.id} value={person.id}>{person.name}</option>
-              ))}
-            </Select>
+            <Combobox
+              id="clr-person" value={personId}
+              placeholder="Select employee…"
+              options={(peopleByCompany[companyId] ?? []).map((person) => ({ value: person.id, label: person.name }))}
+              onChange={setPersonId}
+            />
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
@@ -584,6 +660,15 @@ export function StartClearanceDialog({
   );
 }
 
+export interface ClearanceItemView {
+  id: string;
+  kind: "ASSET" | "APPLICATION" | "LICENSE";
+  label: string;
+  reference: string | null;
+  status: string;
+  comments: string | null;
+}
+
 export function ClearancePanel({
   clearanceId,
   personName,
@@ -592,60 +677,114 @@ export function ClearancePanel({
 }: {
   clearanceId: string;
   personName: string;
-  items: { id: string; assetTag: string; model: string | null; status: string; comments: string | null }[];
+  items: ClearanceItemView[];
   canManage: boolean;
 }) {
   const { run, loading } = useAction();
+  const { run: runCancel, loading: cancelling } = useAction();
+  const [finalStatus, setFinalStatus] = useState<"RESIGNED" | "TERMINATED">("RESIGNED");
   const allVerified = items.every((item) => item.status !== "PENDING");
+
+  const groups: { kind: ClearanceItemView["kind"]; title: string }[] = [
+    { kind: "ASSET", title: "Assets" },
+    { kind: "APPLICATION", title: "Application access" },
+    { kind: "LICENSE", title: "Licenses" },
+  ];
 
   return (
     <div className="rounded-lg border border-warning/40 bg-warning/5 p-4">
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold">Clearance in progress: {personName}</h3>
         {canManage ? (
-          <Button
-            size="sm"
-            loading={loading}
-            disabled={!allVerified}
-            onClick={() =>
-              run(() => completeClearanceAction(clearanceId), {
-                successMessage: "Clearance completed; document archived.",
-              })
-            }
-          >
-            Complete clearance
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              loading={cancelling}
+              onClick={() =>
+                runCancel(() => cancelClearanceAction(clearanceId), { successMessage: "Clearance cancelled." })
+              }
+            >
+              Cancel clearance
+            </Button>
+            <Label htmlFor="clr-final" className="sr-only">Outcome</Label>
+            <Select
+              id="clr-final"
+              value={finalStatus}
+              className="h-9 w-40"
+              onChange={(event) => setFinalStatus(event.target.value as "RESIGNED" | "TERMINATED")}
+            >
+              <option value="RESIGNED">Mark as Resigned</option>
+              <option value="TERMINATED">Mark as Terminated</option>
+            </Select>
+            <Button
+              size="sm"
+              loading={loading}
+              disabled={!allVerified}
+              onClick={() =>
+                run(() => completeClearanceAction(clearanceId, finalStatus), {
+                  successMessage: "Clearance completed; document archived.",
+                })
+              }
+            >
+              Complete clearance
+            </Button>
+          </div>
         ) : null}
       </div>
       {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No assets assigned — clearance can be completed immediately.</p>
+        <p className="text-sm text-muted-foreground">No open assignments. Clearance can be completed immediately.</p>
       ) : (
-        <ul className="space-y-2">
-          {items.map((item) => (
-            <ClearanceItemRow key={item.id} item={item} canManage={canManage} />
-          ))}
-        </ul>
+        <div className="space-y-4">
+          {groups.map((group) => {
+            const groupItems = items.filter((item) => item.kind === group.kind);
+            if (groupItems.length === 0) return null;
+            return (
+              <div key={group.kind}>
+                <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.title}</h4>
+                <ul className="space-y-2">
+                  {groupItems.map((item) => (
+                    <ClearanceItemRow key={item.id} item={item} canManage={canManage} />
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
 }
 
-function ClearanceItemRow({
-  item,
-  canManage,
-}: {
-  item: { id: string; assetTag: string; model: string | null; status: string; comments: string | null };
-  canManage: boolean;
-}) {
+function ClearanceItemRow({ item, canManage }: { item: ClearanceItemView; canManage: boolean }) {
   const { run, loading } = useAction();
+  const { run: runRemove, loading: removing } = useAction();
   const [comments, setComments] = useState(item.comments ?? "");
+  // Assets can be received / missing / damaged; access & licenses are disabled.
+  const statuses = item.kind === "ASSET" ? (["RECEIVED", "MISSING", "DAMAGED"] as const) : (["RECEIVED"] as const);
+  const statusLabel = (status: string) =>
+    item.kind !== "ASSET" && status === "RECEIVED" ? "Disabled" : status.charAt(0) + status.slice(1).toLowerCase();
 
   return (
     <li className="flex flex-wrap items-center gap-2 rounded-md border bg-card p-2.5 text-sm">
-      <span className="min-w-32 font-medium">{item.assetTag}</span>
-      <span className="text-muted-foreground">{item.model ?? ""}</span>
+      <span className="min-w-32 font-medium">{item.label}</span>
+      <span className="text-muted-foreground">{item.reference ?? ""}</span>
       <span className="ml-auto flex items-center gap-2">
         <StatusBadge status={item.status} />
+        {canManage && item.status === "PENDING" ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            loading={removing}
+            aria-label="Remove from clearance"
+            title="Remove from clearance (handled separately)"
+            onClick={() =>
+              runRemove(() => removeClearanceItemAction(item.id), { successMessage: "Removed from clearance." })
+            }
+          >
+            <Trash2 className="h-4 w-4 text-muted-foreground" />
+          </Button>
+        ) : null}
         {canManage && item.status === "PENDING" ? (
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
@@ -663,7 +802,7 @@ function ClearanceItemRow({
                   className="mb-2"
                 />
                 <div className="flex justify-end gap-1.5">
-                  {(["RECEIVED", "MISSING", "DAMAGED"] as const).map((status) => (
+                  {statuses.map((status) => (
                     <Button
                       key={status}
                       size="sm"
@@ -676,11 +815,11 @@ function ClearanceItemRow({
                               status,
                               comments: comments || undefined,
                             }),
-                          { successMessage: `Asset marked ${status.toLowerCase()}.` },
+                          { successMessage: `Marked ${statusLabel(status).toLowerCase()}.` },
                         )
                       }
                     >
-                      {status.charAt(0) + status.slice(1).toLowerCase()}
+                      {statusLabel(status)}
                     </Button>
                   ))}
                 </div>

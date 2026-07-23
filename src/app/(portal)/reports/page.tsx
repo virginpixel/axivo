@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requirePermission } from "@/shared/auth/guard";
 import { recordAudit } from "@/shared/audit/audit";
 import { STANDARD_REPORTS, getReport } from "@/modules/reports/definitions";
+import { formatDateTimeWithZone } from "@/shared/utils";
 import { PageHeader } from "@/shared/ui/page";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
@@ -63,7 +64,7 @@ export default async function ReportsPage({
       <PageHeader
         title={selected.name}
         breadcrumbs={[{ label: "Reports", href: "/reports" }, { label: selected.name }]}
-        description={`${selected.description} · ${result.rows.length} row(s) · generated ${new Date().toISOString().replace("T", " ").slice(0, 16)} UTC`}
+        description={`${selected.description} · ${result.rows.length} row(s) · generated ${formatDateTimeWithZone(new Date())}`}
         actions={
           canExport ? (
             <div className="flex gap-2">

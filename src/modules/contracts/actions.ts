@@ -87,14 +87,29 @@ export async function attachContractPdfAction(
     }
     const document = await createUploadedDocument(audit, {
       companyId: contract.companyId,
-      name: `Contract - ${contract.name}`,
+      name: `Contract - ${contract.name}${contract.contractNumber ? ` (${contract.contractNumber})` : ""} - ${new Date().toISOString().slice(0, 10)}`,
       categoryName: "Contract",
       fileName: file.name,
       content: Buffer.from(await file.arrayBuffer()),
       links: [{ entityType: "contract", entityId: contractId }],
     });
-    revalidatePath("/contracts");
+    revalidatePath("/contracts", "layout");
     return ok({ documentId: document.id });
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+/** Unlink a contract PDF (removes it from the contract's Documents list). */
+export async function removeContractPdfAction(contractId: string, documentId: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("contracts.manage");
+    await db.documentLink.updateMany({
+      where: { entityType: "contract", entityId: contractId, documentId, removedAt: null },
+      data: { removedAt: new Date(), removedById: audit.actorUserId ?? null },
+    });
+    revalidatePath("/contracts", "layout");
+    return ok(undefined);
   } catch (error) {
     return toActionError(error);
   }

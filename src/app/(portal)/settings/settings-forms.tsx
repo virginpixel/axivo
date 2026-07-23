@@ -237,11 +237,6 @@ export function BrandingForm({
         <CardDescription>Brand changes propagate across the application, emails and future generated PDFs.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div>
-          <Label htmlFor="brand-name" required>System name</Label>
-          <Input id="brand-name" value={form.systemName} readOnly={readOnly} onChange={(e) => setForm({ ...form, systemName: e.target.value })} />
-          <FieldError message={fieldErrors.systemName} />
-        </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label htmlFor="brand-primary" required>Primary color</Label>
@@ -332,11 +327,19 @@ export function NotificationSettingsForm({
             <Label htmlFor="not-impl">Implementation reminder after (hours)</Label>
             <Input id="not-impl" type="number" value={form.reminderImplementationHours} readOnly={readOnly}
               onChange={(e) => setForm({ ...form, reminderImplementationHours: Number(e.target.value) })} />
+            <HelperText>
+              Once a request is fully approved, IT has this many hours to fulfil it before the assigned implementer is
+              reminded to complete the work.
+            </HelperText>
           </div>
           <div>
             <Label htmlFor="not-ack">Acknowledgement reminder after (hours)</Label>
             <Input id="not-ack" type="number" value={form.reminderAckHours} readOnly={readOnly}
               onChange={(e) => setForm({ ...form, reminderAckHours: Number(e.target.value) })} />
+            <HelperText>
+              After credentials are delivered, the recipient has this many hours to acknowledge receipt before they are
+              reminded to do so.
+            </HelperText>
           </div>
           <div>
             <Label htmlFor="not-contract-days">Contract reminder days before expiry</Label>

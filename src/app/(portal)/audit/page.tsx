@@ -1,5 +1,6 @@
 import { requirePermission } from "@/shared/auth/guard";
 import { db } from "@/shared/db";
+import { LiveSearch } from "@/shared/ui/live-search";
 import { PageHeader, StatCard, Pagination } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { Badge } from "@/shared/ui/badge";
@@ -112,7 +113,8 @@ export default async function AuditPage({
       </div>
 
       <form method="get" className="mb-4 flex flex-wrap items-end gap-2">
-        <Input name="q" defaultValue={params.q ?? ""} placeholder="Search action, event, target…" className="w-full sm:w-64" aria-label="Search audit events" />
+        <LiveSearch placeholder="Search action, event, target" className="w-full sm:w-64" />
+        <input type="hidden" name="q" value={params.q ?? ""} />
         <Select name="module" defaultValue={params.module ?? ""} className="w-full sm:w-40" aria-label="Filter by module">
           <option value="">All modules</option>
           {modules.map((entry) => (
@@ -158,8 +160,8 @@ export default async function AuditPage({
                         <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
                           {event.fieldChanges.map((change) => (
                             <li key={change.id}>
-                              <span className="font-medium">{change.field}</span>: {change.previousValue ?? "—"} →{" "}
-                              {change.newValue ?? "—"}
+                              <span className="font-medium">{change.field}</span>: {change.previousValue ?? "None"} →{" "}
+                              {change.newValue ?? "None"}
                             </li>
                           ))}
                         </ul>
@@ -167,7 +169,7 @@ export default async function AuditPage({
                     ) : null}
                   </TD>
                   <TD className="text-xs">{event.actorLabel}</TD>
-                  <TD className="font-mono text-xs">{event.ipAddress ?? "—"}</TD>
+                  <TD className="font-mono text-xs">{event.ipAddress ?? "None"}</TD>
                   <TD>
                     <Badge
                       variant={

@@ -387,7 +387,7 @@ export async function sendApprovalEmails(context: AuditContext, stepInstanceId: 
       targetId: stepInstanceId,
       metadata: { approvalAssignmentId: assignment.id },
     });
-    const url = tokenActionUrl("/action/approval", token);
+    const url = await tokenActionUrl("/action/approval", token);
     await queueNotification({
       companyId: ic.request.companyId,
       eventType: "APPROVAL_REQUIRED",
@@ -605,7 +605,7 @@ async function sendCorrectionEmail(ic: InstanceContext, comments: string): Promi
     targetType: "request_item",
     targetId: ic.requestItem.id,
   });
-  const url = tokenActionUrl("/action/correction", token);
+  const url = await tokenActionUrl("/action/correction", token);
   await queueNotification({
     companyId: ic.request.companyId,
     eventType: "CORRECTION_REQUESTED",
@@ -731,7 +731,17 @@ export async function cancelItemWorkflow(
 export async function rollupRequestStatus(context: AuditContext, requestId: string): Promise<void> {
   const request = await db.request.findUnique({
     where: { id: requestId },
-    include: { items: true },
+    include: {
+      // Names are included so the completion email can say what was granted
+      // rather than only quoting the request number.
+      items: {
+        include: {
+          application: { select: { name: true } },
+          applicationRole: { select: { name: true } },
+          assetCategory: { select: { name: true } },
+        },
+      },
+    },
   });
   if (!request) return;
   const statuses = new Set<RequestItemStatus>(request.items.map((item) => item.status));
@@ -774,7 +784,23 @@ export async function rollupRequestStatus(context: AuditContext, requestId: stri
           companyId: request.companyId,
           eventType: "REQUEST_COMPLETED",
           subject: `Request ${request.requestNumber} completed`,
-          body: `Dear ${request.requesterName},<br/><br/>Your request <strong>${request.requestNumber}</strong> has been completed.`,
+          body: [
+            `Dear ${request.requesterName},`,
+            "",
+            `Your request <strong>${request.requestNumber}</strong> has been completed.`,
+            "",
+            `<strong>Granted for ${request.requestedForName}:</strong>`,
+            "<ul>",
+            ...request.items
+              .filter((item) => item.status === "COMPLETED")
+              .map((item) => {
+                const target =
+                  item.application?.name ?? item.assetCategory?.name ?? item.description ?? "Item";
+                const role = item.applicationRole?.name ? ` (${item.applicationRole.name})` : "";
+                return `<li>${target}${role}</li>`;
+              }),
+            "</ul>",
+          ].join("<br/>"),
           recipients: [{ email: request.requesterEmail, name: request.requesterName }],
           entityType: "request",
           entityId: request.id,

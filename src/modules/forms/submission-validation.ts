@@ -1,6 +1,22 @@
-import type { FormField } from "@prisma/client";
+import type { FormFieldType, Prisma } from "@prisma/client";
 import { isFieldVisible, type FieldValueMap } from "./visibility";
 import type { FieldValidation, VisibilityRule } from "./validators";
+
+/**
+ * The shape this validator needs. Kept structural rather than tied to the
+ * FormField row so the same rules cover request fields defined on an
+ * application or an asset category (SDS Doc 22, Doc 08).
+ */
+export interface ValidatableField {
+  fieldKey: string;
+  label: string;
+  fieldType: FormFieldType;
+  isRequired: boolean;
+  options: Prisma.JsonValue | null;
+  validation: Prisma.JsonValue | null;
+  /** Optional: request fields have no conditional visibility of their own. */
+  visibilityRules?: Prisma.JsonValue | null;
+}
 
 /**
  * Server-side validation of a public form submission against the published
@@ -24,7 +40,7 @@ export interface SubmissionValidationResult {
 }
 
 export function validateSubmissionValues(
-  fields: FormField[],
+  fields: ValidatableField[],
   rawValues: FieldValueMap,
   files: Record<string, SubmittedFile | undefined>,
 ): SubmissionValidationResult {
@@ -32,7 +48,7 @@ export function validateSubmissionValues(
   const values: SubmissionValidationResult["values"] = {};
 
   for (const field of fields) {
-    const rules = (field.visibilityRules as VisibilityRule | null) ?? null;
+    const rules = (field.visibilityRules as VisibilityRule | null | undefined) ?? null;
     if (!isFieldVisible(rules, rawValues)) continue;
 
     const validation = (field.validation as FieldValidation | null) ?? {};

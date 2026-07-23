@@ -12,17 +12,20 @@ import {
 import { useAction } from "@/shared/ui/use-action";
 import { Button } from "@/shared/ui/button";
 import { Input, Select, Textarea, Label, FieldError, HelperText } from "@/shared/ui/input";
+import { Combobox } from "@/shared/ui/combobox";
 import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
 
 export function LicenseDialog({
   companies,
   applications,
   contracts,
+  vendors = [],
   license,
 }: {
   companies: { id: string; name: string }[];
   applications: { id: string; name: string; companyId: string }[];
   contracts: { id: string; contractNumber: string | null; name: string; companyId: string }[];
+  vendors?: string[];
   license?: {
     id: string;
     companyId: string;
@@ -86,23 +89,21 @@ export function LicenseDialog({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label htmlFor="lic-company" required>Company</Label>
-              <Select
+              <Combobox
                 id="lic-company" value={form.companyId} disabled={!!license}
-                onChange={(e) => setForm({ ...form, companyId: e.target.value, applicationId: "", contractId: "" })}
-              >
-                {companies.map((company) => (
-                  <option key={company.id} value={company.id}>{company.name}</option>
-                ))}
-              </Select>
+                options={companies.map((company) => ({ value: company.id, label: company.name }))}
+                onChange={(value) => setForm({ ...form, companyId: value, applicationId: "", contractId: "" })}
+              />
             </div>
             <div>
-              <Label htmlFor="lic-application">Linked application (optional)</Label>
-              <Select id="lic-application" value={form.applicationId} onChange={(e) => setForm({ ...form, applicationId: e.target.value })}>
-                <option value="">None — standalone license (Adobe, VPN, …)</option>
-                {companyApplications.map((application) => (
-                  <option key={application.id} value={application.id}>{application.name}</option>
-                ))}
-              </Select>
+              <Label htmlFor="lic-application">Linked application</Label>
+              <Combobox
+                id="lic-application" value={form.applicationId}
+                placeholder="None"
+                emptyLabel="None"
+                options={companyApplications.map((application) => ({ value: application.id, label: application.name }))}
+                onChange={(value) => setForm({ ...form, applicationId: value })}
+              />
             </div>
           </div>
           <div>
@@ -120,7 +121,13 @@ export function LicenseDialog({
             </div>
             <div>
               <Label htmlFor="lic-vendor">Vendor</Label>
-              <Input id="lic-vendor" value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} />
+              <Combobox
+                id="lic-vendor" value={form.vendor}
+                placeholder={vendors.length ? "Select vendor…" : "Add vendors in Settings → Catalogs"}
+                emptyLabel="None"
+                options={vendors.map((vendor) => ({ value: vendor, label: vendor }))}
+                onChange={(value) => setForm({ ...form, vendor: value })}
+              />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -130,14 +137,16 @@ export function LicenseDialog({
             </div>
             <div>
               <Label htmlFor="lic-contract">Linked contract</Label>
-              <Select id="lic-contract" value={form.contractId} onChange={(e) => setForm({ ...form, contractId: e.target.value })}>
-                <option value="">No contract</option>
-                {companyContracts.map((contract) => (
-                  <option key={contract.id} value={contract.id}>
-                    {contract.contractNumber ? `${contract.contractNumber} · ` : ""}{contract.name}
-                  </option>
-                ))}
-              </Select>
+              <Combobox
+                id="lic-contract" value={form.contractId}
+                placeholder="No contract"
+                emptyLabel="No contract"
+                options={companyContracts.map((contract) => ({
+                  value: contract.id,
+                  label: `${contract.contractNumber ? `${contract.contractNumber} · ` : ""}${contract.name}`,
+                }))}
+                onChange={(value) => setForm({ ...form, contractId: value })}
+              />
             </div>
           </div>
           <div>
@@ -218,7 +227,7 @@ export function PurchaseDialog({ licenseId, licenseType }: { licenseId: string; 
               </>
             ) : null}
             <div>
-              <Label htmlFor="pur-supplier">Supplier</Label>
+              <Label htmlFor="pur-supplier">Vendor</Label>
               <Input id="pur-supplier" value={form.supplier} onChange={(e) => setForm({ ...form, supplier: e.target.value })} />
             </div>
             <div>
@@ -289,12 +298,12 @@ export function LicenseAssignDialog({
         <div className="mt-3 space-y-3">
           <div>
             <Label htmlFor="lic-assign-person" required>Employee</Label>
-            <Select id="lic-assign-person" value={personId} onChange={(e) => setPersonId(e.target.value)}>
-              <option value="">Select…</option>
-              {people.map((person) => (
-                <option key={person.id} value={person.id}>{person.name}</option>
-              ))}
-            </Select>
+            <Combobox
+              id="lic-assign-person" value={personId}
+              placeholder="Select employee…"
+              options={people.map((person) => ({ value: person.id, label: person.name }))}
+              onChange={setPersonId}
+            />
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>

@@ -2,46 +2,48 @@ import Link from "next/link";
 import { requirePermission } from "@/shared/auth/guard";
 import { db } from "@/shared/db";
 import { getLicenseAvailability } from "@/modules/licenses/service";
-import { PageHeader, StatCard } from "@/shared/ui/page";
+import { PageHeader, StatCard, Pagination } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge } from "@/shared/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { formatDate, fullName } from "@/shared/utils";
-import { LicenseDialog, PurchaseDialog, LicenseAssignDialog, LicenseAssignmentActions } from "./license-dialogs";
+import { LiveSearch } from "@/shared/ui/live-search";
+import { LicenseDialog, PurchaseDialog, LicenseAssignDialog } from "./license-dialogs";
 
 export const metadata = { title: "Licenses" };
 export const dynamic = "force-dynamic";
 
 /** License management with availability tracking (SDS Doc 10). */
-export default async function LicensesPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+export default async function LicensesPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string }> }) {
   const { user } = await requirePermission("licenses.view");
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
+  const page = Math.max(1, Number(params.page) || 1);
+  const pageSize = 25;
   const isGlobalAdmin = user.systemRoleKey === "SYSTEM_ADMINISTRATOR";
   const canManage = user.permissions.has("licenses.manage");
   const canAssign = user.permissions.has("licenses.assignments.manage");
   const companyScope = isGlobalAdmin ? {} : { companyId: user.companyId };
 
-  const [licenses, companies, applications, people, contracts] = await Promise.all([
+  const licenseWhere = {
+    deletedAt: null,
+    ...companyScope,
+    ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {}),
+  };
+  const [licenses, licenseTotal, companies, applications, people, contracts, vendorItems] = await Promise.all([
     db.license.findMany({
-      where: {
-        deletedAt: null,
-        ...companyScope,
-        ...(q ? { name: { contains: q, mode: "insensitive" } } : {}),
-      },
+      where: licenseWhere,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
       orderBy: [{ company: { name: "asc" } }, { name: "asc" }],
       include: {
         company: { select: { name: true } },
         application: { select: { name: true } },
         contract: { select: { contractNumber: true, name: true } },
         purchases: { where: { deletedAt: null }, orderBy: { purchaseDate: "desc" } },
-        assignments: {
-          where: { deletedAt: null, status: { in: ["ACTIVE", "PENDING", "SUSPENDED"] } },
-          include: { person: true },
-          orderBy: { assignedAt: "desc" },
-        },
       },
     }),
+    db.license.count({ where: licenseWhere }),
     db.company.findMany({
       where: { deletedAt: null, isActive: true, ...(isGlobalAdmin ? {} : { id: user.companyId }) },
       orderBy: { name: "asc" }, select: { id: true, name: true },
@@ -58,7 +60,12 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
       where: { deletedAt: null, ...companyScope },
       orderBy: { contractNumber: "asc" }, select: { id: true, contractNumber: true, name: true, companyId: true },
     }),
+    db.catalogItem.findMany({
+      where: { deletedAt: null, isActive: true, kind: "VENDOR" },
+      orderBy: { name: "asc" }, select: { name: true },
+    }),
   ]);
+  const vendors = vendorItems.map((item) => item.name);
 
   const availability = new Map<string, { purchased: number; assigned: number; available: number }>();
   for (const license of licenses) {
@@ -89,7 +96,7 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
         description="Software licenses, purchases, renewals and seat availability."
         actions={
           canManage ? (
-            <LicenseDialog companies={companies} applications={applications} contracts={contracts} />
+            <LicenseDialog companies={companies} applications={applications} contracts={contracts} vendors={vendors} />
           ) : undefined
         }
       />
@@ -101,11 +108,9 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
         <StatCard label="Expiring ≤ 60 days" value={expiringCount} tone={expiringCount > 0 ? "warning" : "default"} />
       </div>
 
-      <form method="get" className="mb-4 flex gap-2">
-        <input name="q" defaultValue={q} placeholder="Search licenses…" aria-label="Search"
-          className="h-9 w-full rounded-md border border-input bg-card px-3 text-sm sm:w-64" />
-        <button type="submit" className="h-9 rounded-md border bg-card px-4 text-sm hover:bg-accent">Search</button>
-      </form>
+      <div className="mb-4">
+        <LiveSearch placeholder="Search licenses" />
+      </div>
 
       {licenses.length === 0 ? (
         <EmptyState title="No licenses" description="Record license definitions and purchases to track seat availability." />
@@ -143,6 +148,7 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
                             companies={companies}
                             applications={applications}
                             contracts={contracts}
+                            vendors={vendors}
                             license={{
                               id: license.id,
                               companyId: license.companyId,
@@ -167,63 +173,30 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="grid gap-4 lg:grid-cols-2">
-                  <div>
-                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Purchases & renewals
-                    </h3>
-                    {license.purchases.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No purchases recorded.</p>
-                    ) : (
-                      <Table>
-                        <THead><TR><TH>Type</TH><TH>Qty</TH><TH>Purchased</TH><TH>Expiry</TH></TR></THead>
-                        <TBody>
-                          {license.purchases.slice(0, 5).map((purchase) => (
-                            <TR key={purchase.id}>
-                              <TD>{purchase.purchaseType.replace(/_/g, " ").toLowerCase()}</TD>
-                              <TD>{purchase.quantity}</TD>
-                              <TD>{formatDate(purchase.purchaseDate)}</TD>
-                              <TD>{purchase.expiryDate ? formatDate(purchase.expiryDate) : "—"}</TD>
-                            </TR>
-                          ))}
-                        </TBody>
-                      </Table>
-                    )}
-                  </div>
-                  <div>
-                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Active assignments
-                    </h3>
-                    {license.assignments.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No active assignments.</p>
-                    ) : (
-                      <Table>
-                        <THead>
-                          <TR><TH>Employee</TH><TH>Assigned</TH><TH>Status</TH>{canAssign ? <TH /> : null}</TR>
-                        </THead>
-                        <TBody>
-                          {license.assignments.slice(0, 8).map((assignment) => (
-                            <TR key={assignment.id}>
-                              <TD>{fullName(assignment.person)}</TD>
-                              <TD>{formatDate(assignment.assignedAt)}</TD>
-                              <TD><StatusBadge status={assignment.status} /></TD>
-                              {canAssign ? (
-                                <TD className="text-right">
-                                  <LicenseAssignmentActions assignmentId={assignment.id} status={assignment.status} />
-                                </TD>
-                              ) : null}
-                            </TR>
-                          ))}
-                        </TBody>
-                      </Table>
-                    )}
-                  </div>
+                <CardContent className="flex items-center justify-between py-3">
+                  <p className="text-sm text-muted-foreground">
+                    {stats.purchased} seat(s) purchased across {license.purchases.length} purchase(s).
+                  </p>
+                  <Link href={`/licenses/${license.id}`} className="text-xs text-primary hover:underline">
+                    View purchases &amp; assignments
+                  </Link>
                 </CardContent>
               </Card>
             );
           })}
         </div>
       )}
+      <Pagination
+        page={page}
+        pageCount={Math.max(1, Math.ceil(licenseTotal / pageSize))}
+        total={licenseTotal}
+        buildHref={(next) => {
+          const search = new URLSearchParams();
+          if (q) search.set("q", q);
+          search.set("page", String(next));
+          return `/licenses?${search.toString()}`;
+        }}
+      />
     </div>
   );
 }

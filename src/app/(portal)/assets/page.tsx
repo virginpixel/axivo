@@ -5,6 +5,7 @@ import { PageHeader, StatCard, Pagination } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge } from "@/shared/ui/badge";
 import { Input, Select } from "@/shared/ui/input";
+import { LiveSearch } from "@/shared/ui/live-search";
 import { fullName, formatDate } from "@/shared/utils";
 import { AssetDialog, AssetRowActions } from "./asset-dialogs";
 import type { Prisma, AssetStatus } from "@prisma/client";
@@ -52,7 +53,7 @@ export default async function AssetsPage({
       : {}),
   };
 
-  const [assets, total, categories, companies, locations, people, statusCounts, documents, catalogItems] =
+  const [assets, total, categories, companies, locations, people, statusCounts, catalogItems] =
     await Promise.all([
       db.asset.findMany({
         where,
@@ -78,9 +79,9 @@ export default async function AssetsPage({
       }),
       db.asset.count({ where }),
       db.assetCategory.findMany({
-        where: { deletedAt: null, ...companyScope },
+        where: { deletedAt: null },
         orderBy: { name: "asc" },
-        include: { company: { select: { name: true } } },
+        select: { id: true, name: true },
       }),
       db.company.findMany({
         where: { deletedAt: null, isActive: true, ...(isGlobalAdmin ? {} : { id: user.companyId }) },
@@ -95,18 +96,20 @@ export default async function AssetsPage({
         orderBy: { lastName: "asc" }, select: { id: true, firstName: true, lastName: true, companyId: true },
       }),
       db.asset.groupBy({ by: ["status"], where: { deletedAt: null, ...companyScope }, _count: true }),
-      db.document.findMany({
-        where: { ...companyScope },
-        orderBy: { createdAt: "desc" },
-        take: 100,
-        select: { id: true, name: true, companyId: true },
-      }),
-      db.catalogItem.findMany({
-        where: { deletedAt: null, isActive: true, kind: { in: ["MANUFACTURER", "ASSET_MODEL", "SUPPLIER"] } },
+      db.assetModel.findMany({
+        where: { deletedAt: null, isActive: true },
         orderBy: { name: "asc" },
-        select: { id: true, kind: true, name: true, parentId: true },
+        include: {
+          manufacturer: { select: { name: true } },
+          fieldSet: { include: { fields: { orderBy: { sortOrder: "asc" }, include: { customField: true } } } },
+        },
       }),
     ]);
+
+  const [manufacturerList, vendorList] = await Promise.all([
+    db.manufacturer.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { name: "asc" }, select: { name: true } }),
+    db.vendor.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { name: "asc" }, select: { name: true } }),
+  ]);
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const counts = Object.fromEntries(statusCounts.map((entry) => [entry.status, entry._count]));
@@ -115,14 +118,23 @@ export default async function AssetsPage({
     (peopleByCompany[person.companyId] ??= []).push({ id: person.id, name: fullName(person) });
   }
   const catalogs = {
-    manufacturers: catalogItems.filter((item) => item.kind === "MANUFACTURER"),
-    models: catalogItems.filter((item) => item.kind === "ASSET_MODEL"),
-    suppliers: catalogItems.filter((item) => item.kind === "SUPPLIER"),
+    manufacturers: manufacturerList.map((m) => ({ name: m.name })),
+    models: catalogItems.map((m) => ({
+      name: m.name,
+      manufacturer: m.manufacturer?.name ?? null,
+      fields: (m.fieldSet?.fields ?? []).map((f) => ({
+        customFieldId: f.customFieldId,
+        name: f.customField.name,
+        format: f.customField.format,
+        required: f.required,
+        helpText: f.customField.helpText,
+      })),
+    })),
+    vendors: vendorList.map((v) => ({ name: v.name })),
   };
   const categoryOptions = categories.map((category) => ({
     id: category.id,
     name: category.name,
-    companyId: category.companyId,
   }));
 
   return (
@@ -132,7 +144,13 @@ export default async function AssetsPage({
         description="Company assets across their full lifecycle. Categories, manufacturers, models and suppliers are managed in Settings."
         actions={
           canManage ? (
-            <AssetDialog companies={companies} categories={categoryOptions} locations={locations} catalogs={catalogs} />
+            <AssetDialog
+              companies={companies}
+              categories={categoryOptions}
+              locations={locations}
+              catalogs={catalogs}
+              people={people.map((person) => ({ id: person.id, name: fullName(person), companyId: person.companyId }))}
+            />
           ) : undefined
         }
       />
@@ -144,22 +162,25 @@ export default async function AssetsPage({
         <StatCard label="Discarded" value={counts.DISCARDED ?? 0} />
       </div>
 
-      <form method="get" className="mb-4 flex flex-wrap items-end gap-2">
-        <Input name="q" defaultValue={q} placeholder="Search name, tag, serial, model…" className="w-full sm:w-64" aria-label="Search assets" />
-        <Select name="status" defaultValue={params.status ?? ""} className="w-full sm:w-44" aria-label="Filter by status">
-          <option value="">All statuses</option>
-          {ASSET_STATUSES.map((status) => (
-            <option key={status} value={status}>{status.replace(/_/g, " ")}</option>
-          ))}
-        </Select>
-        <Select name="category" defaultValue={params.category ?? ""} className="w-full sm:w-44" aria-label="Filter by category">
-          <option value="">All categories</option>
-          {categories.map((category) => (
-            <option key={category.id} value={category.id}>{category.name}</option>
-          ))}
-        </Select>
-        <button type="submit" className="h-9 rounded-md border bg-card px-4 text-sm hover:bg-accent">Filter</button>
-      </form>
+      <div className="mb-4 flex flex-wrap items-end gap-2">
+        <LiveSearch placeholder="Search name, tag, serial, model" className="w-full sm:w-64" />
+        <form method="get" className="flex flex-wrap items-end gap-2">
+          <input type="hidden" name="q" value={q} />
+          <Select name="status" defaultValue={params.status ?? ""} className="w-full sm:w-44" aria-label="Filter by status">
+            <option value="">All statuses</option>
+            {ASSET_STATUSES.map((status) => (
+              <option key={status} value={status}>{status.replace(/_/g, " ")}</option>
+            ))}
+          </Select>
+          <Select name="category" defaultValue={params.category ?? ""} className="w-full sm:w-44" aria-label="Filter by category">
+            <option value="">All categories</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>{category.name}</option>
+            ))}
+          </Select>
+          <button type="submit" className="h-9 rounded-md border bg-card px-4 text-sm hover:bg-accent">Filter</button>
+        </form>
+      </div>
 
       {assets.length === 0 ? (
         <EmptyState title="No assets found" description="Register company assets to track assignment, maintenance and disposal." />
@@ -186,10 +207,10 @@ export default async function AssetsPage({
                       ) : null}
                     </TD>
                     <TD>{asset.category.name}</TD>
-                    <TD>{[asset.manufacturer, asset.model].filter(Boolean).join(" ") || "—"}</TD>
-                    <TD>{asset.serialNumber ?? "—"}</TD>
-                    <TD>{activeAssignment ? fullName(activeAssignment.person) : "—"}</TD>
-                    <TD>{asset.warrantyExpiry ? formatDate(asset.warrantyExpiry) : "—"}</TD>
+                    <TD>{[asset.manufacturer, asset.model].filter(Boolean).join(" ") || "None"}</TD>
+                    <TD>{asset.serialNumber ?? "None"}</TD>
+                    <TD>{activeAssignment ? fullName(activeAssignment.person) : "None"}</TD>
+                    <TD>{asset.warrantyExpiry ? formatDate(asset.warrantyExpiry) : "None"}</TD>
                     <TD><StatusBadge status={asset.status} /></TD>
                     <TD className="text-right">
                       <AssetRowActions
@@ -207,6 +228,7 @@ export default async function AssetsPage({
                           warrantyExpiry: asset.warrantyExpiry?.toISOString().slice(0, 10) ?? null,
                           notes: asset.notes,
                           status: asset.status,
+                          customFields: (asset.customFields as Record<string, string> | null) ?? null,
                         }}
                         activeAssignmentId={activeAssignment?.id ?? null}
                         activeMaintenanceId={asset.maintenance[0]?.id ?? null}
@@ -215,7 +237,6 @@ export default async function AssetsPage({
                         locations={locations}
                         catalogs={catalogs}
                         people={peopleByCompany[asset.companyId] ?? []}
-                        documents={documents.filter((document) => document.companyId === asset.companyId)}
                         permissions={{ canManage, canAssign, canMaintain, canDispose }}
                       />
                     </TD>

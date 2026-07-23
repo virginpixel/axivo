@@ -40,7 +40,6 @@ export function CompanyDialog({
     name: string;
     code: string;
     description: string | null;
-    currency: string;
   };
 }) {
   const { run, loading, fieldErrors } = useAction();
@@ -49,16 +48,14 @@ export function CompanyDialog({
     name: company?.name ?? "",
     code: company?.code ?? "",
     description: company?.description ?? "",
-    currency: company?.currency ?? "USD",
   });
 
   async function submit() {
-    // Timezone is a global setting (Settings → General), not per company.
+    // Timezone and currency are global settings (Settings → General), not per company.
     const payload = {
       name: form.name,
       code: form.code,
       description: form.description || undefined,
-      currency: form.currency,
     };
     await run(
       () => (company ? updateCompanyAction(company.id, payload) : createCompanyAction(payload)),
@@ -93,10 +90,6 @@ export function CompanyDialog({
             <Label htmlFor="company-code" required>Code</Label>
             <Input id="company-code" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
             <FieldError message={fieldErrors.code} />
-          </div>
-          <div>
-            <Label htmlFor="company-currency" required>Currency</Label>
-            <Input id="company-currency" value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} />
           </div>
           <div>
             <Label htmlFor="company-description">Description</Label>
@@ -313,10 +306,12 @@ export function OrgEntityDialog({
             <Input id={`${entity}-name`} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             <FieldError message={fieldErrors.name} />
           </div>
-          <div>
-            <Label htmlFor={`${entity}-code`}>Code</Label>
-            <Input id={`${entity}-code`} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
-          </div>
+          {entity !== "location" ? (
+            <div>
+              <Label htmlFor={`${entity}-code`}>Code</Label>
+              <Input id={`${entity}-code`} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
+            </div>
+          ) : null}
           <div>
             <Label htmlFor={`${entity}-description`}>Description</Label>
             <Textarea id={`${entity}-description`} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />

@@ -24,7 +24,7 @@ export const contractSchema = z
     category: requiredText("Category", 100),
     startDate: dateSchema.optional(),
     endDate: dateSchema.optional(),
-    renewalDate: dateSchema.optional(),
+    // renewalDate is derived from endDate + renewalType in the service.
     renewalType: z.enum(["MANUAL", "MONTHLY", "QUARTERLY", "ANNUAL", "CUSTOM"]).default("MANUAL"),
     cost: nonNegativeDecimal("Cost").optional(),
     currency: optionalText(10),

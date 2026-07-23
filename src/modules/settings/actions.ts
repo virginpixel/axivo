@@ -290,6 +290,66 @@ export async function setCatalogItemActiveAction(id: string, isActive: boolean):
   }
 }
 
+export async function updateCatalogItemAction(id: string, rawName: unknown): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("settings.manage");
+    const name = parse(z.string().trim().min(1, "Name is required.").max(200), rawName);
+    const item = await db.catalogItem.findFirst({ where: { id, deletedAt: null } });
+    if (!item) throw new BusinessRuleError("Catalog entry not found.");
+    const duplicate = await db.catalogItem.findFirst({
+      where: { id: { not: id }, kind: item.kind, name: { equals: name, mode: "insensitive" }, parentId: item.parentId, deletedAt: null },
+    });
+    if (duplicate) throw new BusinessRuleError("An entry with this name already exists.");
+    // Contracts store their category by name, so keep them in sync on rename.
+    if (item.kind === "CONTRACT_CATEGORY" && item.name !== name) {
+      await db.contract.updateMany({ where: { category: item.name }, data: { category: name } });
+    }
+    await db.catalogItem.update({ where: { id }, data: { name } });
+    await recordAudit(audit, {
+      module: "settings",
+      eventType: "catalog.updated",
+      action: `Renamed catalog entry "${item.name}" to "${name}"`,
+      targetType: "catalog_item",
+      targetId: id,
+      targetLabel: name,
+    });
+    revalidatePath("/settings", "layout");
+    revalidatePath("/contracts", "layout");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function deleteCatalogItemAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("settings.manage");
+    const item = await db.catalogItem.findFirst({ where: { id, deletedAt: null } });
+    if (!item) throw new BusinessRuleError("Catalog entry not found.");
+    if (item.kind === "CONTRACT_CATEGORY") {
+      const inUse = await db.contract.count({ where: { category: item.name, deletedAt: null } });
+      if (inUse > 0) {
+        throw new BusinessRuleError(
+          `"${item.name}" is used by ${inUse} contract(s). Disable it instead, or move those contracts to another category first.`,
+        );
+      }
+    }
+    await db.catalogItem.update({ where: { id }, data: { deletedAt: new Date(), isActive: false } });
+    await recordAudit(audit, {
+      module: "settings",
+      eventType: "catalog.deleted",
+      action: `Deleted catalog entry "${item.name}"`,
+      targetType: "catalog_item",
+      targetId: id,
+      targetLabel: item.name,
+    });
+    revalidatePath("/settings", "layout");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
 // --- Branding logo (Settings → General): shown on public forms and login ---
 
 export async function uploadBrandingLogoAction(formData: FormData): Promise<ActionResult<undefined>> {
@@ -322,6 +382,103 @@ export async function uploadBrandingLogoAction(formData: FormData): Promise<Acti
       description: "Global branding",
     });
     revalidatePath("/", "layout");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+// --- Generated-document logos (Settings → General): stamped on handover/clearance PDFs ---
+
+const LOGO_POSITIONS = ["left", "center", "right"] as const;
+type LogoSetKey = typeof SETTING_KEYS.GENERATED_LOGOS | typeof SETTING_KEYS.REQUEST_FORM_LOGOS;
+
+/** Shared upload/remove for a three-position logo set stored in settings. */
+async function saveLogoSetEntry(
+  key: LogoSetKey,
+  description: string,
+  position: string,
+  formData: FormData,
+  allowed: string[],
+  storagePrefix: string,
+): Promise<void> {
+  const { audit } = await requirePermission("settings.manage");
+  if (!LOGO_POSITIONS.includes(position as (typeof LOGO_POSITIONS)[number])) {
+    throw new BusinessRuleError("Invalid logo position.");
+  }
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) throw new BusinessRuleError("Choose a logo image.");
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (!allowed.includes(extension)) {
+    throw new BusinessRuleError(`Logos must be ${allowed.join(", ").toUpperCase()}.`);
+  }
+  if (file.size > 2 * 1024 * 1024) throw new BusinessRuleError("Logo must be 2 MB or smaller.");
+  const { storage } = await import("@/shared/storage/storage");
+  const { getSetting } = await import("@/shared/settings/settings");
+  const stored = await storage.save(Buffer.from(await file.arrayBuffer()), extension, storagePrefix);
+  const logos = await getSetting<Record<string, { storageKey: string; mime: string } | null>>(key);
+  const previous = logos[position];
+  if (previous?.storageKey) await storage.delete(previous.storageKey).catch(() => undefined);
+  const mime =
+    extension === "svg" ? "image/svg+xml" : extension === "webp" ? "image/webp" : `image/${extension === "jpg" ? "jpeg" : extension}`;
+  await setSetting(audit, {
+    key,
+    value: { ...logos, [position]: { storageKey: stored.storageKey, mime } } as never,
+    category: "branding",
+    description,
+  });
+}
+
+async function clearLogoSetEntry(key: LogoSetKey, description: string, position: string): Promise<void> {
+  const { audit } = await requirePermission("settings.manage");
+  const { getSetting } = await import("@/shared/settings/settings");
+  const logos = await getSetting<Record<string, { storageKey: string; mime: string } | null>>(key);
+  const previous = logos[position];
+  if (previous?.storageKey) {
+    const { storage } = await import("@/shared/storage/storage");
+    await storage.delete(previous.storageKey).catch(() => undefined);
+  }
+  await setSetting(audit, { key, value: { ...logos, [position]: null } as never, category: "branding", description });
+}
+
+export async function uploadGeneratedLogoAction(position: string, formData: FormData): Promise<ActionResult<undefined>> {
+  try {
+    await saveLogoSetEntry(SETTING_KEYS.GENERATED_LOGOS, "Generated document logos", position, formData, ["png", "jpg", "jpeg"], "generated-logos");
+    revalidatePath("/settings", "layout");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function removeGeneratedLogoAction(position: string): Promise<ActionResult<undefined>> {
+  try {
+    await clearLogoSetEntry(SETTING_KEYS.GENERATED_LOGOS, "Generated document logos", position);
+    revalidatePath("/settings", "layout");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function uploadRequestFormLogoAction(position: string, formData: FormData): Promise<ActionResult<undefined>> {
+  try {
+    await saveLogoSetEntry(SETTING_KEYS.REQUEST_FORM_LOGOS, "Public request form logos", position, formData, ["png", "jpg", "jpeg", "svg", "webp"], "form-logos");
+    revalidatePath("/settings", "layout");
+    revalidatePath("/", "layout");
+    revalidatePath("/r", "layout");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function removeRequestFormLogoAction(position: string): Promise<ActionResult<undefined>> {
+  try {
+    await clearLogoSetEntry(SETTING_KEYS.REQUEST_FORM_LOGOS, "Public request form logos", position);
+    revalidatePath("/settings", "layout");
+    revalidatePath("/", "layout");
+    revalidatePath("/r", "layout");
     return ok(undefined);
   } catch (error) {
     return toActionError(error);

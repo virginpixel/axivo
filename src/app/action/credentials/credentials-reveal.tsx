@@ -54,7 +54,7 @@ export function CredentialsReveal({
           <h2 className="mt-3 text-lg font-semibold">Acknowledge receipt to view your credentials</h2>
           <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
             By continuing you confirm receipt of your {applicationName} access. The temporary
-            password is shown <strong>once</strong> — store it in a safe place and change it at
+            password is shown <strong>once</strong>. Store it in a safe place and change it at
             first login.
           </p>
           {error ? (
@@ -122,7 +122,7 @@ export function CredentialsReveal({
         ) : (
           <p className="rounded-md bg-muted px-4 py-3 text-sm text-muted-foreground">
             The temporary password is no longer available (already viewed or expired). Contact IT if
-            you still need it — they can issue a new one.
+            you still need it, they can issue a new one.
           </p>
         )}
         {revealed.fields.length > 0 ? (

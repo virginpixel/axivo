@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { requirePermission } from "@/shared/auth/guard";
 import { db } from "@/shared/db";
+import { LiveSearch } from "@/shared/ui/live-search";
 import { PageHeader } from "@/shared/ui/page";
-import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
+import { EmptyState } from "@/shared/ui/table";
+import { SortableTable } from "@/shared/ui/sortable-table";
 import { StatusBadge } from "@/shared/ui/badge";
 import { cn, fullName } from "@/shared/utils";
 import {
@@ -90,23 +92,20 @@ export default async function OrganizationPage({
         ))}
       </nav>
 
-      <form method="get" className="mb-4 flex flex-wrap items-center gap-2">
-        <input type="hidden" name="tab" value={tab} />
-        <input
-          name="q"
-          defaultValue={q}
-          placeholder="Search by name…"
-          aria-label="Search"
-          className="h-9 w-full rounded-md border border-input bg-card px-3 text-sm sm:w-64"
-        />
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" name="showInactive" value="1" defaultChecked={showInactive} className="h-4 w-4" />
-          Show inactive
-        </label>
-        <button type="submit" className="h-9 rounded-md border bg-card px-4 text-sm hover:bg-accent">
-          Apply
-        </button>
-      </form>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <LiveSearch placeholder="Search by name" className="w-full sm:w-64" />
+        <form method="get" className="flex flex-wrap items-center gap-2">
+          <input type="hidden" name="tab" value={tab} />
+          <input type="hidden" name="q" value={q} />
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="showInactive" value="1" defaultChecked={showInactive} className="h-4 w-4" />
+            Show inactive
+          </label>
+          <button type="submit" className="h-9 rounded-md border bg-card px-4 text-sm hover:bg-accent">
+            Apply
+          </button>
+        </form>
+      </div>
 
       {tab === "companies" ? (
         <section aria-label="Companies">
@@ -116,42 +115,44 @@ export default async function OrganizationPage({
           {companies.length === 0 ? (
             <EmptyState title="No companies" description="Create the first company to begin structuring the organization." />
           ) : (
-            <Table>
-              <THead>
-                <TR>
-                  <TH>Name</TH><TH>Code</TH><TH>Currency</TH><TH>Status</TH><TH className="text-right">Actions</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {companies
-                  .filter((company) => !q || company.name.toLowerCase().includes(q.toLowerCase()))
-                  .filter((company) => showInactive || company.isActive)
-                  .map((company) => (
-                    <TR key={company.id}>
-                      <TD className="font-medium">{company.name}</TD>
-                      <TD>{company.code}</TD>
-                      <TD>{company.currency}</TD>
-                      <TD><StatusBadge status={company.isActive ? "ACTIVE" : "CANCELLED"} /></TD>
-                      <TD className="text-right">
-                        {canManageCompanies ? (
-                          <div className="flex justify-end gap-2">
-                            <CompanyDialog
-                              company={{
-                                id: company.id,
-                                name: company.name,
-                                code: company.code,
-                                description: company.description,
-                                currency: company.currency,
-                              }}
-                            />
-                            <ToggleActiveButton entity="company" id={company.id} isActive={company.isActive} />
-                          </div>
-                        ) : null}
-                      </TD>
-                    </TR>
-                  ))}
-              </TBody>
-            </Table>
+            <SortableTable
+              initialSort={{ key: "name", dir: "asc" }}
+              columns={[
+                { key: "name", label: "Name" },
+                { key: "code", label: "Code" },
+                { key: "status", label: "Status" },
+                { key: "actions", label: "Actions", sortable: false, align: "right" },
+              ]}
+              rows={companies
+                .filter((company) => !q || company.name.toLowerCase().includes(q.toLowerCase()))
+                .filter((company) => showInactive || company.isActive)
+                .map((company) => ({
+                  key: company.id,
+                  cells: {
+                    name: { sortValue: company.name, node: company.name, className: "font-medium" },
+                    code: { sortValue: company.code, node: company.code },
+                    status: {
+                      sortValue: company.isActive ? 0 : 1,
+                      node: <StatusBadge status={company.isActive ? "ACTIVE" : "CANCELLED"} />,
+                    },
+                    actions: {
+                      node: canManageCompanies ? (
+                        <div className="flex justify-end gap-2">
+                          <CompanyDialog
+                            company={{
+                              id: company.id,
+                              name: company.name,
+                              code: company.code,
+                              description: company.description,
+                            }}
+                          />
+                          <ToggleActiveButton entity="company" id={company.id} isActive={company.isActive} />
+                        </div>
+                      ) : null,
+                    },
+                  },
+                }))}
+            />
           )}
         </section>
       ) : null}
@@ -230,52 +231,59 @@ async function DepartmentsSection({
       {departments.length === 0 ? (
         <EmptyState
           title="No departments"
-          description="Create departments and assign their Department Heads — approvals route to them automatically."
+          description="Create departments and assign their Department Heads; approvals route to them automatically."
         />
       ) : (
-        <Table>
-          <THead>
-            <TR>
-              <TH>Name</TH><TH>Company</TH><TH>Department Head(s)</TH><TH>People</TH><TH>Status</TH>
-              <TH className="text-right">Actions</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {departments.map((department) => (
-              <TR key={department.id}>
-                <TD className="font-medium">{department.name}</TD>
-                <TD>{department.company.name}</TD>
-                <TD>
-                  {department.departmentHeads.length === 0 ? (
-                    <span className="text-xs text-destructive">None — approvals cannot resolve</span>
+        <SortableTable
+          initialSort={{ key: "name", dir: "asc" }}
+          columns={[
+            { key: "name", label: "Name" },
+            { key: "company", label: "Company" },
+            { key: "heads", label: "Department Head(s)" },
+            { key: "people", label: "People", align: "right" },
+            { key: "status", label: "Status" },
+            { key: "actions", label: "Actions", sortable: false, align: "right" },
+          ]}
+          rows={departments.map((department) => ({
+            key: department.id,
+            cells: {
+              name: { sortValue: department.name, node: department.name, className: "font-medium" },
+              company: { sortValue: department.company.name, node: department.company.name },
+              heads: {
+                sortValue: department.departmentHeads.length,
+                node:
+                  department.departmentHeads.length === 0 ? (
+                    <span className="text-xs text-destructive">None (approvals cannot resolve)</span>
                   ) : (
                     department.departmentHeads.map((head) => fullName(head.person)).join(", ")
-                  )}
-                </TD>
-                <TD>{department._count.people}</TD>
-                <TD><StatusBadge status={department.isActive ? "ACTIVE" : "CANCELLED"} /></TD>
-                <TD className="text-right">
-                  {canManage ? (
-                    <div className="flex justify-end gap-2">
-                      <DepartmentDialog
-                        companies={companies}
-                        peopleByCompany={peopleByCompany}
-                        department={{
-                          id: department.id,
-                          companyId: department.companyId,
-                          name: department.name,
-                          description: department.description,
-                          headPersonIds: department.departmentHeads.map((head) => head.personId),
-                        }}
-                      />
-                      <ToggleActiveButton entity="department" id={department.id} isActive={department.isActive} />
-                    </div>
-                  ) : null}
-                </TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
+                  ),
+              },
+              people: { sortValue: department._count.people, node: department._count.people, className: "text-right" },
+              status: {
+                sortValue: department.isActive ? 0 : 1,
+                node: <StatusBadge status={department.isActive ? "ACTIVE" : "CANCELLED"} />,
+              },
+              actions: {
+                node: canManage ? (
+                  <div className="flex justify-end gap-2">
+                    <DepartmentDialog
+                      companies={companies}
+                      peopleByCompany={peopleByCompany}
+                      department={{
+                        id: department.id,
+                        companyId: department.companyId,
+                        name: department.name,
+                        description: department.description,
+                        headPersonIds: department.departmentHeads.map((head) => head.personId),
+                      }}
+                    />
+                    <ToggleActiveButton entity="department" id={department.id} isActive={department.isActive} />
+                  </div>
+                ) : null,
+              },
+            },
+          }))}
+        />
       )}
     </section>
   );
@@ -308,41 +316,50 @@ async function PositionsSection({
       {positions.length === 0 ? (
         <EmptyState title="No positions" description="Create positions to classify employees." />
       ) : (
-        <Table>
-          <THead>
-            <TR>
-              <TH>Name</TH><TH>Company</TH><TH>Description</TH><TH>Status</TH><TH className="text-right">Actions</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {positions.map((position) => (
-              <TR key={position.id}>
-                <TD className="font-medium">{position.name}</TD>
-                <TD>{position.company.name}</TD>
-                <TD className="max-w-56 truncate">{position.description ?? "—"}</TD>
-                <TD><StatusBadge status={position.isActive ? "ACTIVE" : "CANCELLED"} /></TD>
-                <TD className="text-right">
-                  {canManage ? (
-                    <div className="flex justify-end gap-2">
-                      <OrgEntityDialog
-                        entity="position"
-                        companies={companies}
-                        record={{
-                          id: position.id,
-                          companyId: position.companyId,
-                          name: position.name,
-                          code: position.code,
-                          description: position.description,
-                        }}
-                      />
-                      <ToggleActiveButton entity="position" id={position.id} isActive={position.isActive} />
-                    </div>
-                  ) : null}
-                </TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
+        <SortableTable
+          initialSort={{ key: "name", dir: "asc" }}
+          columns={[
+            { key: "name", label: "Name" },
+            { key: "company", label: "Company" },
+            { key: "description", label: "Description" },
+            { key: "status", label: "Status" },
+            { key: "actions", label: "Actions", sortable: false, align: "right" },
+          ]}
+          rows={positions.map((position) => ({
+            key: position.id,
+            cells: {
+              name: { sortValue: position.name, node: position.name, className: "font-medium" },
+              company: { sortValue: position.company.name, node: position.company.name },
+              description: {
+                sortValue: position.description ?? "",
+                node: position.description ?? "None",
+                className: "max-w-56 truncate",
+              },
+              status: {
+                sortValue: position.isActive ? 0 : 1,
+                node: <StatusBadge status={position.isActive ? "ACTIVE" : "CANCELLED"} />,
+              },
+              actions: {
+                node: canManage ? (
+                  <div className="flex justify-end gap-2">
+                    <OrgEntityDialog
+                      entity="position"
+                      companies={companies}
+                      record={{
+                        id: position.id,
+                        companyId: position.companyId,
+                        name: position.name,
+                        code: position.code,
+                        description: position.description,
+                      }}
+                    />
+                    <ToggleActiveButton entity="position" id={position.id} isActive={position.isActive} />
+                  </div>
+                ) : null,
+              },
+            },
+          }))}
+        />
       )}
     </section>
   );
@@ -354,32 +371,37 @@ async function ApprovalRolesTable({ canManage, showInactive }: { canManage: bool
     orderBy: { name: "asc" },
   });
   return (
-    <Table>
-      <THead>
-        <TR>
-          <TH>Role</TH><TH>Description</TH><TH>Type</TH><TH>Status</TH><TH className="text-right">Actions</TH>
-        </TR>
-      </THead>
-      <TBody>
-        {roles.map((role) => (
-          <TR key={role.id}>
-            <TD className="font-medium">{role.name}</TD>
-            <TD className="max-w-72 truncate">{role.description ?? "—"}</TD>
-            <TD>{role.isSystem ? "Built-in" : "Custom"}</TD>
-            <TD><StatusBadge status={role.isActive ? "ACTIVE" : "CANCELLED"} /></TD>
-            <TD className="text-right">
-              {canManage ? (
-                <div className="flex justify-end gap-2">
-                  <ApprovalRoleDialog role={{ id: role.id, name: role.name, description: role.description }} />
-                  {!role.isSystem ? (
-                    <ToggleActiveButton entity="approvalRole" id={role.id} isActive={role.isActive} />
-                  ) : null}
-                </div>
-              ) : null}
-            </TD>
-          </TR>
-        ))}
-      </TBody>
-    </Table>
+    <SortableTable
+      initialSort={{ key: "name", dir: "asc" }}
+      columns={[
+        { key: "name", label: "Role" },
+        { key: "description", label: "Description" },
+        { key: "type", label: "Type" },
+        { key: "status", label: "Status" },
+        { key: "actions", label: "Actions", sortable: false, align: "right" },
+      ]}
+      rows={roles.map((role) => ({
+        key: role.id,
+        cells: {
+          name: { sortValue: role.name, node: role.name, className: "font-medium" },
+          description: { sortValue: role.description ?? "", node: role.description ?? "None", className: "max-w-72 truncate" },
+          type: { sortValue: role.isSystem ? "Built-in" : "Custom", node: role.isSystem ? "Built-in" : "Custom" },
+          status: {
+            sortValue: role.isActive ? 0 : 1,
+            node: <StatusBadge status={role.isActive ? "ACTIVE" : "CANCELLED"} />,
+          },
+          actions: {
+            node: canManage ? (
+              <div className="flex justify-end gap-2">
+                <ApprovalRoleDialog role={{ id: role.id, name: role.name, description: role.description }} />
+                {!role.isSystem ? (
+                  <ToggleActiveButton entity="approvalRole" id={role.id} isActive={role.isActive} />
+                ) : null}
+              </div>
+            ) : null,
+          },
+        },
+      }))}
+    />
   );
 }

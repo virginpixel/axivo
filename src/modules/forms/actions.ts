@@ -75,6 +75,17 @@ export async function archiveFormAction(id: string): Promise<ActionResult<undefi
   }
 }
 
+export async function deleteFormAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("forms.manage");
+    await service.deleteForm(audit, id);
+    revalidatePath("/forms");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
 export async function duplicateFormAction(id: string): Promise<ActionResult<{ id: string }>> {
   try {
     const { audit } = await requirePermission("forms.manage");

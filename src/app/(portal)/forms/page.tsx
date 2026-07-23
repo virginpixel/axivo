@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { requirePermission } from "@/shared/auth/guard";
 import { db } from "@/shared/db";
-import { env } from "@/shared/env";
-import { PageHeader } from "@/shared/ui/page";
+import { publicBaseUrl } from "@/shared/settings/runtime";
+import { PageHeader, Pagination } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
@@ -13,15 +13,24 @@ export const metadata = { title: "Forms" };
 export const dynamic = "force-dynamic";
 
 /** Forms list (SDS Doc 22): draft/published/archived with public links. */
-export default async function FormsPage() {
+export default async function FormsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const params = await searchParams;
+  const page = Math.max(1, Number(params.page) || 1);
+  const pageSize = 25;
   const { user } = await requirePermission("forms.view");
   const isGlobalAdmin = user.systemRoleKey === "SYSTEM_ADMINISTRATOR";
   const canManage = user.permissions.has("forms.manage");
   const companyScope = isGlobalAdmin ? {} : { companyId: user.companyId };
 
-  const [forms] = await Promise.all([
+  const [forms, formTotal] = await Promise.all([
     db.form.findMany({
       where: { deletedAt: null, ...companyScope },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
       orderBy: [{ company: { name: "asc" } }, { name: "asc" }],
       include: {
         company: { select: { name: true } },
@@ -31,15 +40,16 @@ export default async function FormsPage() {
         _count: { select: { requests: true } },
       },
     }),
+    db.form.count({ where: { deletedAt: null, ...companyScope } }),
   ]);
 
-  const baseUrl = env().APP_URL.replace(/\/+$/, "");
+  const baseUrl = await publicBaseUrl();
 
   return (
     <div>
       <PageHeader
         title="Forms"
-        description={`Public request forms — each published form is linked to exactly one workflow. Requesters can browse all published forms at ${baseUrl}/r.`}
+        description={`Public request forms. Each published form is linked to exactly one workflow. Requesters can browse all published forms at ${baseUrl}/r.`}
         actions={
           canManage ? (
             <Link href="/forms/builder">
@@ -79,7 +89,7 @@ export default async function FormsPage() {
                 <TD>{form.company.name}</TD>
                 <TD>{form.requestType.name}</TD>
                 <TD>{form.workflow.name}</TD>
-                <TD>v{form.currentVersion?.versionNumber ?? "—"}</TD>
+                <TD>v{form.currentVersion?.versionNumber ?? "None"}</TD>
                 <TD>{form._count.requests}</TD>
                 <TD><StatusBadge status={form.status} /></TD>
                 <TD className="text-right">
@@ -91,6 +101,16 @@ export default async function FormsPage() {
         </Table>
       )}
 
+      <Pagination
+        page={page}
+        pageCount={Math.max(1, Math.ceil(formTotal / pageSize))}
+        total={formTotal}
+        buildHref={(next) => {
+          const search = new URLSearchParams();
+          search.set("page", String(next));
+          return `/forms?${search.toString()}`;
+        }}
+      />
     </div>
   );
 }

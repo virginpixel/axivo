@@ -52,6 +52,9 @@ export interface ExistingForm {
   description: string | null;
   confirmationMessage: string | null;
   allowedAssetCategoryIds: string[];
+  applicationId: string | null;
+  assetCategoryId: string | null;
+  allowsMixedItems: boolean;
   status: string;
   fields: FieldDraft[];
 }
@@ -61,12 +64,14 @@ export function FormBuilder({
   requestTypes,
   workflows,
   assetCategories,
+  applications,
   existing,
 }: {
   companies: { id: string; name: string }[];
   requestTypes: { id: string; name: string; kind: string; companyId: string }[];
   workflows: { id: string; name: string; companyId: string }[];
-  assetCategories: { id: string; name: string; companyId: string }[];
+  assetCategories: { id: string; name: string }[];
+  applications: { id: string; name: string; companyId: string; isShared: boolean }[];
   existing: ExistingForm | null;
 }) {
   const router = useRouter();
@@ -77,6 +82,9 @@ export function FormBuilder({
   const [name, setName] = useState(existing?.name ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [confirmationMessage, setConfirmationMessage] = useState(existing?.confirmationMessage ?? "");
+  const [applicationId, setApplicationId] = useState(existing?.applicationId ?? "");
+  const [assetCategoryId, setAssetCategoryId] = useState(existing?.assetCategoryId ?? "");
+  const [allowsMixedItems, setAllowsMixedItems] = useState(existing?.allowsMixedItems ?? false);
   const [allowedCategoryIds, setAllowedCategoryIds] = useState<string[]>(
     existing?.allowedAssetCategoryIds ?? [],
   );
@@ -89,10 +97,6 @@ export function FormBuilder({
   const companyWorkflows = useMemo(
     () => workflows.filter((workflow) => workflow.companyId === companyId),
     [workflows, companyId],
-  );
-  const companyCategories = useMemo(
-    () => assetCategories.filter((category) => category.companyId === companyId),
-    [assetCategories, companyId],
   );
   const selectedKind = companyRequestTypes.find((requestType) => requestType.id === requestTypeId)?.kind;
 
@@ -144,7 +148,11 @@ export function FormBuilder({
       name,
       description: description || undefined,
       confirmationMessage: confirmationMessage || undefined,
-      allowedAssetCategoryIds: selectedKind === "ASSET_REQUEST" ? allowedCategoryIds : [],
+      allowedAssetCategoryIds:
+        allowsMixedItems || (selectedKind === "ASSET_REQUEST" && !assetCategoryId) ? allowedCategoryIds : [],
+      applicationId: allowsMixedItems || selectedKind !== "APPLICATION_ACCESS" ? undefined : applicationId || undefined,
+      assetCategoryId: allowsMixedItems || selectedKind !== "ASSET_REQUEST" ? undefined : assetCategoryId || undefined,
+      allowsMixedItems,
       fields: fields.map((field) => ({
         fieldKey: field.fieldKey,
         label: field.label,
@@ -198,7 +206,7 @@ export function FormBuilder({
               <option value="">Select…</option>
               {companyRequestTypes.map((requestType) => (
                 <option key={requestType.id} value={requestType.id}>
-                  {requestType.name} ({requestType.kind.replace(/_/g, " ").toLowerCase()})
+                  {requestType.name}
                 </option>
               ))}
             </Select>
@@ -227,16 +235,77 @@ export function FormBuilder({
               placeholder="Shown to the requester after submission."
             />
           </div>
-          {selectedKind === "ASSET_REQUEST" ? (
+          {/* An all-in-one form lets each row choose its own kind, so it cannot
+              also be pinned to a single application or category. */}
+          <div className="sm:col-span-2">
+            <label className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4"
+                checked={allowsMixedItems}
+                onChange={(event) => setAllowsMixedItems(event.target.checked)}
+              />
+              <span>
+                All-in-one form
+                <span className="block text-xs text-muted-foreground">
+                  Each item row picks an application or an asset, so a new joiner can ask for
+                  everything in one request. Approvals still route per item.
+                </span>
+              </span>
+            </label>
+          </div>
+
+          {!allowsMixedItems && selectedKind === "APPLICATION_ACCESS" ? (
+            <div className="sm:col-span-2">
+              <Label htmlFor="fb-application">Dedicated application</Label>
+              <Select
+                id="fb-application"
+                value={applicationId}
+                onChange={(event) => setApplicationId(event.target.value)}
+              >
+                <option value="">Any application the requester chooses</option>
+                {applications
+                  .filter((application) => application.companyId === companyId || application.isShared)
+                  .map((application) => (
+                    <option key={application.id} value={application.id}>{application.name}</option>
+                  ))}
+              </Select>
+              <HelperText>
+                Pick one to make this a form for that application only. The requester then sees just
+                its roles and its request fields.
+              </HelperText>
+            </div>
+          ) : null}
+
+          {!allowsMixedItems && selectedKind === "ASSET_REQUEST" ? (
+            <div className="sm:col-span-2">
+              <Label htmlFor="fb-asset-category">Dedicated asset category</Label>
+              <Select
+                id="fb-asset-category"
+                value={assetCategoryId}
+                onChange={(event) => setAssetCategoryId(event.target.value)}
+              >
+                <option value="">Any category the requester chooses</option>
+                {assetCategories.map((category) => (
+                  <option key={category.id} value={category.id}>{category.name}</option>
+                ))}
+              </Select>
+              <HelperText>
+                Pick one to make this a form for that kind of asset only.
+              </HelperText>
+            </div>
+          ) : null}
+
+          {allowsMixedItems || (selectedKind === "ASSET_REQUEST" && !assetCategoryId) ? (
             <div className="sm:col-span-2">
               <Label>Requestable asset categories</Label>
-              {companyCategories.length === 0 ? (
+              {assetCategories.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  No asset categories exist yet — create them in Settings → Asset categories.
+                  No asset categories exist yet. Create them in Settings, Asset categories.
                 </p>
               ) : (
                 <div className="mt-1 grid gap-1.5 rounded-md border bg-muted/30 p-3 sm:grid-cols-3">
-                  {companyCategories.map((category) => (
+                  {assetCategories.map((category) => (
                     <label key={category.id} className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"

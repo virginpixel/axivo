@@ -5,6 +5,7 @@ import type { Permission } from "@/shared/auth/permissions";
 import { AuthenticationError, AuthorizationError } from "@/shared/errors";
 import type { AuditContext } from "@/shared/audit/audit";
 import { recordAudit } from "@/shared/audit/audit";
+import { loadRuntimeConfig } from "@/shared/settings/runtime";
 
 /**
  * Authorization guards for server actions (SDS Doc 05 Ch3).
@@ -22,6 +23,8 @@ export async function requireUser(): Promise<ActionContext> {
   if (!user) {
     throw new AuthenticationError("Your session has expired. Please sign in again.");
   }
+  // Warm the org timezone / base URL before anything renders or builds links.
+  await loadRuntimeConfig();
   const requestHeaders = await headers();
   return {
     user,

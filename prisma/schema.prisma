@@ -327,7 +327,6 @@ model Company {
   applications            Application[]
   licenses                License[]
   assets                  Asset[]
-  assetCategories         AssetCategory[]
   contracts               Contract[]
   forms                   Form[]
   workflows               Workflow[]
@@ -664,6 +663,12 @@ model Application {
   allowMultipleAssignments Boolean @default(false) @map("allow_multiple_assignments")
   /// Whether implementing this application consumes a license
   requiresLicense Boolean  @default(false) @map("requires_license")
+  /// Approval chain for items requesting this application. Falls back to the
+  /// form's workflow when unset, so a mixed request routes per item.
+  workflowId      String?  @map("workflow_id") @db.Uuid
+  /// Shared applications (e.g. a group-wide system) can be assigned to people
+  /// in any company, not just the owning one (Doc 08 cross-company use).
+  isShared        Boolean  @default(false) @map("is_shared")
   isActive        Boolean  @default(true) @map("is_active")
   createdAt       DateTime @default(now()) @map("created_at")
   createdById     String?  @map("created_by") @db.Uuid
@@ -679,6 +684,9 @@ model Application {
   licenses         License[]
   requestItems     RequestItem[]
   credentialDeliveries CredentialDelivery[]
+  requestFields    RequestField[]
+  forms            Form[]
+  workflow         Workflow?                    @relation(fields: [workflowId], references: [id])
 
   @@unique([companyId, name])
   @@index([companyId, isActive])
@@ -726,6 +734,43 @@ model ApplicationCredentialField {
   @@map("application_credential_fields")
 }
 
+/// Extra questions asked when this application or asset category is requested
+/// (SDS Doc 08/11). Defining them on the target rather than on each form is what
+/// lets one all-in-one form reveal the right questions once a target is picked:
+/// MC asks for cost centres, Micros for outlets, a SIM card for prepaid/postpaid.
+/// MULTI_SELECT and CHECKBOX types allow several values, e.g. three outlets.
+model RequestField {
+  id              String        @id @default(uuid()) @db.Uuid
+  applicationId   String?       @map("application_id") @db.Uuid
+  assetCategoryId String?       @map("asset_category_id") @db.Uuid
+  fieldKey        String        @map("field_key")
+  label           String        @map("label")
+  fieldType       FormFieldType @map("field_type")
+  placeholder     String?       @map("placeholder")
+  helpText        String?       @map("help_text")
+  isRequired      Boolean       @default(false) @map("is_required")
+  /// Options for dropdown / multi-select / radio / checkbox fields
+  options         Json?         @map("options")
+  /// Validation config, same shape as FormField.validation
+  validation      Json?         @map("validation")
+  displayOrder    Int           @default(0) @map("display_order")
+  isActive        Boolean       @default(true) @map("is_active")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  createdById     String?       @map("created_by") @db.Uuid
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  updatedById     String?       @map("updated_by") @db.Uuid
+  deletedAt       DateTime?     @map("deleted_at")
+
+  application   Application?   @relation(fields: [applicationId], references: [id])
+  assetCategory AssetCategory? @relation(fields: [assetCategoryId], references: [id])
+
+  @@unique([applicationId, fieldKey])
+  @@unique([assetCategoryId, fieldKey])
+  @@index([applicationId, isActive])
+  @@index([assetCategoryId, isActive])
+  @@map("request_fields")
+}
+
 model ApplicationAssignment {
   id                String              @id @default(uuid()) @db.Uuid
   personId          String              @map("person_id") @db.Uuid
@@ -750,6 +795,7 @@ model ApplicationAssignment {
   applicationRole ApplicationRole?     @relation(fields: [applicationRoleId], references: [id])
   requestItem     RequestItem?         @relation(fields: [requestItemId], references: [id])
   deliveries      CredentialDelivery[]
+  clearanceItems  ClearanceItem[]
 
   @@index([personId, status])
   @@index([applicationId, status])
@@ -885,9 +931,10 @@ model LicenseAssignment {
   updatedAt     DateTime                @updatedAt @map("updated_at")
   deletedAt     DateTime?               @map("deleted_at")
 
-  license     License      @relation(fields: [licenseId], references: [id])
-  person      Person       @relation(fields: [personId], references: [id])
-  requestItem RequestItem? @relation(fields: [requestItemId], references: [id])
+  license        License      @relation(fields: [licenseId], references: [id])
+  person         Person       @relation(fields: [personId], references: [id])
+  requestItem    RequestItem? @relation(fields: [requestItemId], references: [id])
+  clearanceItems ClearanceItem[]
 
   @@index([licenseId, status])
   @@index([personId, status])
@@ -898,13 +945,16 @@ model LicenseAssignment {
 // Assets (Doc 11)
 // =============================================================================
 
+/// Asset categories are global (shared by every company), so the same category
+/// can be used wherever an asset lives, including after a company transfer.
 model AssetCategory {
   id                       String    @id @default(uuid()) @db.Uuid
-  companyId                String    @map("company_id") @db.Uuid
-  name                     String    @map("name")
+  name                     String    @unique @map("name")
   description              String?   @map("description")
   requireHandoverAcceptance Boolean  @default(false) @map("require_handover_acceptance")
   requireClearanceRecovery  Boolean  @default(true) @map("require_clearance_recovery")
+  /// Approval chain for items requesting this category; falls back to the form's.
+  workflowId               String?   @map("workflow_id") @db.Uuid
   isActive                 Boolean   @default(true) @map("is_active")
   createdAt                DateTime  @default(now()) @map("created_at")
   createdById              String?   @map("created_by") @db.Uuid
@@ -912,12 +962,13 @@ model AssetCategory {
   updatedById              String?   @map("updated_by") @db.Uuid
   deletedAt                DateTime? @map("deleted_at")
 
-  company Company @relation(fields: [companyId], references: [id])
   assets  Asset[]
   requestItems RequestItem[]
+  requestFields RequestField[]
+  forms   Form[]
+  workflow Workflow? @relation(fields: [workflowId], references: [id])
 
-  @@unique([companyId, name])
-  @@index([companyId, isActive])
+  @@index([isActive])
   @@map("asset_categories")
 }
 
@@ -933,11 +984,16 @@ model Asset {
   model          String?     @map("model")
   status         AssetStatus @default(AVAILABLE) @map("status")
   locationId     String?     @map("location_id") @db.Uuid
+  /// Vendor the asset was purchased from (name sourced from the Vendor list).
   supplier       String?     @map("supplier")
   purchaseDate   DateTime?   @map("purchase_date")
   purchasePrice  Decimal?    @map("purchase_price") @db.Decimal(14, 2)
   currency       String?     @map("currency")
   warrantyExpiry DateTime?   @map("warranty_expiry")
+  /// Optional per-asset image; overrides the model image when set.
+  imagePath      String?     @map("image_path")
+  /// Custom field values keyed by CustomField id (from the model's fieldset).
+  customFields   Json?       @map("custom_fields")
   notes          String?     @map("notes")
   createdAt      DateTime    @default(now()) @map("created_at")
   createdById    String?     @map("created_by") @db.Uuid
@@ -1092,10 +1148,20 @@ model Clearance {
   @@map("clearances")
 }
 
+enum ClearanceItemKind {
+  ASSET
+  APPLICATION
+  LICENSE
+}
+
 model ClearanceItem {
   id                String              @id @default(uuid()) @db.Uuid
   clearanceId       String              @map("clearance_id") @db.Uuid
-  assetAssignmentId String              @map("asset_assignment_id") @db.Uuid
+  kind              ClearanceItemKind   @default(ASSET) @map("kind")
+  /// Exactly one of the assignment references below is set, per `kind`.
+  assetAssignmentId       String?       @map("asset_assignment_id") @db.Uuid
+  applicationAssignmentId String?       @map("application_assignment_id") @db.Uuid
+  licenseAssignmentId     String?       @map("license_assignment_id") @db.Uuid
   status            ClearanceItemStatus @default(PENDING) @map("status")
   comments          String?             @map("comments")
   verifiedAt        DateTime?           @map("verified_at")
@@ -1103,10 +1169,12 @@ model ClearanceItem {
   createdAt         DateTime            @default(now()) @map("created_at")
   updatedAt         DateTime            @updatedAt @map("updated_at")
 
-  clearance       Clearance       @relation(fields: [clearanceId], references: [id])
-  assetAssignment AssetAssignment @relation(fields: [assetAssignmentId], references: [id])
+  clearance             Clearance              @relation(fields: [clearanceId], references: [id])
+  assetAssignment       AssetAssignment?       @relation(fields: [assetAssignmentId], references: [id])
+  applicationAssignment ApplicationAssignment? @relation(fields: [applicationAssignmentId], references: [id])
+  licenseAssignment     LicenseAssignment?     @relation(fields: [licenseAssignmentId], references: [id])
 
-  @@unique([clearanceId, assetAssignmentId])
+  @@index([clearanceId])
   @@map("clearance_items")
 }
 
@@ -1208,6 +1276,8 @@ model Workflow {
   company  Company           @relation(fields: [companyId], references: [id])
   versions WorkflowVersion[]
   forms    Form[]
+  applications    Application[]
+  assetCategories AssetCategory[]
 
   @@unique([companyId, name])
   @@index([companyId, isActive])
@@ -1398,6 +1468,13 @@ model Form {
   confirmationMessage String?    @map("confirmation_message")
   /// ASSET_REQUEST forms: category ids requestable through this form (null = all).
   allowedAssetCategoryIds Json?  @map("allowed_asset_category_ids")
+  /// A form dedicated to one application or one asset category: the requester
+  /// never picks the target, only its role and its request fields.
+  applicationId       String?    @map("application_id") @db.Uuid
+  assetCategoryId     String?    @map("asset_category_id") @db.Uuid
+  /// All-in-one form: item rows choose Application or Asset per row, so a new
+  /// joiner asks for everything at once instead of one request per system.
+  allowsMixedItems    Boolean    @default(false) @map("allows_mixed_items")
   currentVersionId    String?    @unique @map("current_version_id") @db.Uuid
   isActive            Boolean    @default(true) @map("is_active")
   createdAt           DateTime   @default(now()) @map("created_at")
@@ -1407,9 +1484,11 @@ model Form {
   deletedAt           DateTime?  @map("deleted_at")
   deletedById         String?    @map("deleted_by") @db.Uuid
 
-  company        Company       @relation(fields: [companyId], references: [id])
-  requestType    RequestType   @relation(fields: [requestTypeId], references: [id])
-  workflow       Workflow      @relation(fields: [workflowId], references: [id])
+  company        Company        @relation(fields: [companyId], references: [id])
+  requestType    RequestType    @relation(fields: [requestTypeId], references: [id])
+  workflow       Workflow       @relation(fields: [workflowId], references: [id])
+  application    Application?   @relation(fields: [applicationId], references: [id])
+  assetCategory  AssetCategory? @relation(fields: [assetCategoryId], references: [id])
   currentVersion FormVersion?  @relation("form_current_version", fields: [currentVersionId], references: [id])
   versions       FormVersion[] @relation("form_versions")
   requests       Request[]
@@ -1482,6 +1561,8 @@ model Request {
   requesterEmployeeId String? @map("requester_employee_id")
   requesterDepartment String? @map("requester_department")
   requesterPosition  String? @map("requester_position")
+  /// Company of the requester; with the employee ID this resolves their People record.
+  requesterCompanyId String? @map("requester_company_id") @db.Uuid
 
   requestedForPersonId String? @map("requested_for_person_id") @db.Uuid
   requestedForName     String  @map("requested_for_name")
@@ -1490,6 +1571,9 @@ model Request {
   requestedForDepartment String? @map("requested_for_department")
   requestedForPosition String? @map("requested_for_position")
   requestedForDepartmentId String? @map("requested_for_department_id") @db.Uuid
+  /// Company the requested-for employee belongs to. Forms can be shared across
+  /// companies, so this (with the employee ID) resolves the People record.
+  requestedForCompanyId String? @map("requested_for_company_id") @db.Uuid
 
   /// Immutable snapshot of the submitted custom field values
   fieldData     Json      @map("field_data")
@@ -1890,6 +1974,144 @@ model CatalogItem {
   @@unique([kind, name, parentId])
   @@index([kind, isActive])
   @@map("catalog_items")
+}
+
+// =============================================================================
+// Asset reference entities (Settings → Catalogs, promoted from CatalogItem)
+// Assets store manufacturer/model/vendor by name; these tables source the
+// dropdowns and enable drill-down (all assets of a manufacturer/model/vendor).
+// =============================================================================
+
+model Vendor {
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String    @unique @map("name")
+  contactName  String?   @map("contact_name")
+  contactPhone String?   @map("contact_phone")
+  contactEmail String?   @map("contact_email")
+  logoPath     String?   @map("logo_path")
+  notes        String?   @map("notes")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  @@index([isActive])
+  @@map("vendors")
+}
+
+/// Currencies with an exchange rate to the base (reporting) currency, so that
+/// contract values in mixed currencies can be summed. The base currency itself
+/// has rate 1 and is chosen in Settings.
+model Currency {
+  id         String    @id @default(uuid()) @db.Uuid
+  code       String    @unique @map("code")
+  name       String    @map("name")
+  /// Value of 1 unit of this currency expressed in the base currency.
+  rateToBase Decimal   @default(1) @map("rate_to_base") @db.Decimal(18, 6)
+  isActive   Boolean   @default(true) @map("is_active")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  @@index([isActive])
+  @@map("currencies")
+}
+
+model Manufacturer {
+  id        String       @id @default(uuid()) @db.Uuid
+  name      String       @unique @map("name")
+  isActive  Boolean      @default(true) @map("is_active")
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+  deletedAt DateTime?    @map("deleted_at")
+  models    AssetModel[]
+
+  @@index([isActive])
+  @@map("manufacturers")
+}
+
+model AssetModel {
+  id             String        @id @default(uuid()) @db.Uuid
+  name           String        @map("name")
+  manufacturerId String?       @map("manufacturer_id") @db.Uuid
+  fieldSetId     String?       @map("field_set_id") @db.Uuid
+  /// Default image applied to assets of this model unless overridden per asset.
+  imagePath      String?       @map("image_path")
+  notes          String?       @map("notes")
+  isActive       Boolean       @default(true) @map("is_active")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  deletedAt      DateTime?     @map("deleted_at")
+
+  manufacturer Manufacturer? @relation(fields: [manufacturerId], references: [id])
+  fieldSet     FieldSet?     @relation(fields: [fieldSetId], references: [id])
+
+  @@unique([manufacturerId, name])
+  @@index([isActive])
+  @@map("asset_models")
+}
+
+enum CustomFieldFormat {
+  TEXT
+  NUMBER
+  MAC_ADDRESS
+  IP_ADDRESS
+  IMEI
+  PHONE
+  EMAIL
+  URL
+  DATE
+}
+
+/// Reusable custom field definitions (Settings → Custom Fields), e.g. MAC
+/// address, IMEI, extension. Grouped into fieldsets and attached to models.
+model CustomField {
+  id        String            @id @default(uuid()) @db.Uuid
+  name      String            @unique @map("name")
+  format    CustomFieldFormat @default(TEXT) @map("format")
+  helpText  String?           @map("help_text")
+  isActive  Boolean           @default(true) @map("is_active")
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+  deletedAt DateTime?         @map("deleted_at")
+
+  fieldSets FieldSetField[]
+
+  @@index([isActive])
+  @@map("custom_fields")
+}
+
+/// A named group of custom fields (Settings → Fieldsets). One fieldset may be
+/// attached to an asset model; its fields are then collected on the asset.
+model FieldSet {
+  id        String          @id @default(uuid()) @db.Uuid
+  name      String          @unique @map("name")
+  isActive  Boolean         @default(true) @map("is_active")
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+  deletedAt DateTime?       @map("deleted_at")
+
+  fields FieldSetField[]
+  models AssetModel[]
+
+  @@index([isActive])
+  @@map("field_sets")
+}
+
+model FieldSetField {
+  id            String   @id @default(uuid()) @db.Uuid
+  fieldSetId    String   @map("field_set_id") @db.Uuid
+  customFieldId String   @map("custom_field_id") @db.Uuid
+  required      Boolean  @default(false) @map("required")
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  fieldSet    FieldSet    @relation(fields: [fieldSetId], references: [id])
+  customField CustomField @relation(fields: [customFieldId], references: [id])
+
+  @@unique([fieldSetId, customFieldId])
+  @@index([fieldSetId])
+  @@map("field_set_fields")
 }
 
 /// Sequential business counters (e.g. request numbers) maintained atomically.

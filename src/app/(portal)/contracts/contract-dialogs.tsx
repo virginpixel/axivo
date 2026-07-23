@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import Link from "next/link";
 import { Pencil, Plus, RefreshCw, Ban, Paperclip, Eye } from "lucide-react";
 import {
   createContractAction,
@@ -9,10 +10,27 @@ import {
   renewContractAction,
   attachContractPdfAction,
 } from "@/modules/contracts/actions";
+import { quickCreateVendorAction, quickCreateContractCategoryAction, quickCreateCurrencyAction } from "@/modules/catalogs/actions";
 import { useAction } from "@/shared/ui/use-action";
+import { useToast } from "@/shared/ui/toast";
 import { Button } from "@/shared/ui/button";
 import { Input, Select, Textarea, Label, FieldError, HelperText } from "@/shared/ui/input";
+import { Combobox } from "@/shared/ui/combobox";
+import { PersonPicker } from "@/shared/ui/person-picker";
 import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
+import type { ActionResult } from "@/shared/errors";
+
+function useCreateHandler() {
+  const { toast } = useToast();
+  return function handler(fn: (label: string) => Promise<ActionResult<{ value: string; label: string }>>) {
+    return async (label: string) => {
+      const result = await fn(label);
+      if (result.ok) return result.data;
+      toast("error", result.error);
+      return null;
+    };
+  };
+}
 
 export interface ContractRecord {
   id: string;
@@ -35,15 +53,7 @@ export interface ContractRecord {
 export interface ContractCatalogs {
   vendors: { id: string; name: string }[];
   categories: { id: string; name: string }[];
-}
-
-/**
- * Renewal date derives from the end date for periodic renewal types; only
- * MANUAL contracts set it by hand.
- */
-function computeRenewalDate(endDate: string, renewalType: string): string {
-  if (!endDate || renewalType === "MANUAL" || renewalType === "CUSTOM") return "";
-  return endDate;
+  currencies?: { code: string; name: string }[];
 }
 
 export function ContractDialog({
@@ -58,6 +68,7 @@ export function ContractDialog({
   contract?: ContractRecord;
 }) {
   const { run, loading, fieldErrors } = useAction();
+  const createHandler = useCreateHandler();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     companyId: contract?.companyId ?? companies[0]?.id ?? "",
@@ -67,25 +78,12 @@ export function ContractDialog({
     category: contract?.category ?? "",
     startDate: contract?.startDate ?? "",
     endDate: contract?.endDate ?? "",
-    renewalDate: contract?.renewalDate ?? "",
     renewalType: contract?.renewalType ?? "ANNUAL",
     cost: contract?.cost !== null && contract?.cost !== undefined ? String(contract.cost) : "",
     currency: contract?.currency ?? "USD",
     ownerPersonId: contract?.ownerPersonId ?? "",
     notes: contract?.notes ?? "",
   });
-
-  const autoRenewal = form.renewalType !== "MANUAL" && form.renewalType !== "CUSTOM";
-  // Keep the renewal date in sync with end date + renewal type.
-  useEffect(() => {
-    if (autoRenewal) {
-      setForm((current) => ({
-        ...current,
-        renewalDate: computeRenewalDate(current.endDate, current.renewalType),
-      }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.endDate, form.renewalType]);
 
   async function submit() {
     const payload = {
@@ -96,7 +94,6 @@ export function ContractDialog({
       category: form.category,
       startDate: form.startDate || undefined,
       endDate: form.endDate || undefined,
-      renewalDate: form.renewalDate || undefined,
       renewalType: form.renewalType,
       cost: form.cost ? Number(form.cost) : undefined,
       currency: form.currency || undefined,
@@ -126,12 +123,11 @@ export function ContractDialog({
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <Label htmlFor="con-company" required>Company</Label>
-            <Select id="con-company" value={form.companyId} disabled={!!contract}
-              onChange={(e) => setForm({ ...form, companyId: e.target.value, ownerPersonId: "" })}>
-              {companies.map((company) => (
-                <option key={company.id} value={company.id}>{company.name}</option>
-              ))}
-            </Select>
+            <Combobox
+              id="con-company" value={form.companyId} disabled={!!contract}
+              options={companies.map((company) => ({ value: company.id, label: company.name }))}
+              onChange={(value) => setForm({ ...form, companyId: value, ownerPersonId: "" })}
+            />
           </div>
           <div>
             <Label htmlFor="con-name" required>Contract name</Label>
@@ -140,23 +136,27 @@ export function ContractDialog({
           </div>
           <div>
             <Label htmlFor="con-vendor" required>Vendor</Label>
-            <Select id="con-vendor" value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })}>
-              <option value="">Select…</option>
-              {catalogs.vendors.map((vendor) => (
-                <option key={vendor.id} value={vendor.name}>{vendor.name}</option>
-              ))}
-            </Select>
-            <HelperText>Vendors are managed in Settings → Catalogs.</HelperText>
+            <Combobox
+              id="con-vendor" value={form.vendor}
+              placeholder="Select vendor"
+              options={catalogs.vendors.map((vendor) => ({ value: vendor.name, label: vendor.name }))}
+              onChange={(value) => setForm({ ...form, vendor: value })}
+              onCreate={createHandler(quickCreateVendorAction)}
+              createNoun="vendor"
+            />
+            <HelperText>Vendors are managed in Settings, Vendors.</HelperText>
             <FieldError message={fieldErrors.vendor} />
           </div>
           <div>
             <Label htmlFor="con-category" required>Category</Label>
-            <Select id="con-category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-              <option value="">Select…</option>
-              {catalogs.categories.map((category) => (
-                <option key={category.id} value={category.name}>{category.name}</option>
-              ))}
-            </Select>
+            <Combobox
+              id="con-category" value={form.category}
+              placeholder="Select category"
+              options={catalogs.categories.map((category) => ({ value: category.name, label: category.name }))}
+              onChange={(value) => setForm({ ...form, category: value })}
+              onCreate={createHandler(quickCreateContractCategoryAction)}
+              createNoun="category"
+            />
             <FieldError message={fieldErrors.category} />
           </div>
           <div>
@@ -166,12 +166,18 @@ export function ContractDialog({
           </div>
           <div>
             <Label htmlFor="con-owner">Contract owner</Label>
-            <Select id="con-owner" value={form.ownerPersonId} onChange={(e) => setForm({ ...form, ownerPersonId: e.target.value })}>
-              <option value="">No owner</option>
-              {(peopleByCompany[form.companyId] ?? []).map((person) => (
-                <option key={person.id} value={person.id}>{person.name}</option>
-              ))}
-            </Select>
+            <PersonPicker
+              id="con-owner"
+              value={form.ownerPersonId}
+              companyId={form.companyId}
+              people={peopleByCompany[form.companyId] ?? []}
+              placeholder="No owner"
+              emptyLabel="No owner"
+              onChange={(value) => setForm({ ...form, ownerPersonId: value })}
+            />
+            <HelperText>
+              The employee responsible for managing this contract; they receive renewal and expiry reminders.
+            </HelperText>
           </div>
           <div>
             <Label htmlFor="con-start">Start date</Label>
@@ -193,27 +199,19 @@ export function ContractDialog({
             </Select>
           </div>
           <div>
-            <Label htmlFor="con-renewal-date">Renewal date</Label>
-            <Input
-              id="con-renewal-date"
-              type="date"
-              value={form.renewalDate}
-              readOnly={autoRenewal}
-              onChange={(e) => setForm({ ...form, renewalDate: e.target.value })}
-            />
-            <HelperText>
-              {autoRenewal
-                ? "Calculated automatically from the end date and renewal type."
-                : "Set manually for manual/custom renewals."}
-            </HelperText>
-          </div>
-          <div>
             <Label htmlFor="con-cost">Cost</Label>
             <Input id="con-cost" type="number" min={0} step="0.01" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} />
           </div>
           <div>
             <Label htmlFor="con-currency">Currency</Label>
-            <Input id="con-currency" value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} />
+            <Combobox
+              id="con-currency" value={form.currency}
+              placeholder="Select currency"
+              options={(catalogs.currencies ?? []).map((currency) => ({ value: currency.code, label: `${currency.code} - ${currency.name}` }))}
+              onChange={(value) => setForm({ ...form, currency: value })}
+              onCreate={createHandler(quickCreateCurrencyAction)}
+              createNoun="currency"
+            />
           </div>
           <div className="sm:col-span-2">
             <Label htmlFor="con-notes">Notes</Label>
@@ -280,13 +278,13 @@ export function ContractRowActions({
   companies,
   peopleByCompany,
   catalogs,
-  attachedDocumentId,
+  hideView,
 }: {
   contract: ContractRecord;
   companies: { id: string; name: string }[];
   peopleByCompany: Record<string, { id: string; name: string }[]>;
   catalogs: ContractCatalogs;
-  attachedDocumentId: string | null;
+  hideView?: boolean;
 }) {
   const { run, loading } = useAction();
   const [renewOpen, setRenewOpen] = useState(false);
@@ -299,19 +297,16 @@ export function ContractRowActions({
 
   return (
     <div className="flex justify-end gap-1">
-      {attachedDocumentId ? (
-        <a
-          href={`/api/documents/${attachedDocumentId}/download?inline=1`}
-          target="_blank"
-          rel="noreferrer"
+      {!hideView ? (
+        <Link
+          href={`/contracts/${contract.id}`}
           className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent"
-          aria-label="View contract PDF"
-          title="View contract PDF"
+          aria-label="View contract"
+          title="View contract & documents"
         >
           <Eye className="h-4 w-4 text-primary" />
-        </a>
+        </Link>
       ) : null}
-      <AttachPdfDialog contractId={contract.id} contractName={contract.name} />
       <ContractDialog companies={companies} peopleByCompany={peopleByCompany} catalogs={catalogs} contract={contract} />
       {contract.status === "DRAFT" ? (
         <Button
