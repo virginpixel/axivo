@@ -1,4 +1,4 @@
-import { validateToken } from "@/shared/tokens/secure-tokens";
+import { validateToken, peekToken } from "@/shared/tokens/secure-tokens";
 import { db } from "@/shared/db";
 import { ToastProvider } from "@/shared/ui/toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
@@ -19,6 +19,39 @@ export default async function ApprovalActionPage({
   if (!token) return <InvalidTokenNotice reason="malformed" flow="approval" />;
 
   const validation = await validateToken(token, "APPROVAL_ACTION");
+  // A consumed token usually means this very page just submitted the decision:
+  // the Server Action re-renders the page, and the token is already spent by
+  // then. Show what was decided rather than a misleading expiry error.
+  if (!validation.valid && validation.reason === "consumed") {
+    const spent = await peekToken(token, "APPROVAL_ACTION");
+    const decided = spent
+      ? await db.workflowStepInstance.findUnique({
+          where: { id: spent.targetId },
+          include: {
+            actions: { orderBy: { createdAt: "desc" }, take: 1, include: { person: true } },
+            workflowInstance: { include: { requestItem: { include: { request: true } } } },
+          },
+        })
+      : null;
+    if (decided) {
+      const last = decided.actions[0];
+      return (
+        <ActionShell
+          title="Decision recorded"
+          subtitle={`Request ${decided.workflowInstance.requestItem.request.requestNumber}`}
+        >
+          <div className="rounded-md bg-success/10 p-6 text-center">
+            <p className="text-sm font-medium">
+              {last
+                ? `This step was ${last.action.replace(/_/g, " ").toLowerCase()} by ${last.person.firstName} ${last.person.lastName}.`
+                : "This step has already been decided."}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">You may close this page.</p>
+          </div>
+        </ActionShell>
+      );
+    }
+  }
   if (!validation.valid) {
     return <InvalidTokenNotice reason={validation.reason} flow="approval" />;
   }

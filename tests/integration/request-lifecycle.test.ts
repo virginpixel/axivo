@@ -432,3 +432,28 @@ describe("end-to-end request lifecycle", () => {
     expect((await throttle.checkLoginThrottle(ip, username)).blocked).toBe(false);
   }, 60_000);
 });
+
+describe("email approval tokens (Doc 05 Ch8)", () => {
+  it("consuming a token still succeeds after the step revoked it", async () => {
+    const tokens = await import("@/shared/tokens/secure-tokens");
+    const person = await db.person.findFirstOrThrow();
+    const targetId = crypto.randomUUID();
+
+    const issued = await tokens.issueToken({
+      purpose: "APPROVAL_ACTION",
+      targetType: "workflow_step_instance",
+      targetId,
+      personId: person.id,
+      email: person.email,
+      expiresInHours: 24,
+    });
+
+    // Completing a step revokes every outstanding token for it, including the
+    // one the acting approver is holding. That must not look like a replay.
+    await tokens.revokeTokensForTarget("workflow_step_instance", targetId);
+    await expect(tokens.consumeToken(issued.record.id)).resolves.toBeUndefined();
+
+    // A genuine second use is still refused.
+    await expect(tokens.consumeToken(issued.record.id)).rejects.toThrow(/already been used/i);
+  }, 30_000);
+});

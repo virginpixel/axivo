@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Pencil, Plus, Power, PauseCircle, PlayCircle, Trash2 } from "lucide-react";
 import {
   createApplicationAction,
   updateApplicationAction,
   setApplicationActiveAction,
+  deleteApplicationAction,
   createApplicationRoleAction,
   updateApplicationRoleAction,
   setApplicationRoleActiveAction,
@@ -178,6 +180,45 @@ export function ApplicationToggle({ id, isActive }: { id: string; isActive: bool
     >
       <Power className={`h-4 w-4 ${isActive ? "text-success" : "text-muted-foreground"}`} />
     </Button>
+  );
+}
+
+/** Requests snapshot the application name, so history survives the delete. */
+export function ApplicationDeleteButton({ id, name }: { id: string; name: string }) {
+  const { run, loading } = useAction();
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button variant="ghost" size="icon" aria-label={`Delete ${name}`} title="Delete" onClick={() => setOpen(true)}>
+        <Trash2 className="h-4 w-4 text-destructive" />
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent
+          title={`Delete ${name}`}
+          description="Existing requests keep their own record of this application, so their history stays readable. Active assignments must be removed first."
+        >
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              loading={loading}
+              onClick={() =>
+                run(() => deleteApplicationAction(id), {
+                  successMessage: "Application deleted.",
+                  onSuccess: () => {
+                    setOpen(false);
+                    router.push("/applications");
+                  },
+                })
+              }
+            >
+              Delete application
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

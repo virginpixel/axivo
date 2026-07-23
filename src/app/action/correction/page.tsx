@@ -1,4 +1,4 @@
-import { validateToken } from "@/shared/tokens/secure-tokens";
+import { validateToken, peekToken } from "@/shared/tokens/secure-tokens";
 import { db } from "@/shared/db";
 import { ToastProvider } from "@/shared/ui/toast";
 import { ActionShell, InvalidTokenNotice } from "../shell";
@@ -16,12 +16,17 @@ export default async function CorrectionActionPage({
   if (!token) return <InvalidTokenNotice reason="malformed" flow="correction" />;
 
   const validation = await validateToken(token, "CORRECTION_EDIT");
-  if (!validation.valid) {
+  // Submitting a correction consumes the token and re-renders this page.
+  const spent =
+    !validation.valid && validation.reason === "consumed"
+      ? await peekToken(token, "CORRECTION_EDIT")
+      : null;
+  if (!validation.valid && !spent) {
     return <InvalidTokenNotice reason={validation.reason} flow="correction" />;
   }
 
   const item = await db.requestItem.findUnique({
-    where: { id: validation.record.targetId },
+    where: { id: validation.valid ? validation.record.targetId : spent!.targetId },
     include: {
       request: { include: { formVersion: { include: { fields: { orderBy: { displayOrder: "asc" } } } } } },
       application: true,

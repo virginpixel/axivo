@@ -1610,6 +1610,14 @@ model RequestItem {
   description       String?           @map("description")
   /// Item-specific submitted data (editable only through the correction process)
   itemData          Json?             @map("item_data")
+  /// Names captured at submission so the request still reads correctly after the
+  /// application, category or form it referenced is renamed or deleted.
+  formNameSnapshot        String? @map("form_name_snapshot")
+  targetNameSnapshot      String? @map("target_name_snapshot")
+  roleNameSnapshot        String? @map("role_name_snapshot")
+  /// Field labels keyed by fieldKey, so answers stay readable after the request
+  /// field definitions change or go away.
+  fieldLabelsSnapshot     Json?   @map("field_labels_snapshot")
   status            RequestItemStatus @default(PENDING_APPROVAL) @map("status")
   implementedAt     DateTime?         @map("implemented_at")
   implementedById   String?           @map("implemented_by") @db.Uuid
@@ -1618,9 +1626,9 @@ model RequestItem {
   updatedAt         DateTime          @updatedAt @map("updated_at")
 
   request          Request                 @relation(fields: [requestId], references: [id])
-  application      Application?            @relation(fields: [applicationId], references: [id])
-  applicationRole  ApplicationRole?        @relation(fields: [applicationRoleId], references: [id])
-  assetCategory    AssetCategory?          @relation(fields: [assetCategoryId], references: [id])
+  application      Application?            @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  applicationRole  ApplicationRole?        @relation(fields: [applicationRoleId], references: [id], onDelete: SetNull)
+  assetCategory    AssetCategory?          @relation(fields: [assetCategoryId], references: [id], onDelete: SetNull)
   workflowInstances WorkflowInstance[]
   corrections      RequestCorrection[]
   appAssignments   ApplicationAssignment[]

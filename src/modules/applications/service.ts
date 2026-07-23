@@ -303,6 +303,53 @@ export async function setCredentialFieldActive(context: AuditContext, id: string
 // Assignments (Doc 08 Ch5/11)
 // ---------------------------------------------------------------------------
 
+/**
+ * Remove an application from the catalogue. Requests keep their own snapshot of
+ * the application and role names, so history stays readable; active assignments
+ * still block, since those represent access somebody currently holds.
+ */
+export async function deleteApplication(context: AuditContext, id: string) {
+  const application = await db.application.findFirst({
+    where: { id, deletedAt: null },
+    include: {
+      _count: {
+        select: { assignments: { where: { status: { in: ["ACTIVE", "PENDING", "SUSPENDED"] }, deletedAt: null } } },
+      },
+    },
+  });
+  if (!application) throw new NotFoundError("Application not found.");
+  if (application._count.assignments > 0) {
+    throw new BusinessRuleError(
+      `"${application.name}" still has ${application._count.assignments} active assignment(s). Remove them before deleting it.`,
+    );
+  }
+  const formCount = await db.form.count({ where: { applicationId: id, deletedAt: null } });
+  if (formCount > 0) {
+    throw new BusinessRuleError(
+      `${formCount} request form(s) are dedicated to "${application.name}". Delete or repoint them first.`,
+    );
+  }
+  return db.$transaction(async (tx) => {
+    await tx.application.update({
+      where: { id },
+      data: { deletedAt: new Date(), isActive: false, deletedById: context.actorUserId ?? null },
+    });
+    await recordAudit(
+      { ...context, companyId: application.companyId },
+      {
+        module: MODULE,
+        eventType: "application.deleted",
+        action: `Deleted application "${application.name}"`,
+        targetType: "application",
+        targetId: id,
+        targetLabel: application.name,
+      },
+      tx,
+    );
+    return { id };
+  });
+}
+
 export async function createAssignment(
   context: AuditContext,
   input: AssignmentInput,

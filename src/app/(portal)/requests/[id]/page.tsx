@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requirePermission } from "@/shared/auth/guard";
 import { db } from "@/shared/db";
 import { getRequestTimeline } from "@/modules/requests/service";
+import { FileDown } from "lucide-react";
 import { PageHeader } from "@/shared/ui/page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { StatusBadge } from "@/shared/ui/badge";
@@ -107,9 +108,18 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
         breadcrumbs={[{ label: "Requests", href: "/requests" }, { label: request.requestNumber }]}
         description={`${request.form.name} · ${request.company.name}`}
         actions={
-          canAdmin && !["COMPLETED", "CANCELLED"].includes(request.status) ? (
-            <RequestAdminActions requestId={request.id} />
-          ) : undefined
+          <div className="flex items-center gap-2">
+            {/* Audit evidence: form, answers and the full approval trail. */}
+            <a
+              href={`/api/requests/${request.id}/pdf`}
+              className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-medium hover:bg-accent"
+            >
+              <FileDown className="h-4 w-4" /> Download PDF
+            </a>
+            {canAdmin && !["COMPLETED", "CANCELLED"].includes(request.status) ? (
+              <RequestAdminActions requestId={request.id} />
+            ) : null}
+          </div>
         }
       />
 
@@ -199,16 +209,37 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                 <CardContent className="space-y-4">
                   <dl className="grid gap-x-6 gap-y-2 rounded-md border bg-muted/30 p-3 text-sm sm:grid-cols-3">
                     <Detail label="Item type" value={item.itemType.replace(/_/g, " ").toLowerCase()} />
-                    {item.application ? <Detail label="Application" value={item.application.name} /> : null}
-                    {item.applicationRole ? <Detail label="Access role" value={item.applicationRole.name} /> : null}
-                    {item.assetCategory ? <Detail label="Asset category" value={item.assetCategory.name} /> : null}
+                    {/* Snapshots win: the live record may have been renamed or
+                        deleted since the request was submitted. */}
+                    {item.application || (item.itemType === "APPLICATION" && item.targetNameSnapshot) ? (
+                      <Detail
+                        label="Application"
+                        value={item.application?.name ?? item.targetNameSnapshot ?? "Removed"}
+                      />
+                    ) : null}
+                    {item.applicationRole || item.roleNameSnapshot ? (
+                      <Detail
+                        label="Access role"
+                        value={item.applicationRole?.name ?? item.roleNameSnapshot ?? "Removed"}
+                      />
+                    ) : null}
+                    {item.assetCategory || (item.itemType === "ASSET" && item.targetNameSnapshot) ? (
+                      <Detail
+                        label="Asset category"
+                        value={item.assetCategory?.name ?? item.targetNameSnapshot ?? "Removed"}
+                      />
+                    ) : null}
                     {item.description ? <Detail label="Notes" value={item.description} /> : null}
                     {/* Answers to the questions the application or category defines. */}
                     {Object.entries((item.itemData as Record<string, unknown> | null) ?? {}).map(
                       ([key, value]) => (
                         <Detail
                           key={key}
-                          label={itemFieldLabels.get(key) ?? key.replace(/_/g, " ")}
+                          label={
+                            ((item.fieldLabelsSnapshot as Record<string, string> | null) ?? {})[key] ??
+                            itemFieldLabels.get(key) ??
+                            key.replace(/_/g, " ")
+                          }
                           value={
                             Array.isArray(value)
                               ? value.join(", ")

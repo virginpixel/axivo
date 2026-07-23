@@ -47,6 +47,17 @@ export async function setWorkflowActiveAction(id: string, isActive: boolean): Pr
   }
 }
 
+export async function deleteWorkflowAction(id: string): Promise<ActionResult<{ id: string }>> {
+  try {
+    const { audit } = await requirePermission("workflows.manage");
+    const result = await definitions.deleteWorkflow(audit, id);
+    revalidatePath("/workflows");
+    return ok(result);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
 export async function createDelegationAction(raw: unknown): Promise<ActionResult<{ id: string }>> {
   try {
     const { audit } = await requirePermission("workflows.manage");

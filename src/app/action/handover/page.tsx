@@ -1,4 +1,4 @@
-import { validateToken } from "@/shared/tokens/secure-tokens";
+import { validateToken, peekToken } from "@/shared/tokens/secure-tokens";
 import { db } from "@/shared/db";
 import { ToastProvider } from "@/shared/ui/toast";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
@@ -18,12 +18,18 @@ export default async function HandoverActionPage({
   if (!token) return <InvalidTokenNotice reason="malformed" flow="handover" />;
 
   const validation = await validateToken(token, "ASSET_HANDOVER");
-  if (!validation.valid) {
+  // Acknowledging consumes the token and re-renders this page; the acknowledged
+  // state below is the right thing to show, not an expiry error.
+  const spent =
+    !validation.valid && validation.reason === "consumed"
+      ? await peekToken(token, "ASSET_HANDOVER")
+      : null;
+  if (!validation.valid && !spent) {
     return <InvalidTokenNotice reason={validation.reason} flow="handover" />;
   }
 
   const handover = await db.handover.findUnique({
-    where: { id: validation.record.targetId },
+    where: { id: validation.valid ? validation.record.targetId : spent!.targetId },
     include: {
       person: true,
       assets: { include: { assetAssignment: { include: { asset: true } } } },

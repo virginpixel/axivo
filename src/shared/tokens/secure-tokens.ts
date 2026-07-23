@@ -97,10 +97,35 @@ export async function validateToken(
   return { valid: true, record };
 }
 
-/** Mark a token consumed inside the caller's transaction (single use). */
+/**
+ * Look up a token's record regardless of whether it is still usable.
+ *
+ * Server Actions re-render the page they were called from, so a page that
+ * consumed its own token would otherwise re-validate, fail, and replace a
+ * just-completed flow with a "link expired" error. Pages use this to recognise
+ * their own completed token and show the finished state instead.
+ */
+export async function peekToken(token: string, expectedPurpose: TokenPurpose) {
+  const parts = token.split(".");
+  if (parts.length !== 2) return null;
+  const [random, signature] = parts as [string, string];
+  if (!safeEqual(sign(random), signature)) return null;
+  const record = await db.secureToken.findUnique({ where: { tokenHash: sha256(random) } });
+  if (!record || record.purpose !== expectedPurpose) return null;
+  return record;
+}
+
+/**
+ * Mark a token consumed inside the caller's transaction (single use).
+ *
+ * Completing a step revokes every outstanding token for it, including the one
+ * the acting approver is holding, so by the time we get here the token is
+ * often already revoked. That is the normal successful path, not a replay:
+ * only a token that was already *consumed* means someone is reusing a link.
+ */
 export async function consumeToken(tokenId: string, client: DbClient = db): Promise<void> {
   const updated = await client.secureToken.updateMany({
-    where: { id: tokenId, consumedAt: null, revokedAt: null },
+    where: { id: tokenId, consumedAt: null },
     data: { consumedAt: new Date() },
   });
   if (updated.count === 0) {

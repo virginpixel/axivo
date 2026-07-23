@@ -6,6 +6,7 @@ import {
   createWorkflowAction,
   updateWorkflowAction,
   setWorkflowActiveAction,
+  deleteWorkflowAction,
   createDelegationAction,
   setDelegationActiveAction,
 } from "@/modules/workflow/actions";
@@ -316,6 +317,44 @@ export function WorkflowToggleButton({ id, isActive }: { id: string; isActive: b
     >
       <Power className={`h-4 w-4 ${isActive ? "text-success" : "text-muted-foreground"}`} />
     </Button>
+  );
+}
+
+/**
+ * Only offered when nothing routes through the workflow any more: a form,
+ * application or category still pointing at it would lose its approval chain.
+ */
+export function WorkflowDeleteButton({ id, name }: { id: string; name: string }) {
+  const { run, loading } = useAction();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button variant="ghost" size="icon" aria-label={`Delete ${name}`} title="Delete" onClick={() => setOpen(true)}>
+        <Trash2 className="h-4 w-4 text-destructive" />
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent
+          title={`Delete ${name}`}
+          description="Allowed only when no form, application or asset category still uses this workflow and no request is mid-approval."
+        >
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              loading={loading}
+              onClick={() =>
+                run(() => deleteWorkflowAction(id), {
+                  successMessage: "Workflow deleted.",
+                  onSuccess: () => setOpen(false),
+                })
+              }
+            >
+              Delete workflow
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

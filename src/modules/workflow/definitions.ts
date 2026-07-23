@@ -194,6 +194,59 @@ export async function setWorkflowActive(context: AuditContext, id: string, isAct
 // Delegations (Doc 13 Ch7)
 // ---------------------------------------------------------------------------
 
+/**
+ * Remove a workflow. Only allowed when nothing routes through it any more: a
+ * form, application or asset category still pointing at it would silently lose
+ * its approval chain.
+ */
+export async function deleteWorkflow(context: AuditContext, id: string) {
+  const workflow = await db.workflow.findFirst({ where: { id, deletedAt: null } });
+  if (!workflow) throw new NotFoundError("Workflow not found.");
+
+  const [forms, applications, categories, running] = await Promise.all([
+    db.form.count({ where: { workflowId: id, deletedAt: null } }),
+    db.application.count({ where: { workflowId: id, deletedAt: null } }),
+    db.assetCategory.count({ where: { workflowId: id, deletedAt: null } }),
+    db.workflowInstance.count({
+      where: { workflowVersion: { workflowId: id }, status: "IN_PROGRESS" },
+    }),
+  ]);
+  const users: string[] = [];
+  if (forms > 0) users.push(`${forms} form(s)`);
+  if (applications > 0) users.push(`${applications} application(s)`);
+  if (categories > 0) users.push(`${categories} asset category/categories`);
+  if (users.length > 0) {
+    throw new BusinessRuleError(
+      `"${workflow.name}" is still used by ${users.join(", ")}. Point them at another workflow first.`,
+    );
+  }
+  if (running > 0) {
+    throw new BusinessRuleError(
+      `"${workflow.name}" has ${running} request(s) still in progress. Wait for them to finish.`,
+    );
+  }
+
+  return db.$transaction(async (tx) => {
+    await tx.workflow.update({
+      where: { id },
+      data: { deletedAt: new Date(), isActive: false },
+    });
+    await recordAudit(
+      { ...context, companyId: workflow.companyId },
+      {
+        module: MODULE,
+        eventType: "workflow.deleted",
+        action: `Deleted workflow "${workflow.name}"`,
+        targetType: "workflow",
+        targetId: id,
+        targetLabel: workflow.name,
+      },
+      tx,
+    );
+    return { id };
+  });
+}
+
 export async function createDelegation(context: AuditContext, input: DelegationInput) {
   const [fromPerson, toPerson] = await Promise.all([
     db.person.findFirst({ where: { id: input.fromPersonId, companyId: input.companyId, deletedAt: null, isActive: true } }),

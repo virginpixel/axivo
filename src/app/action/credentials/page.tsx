@@ -1,4 +1,4 @@
-import { validateToken } from "@/shared/tokens/secure-tokens";
+import { validateToken, peekToken } from "@/shared/tokens/secure-tokens";
 import { db } from "@/shared/db";
 import { ToastProvider } from "@/shared/ui/toast";
 import { ActionShell, InvalidTokenNotice } from "../shell";
@@ -16,12 +16,21 @@ export default async function CredentialsActionPage({
   if (!token) return <InvalidTokenNotice reason="malformed" flow="credentials" />;
 
   const validation = await validateToken(token, "CREDENTIAL_ACKNOWLEDGEMENT");
-  if (!validation.valid) {
+  // Acknowledging consumes the token and the Server Action then re-renders this
+  // page. Keep rendering the same component in that case: swapping the tree
+  // would unmount the reveal and throw away the secrets the person just
+  // uncovered, before they had a chance to copy them.
+  const spent =
+    !validation.valid && validation.reason === "consumed"
+      ? await peekToken(token, "CREDENTIAL_ACKNOWLEDGEMENT")
+      : null;
+  if (!validation.valid && !spent) {
     return <InvalidTokenNotice reason={validation.reason} flow="credentials" />;
   }
 
+  const deliveryId = validation.valid ? validation.record.targetId : spent!.targetId;
   const delivery = await db.credentialDelivery.findUnique({
-    where: { id: validation.record.targetId },
+    where: { id: deliveryId },
     include: { application: true, person: true },
   });
   if (!delivery) return <InvalidTokenNotice reason="not_found" flow="credentials" />;

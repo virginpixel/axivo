@@ -104,6 +104,17 @@ export async function setCredentialFieldActiveAction(id: string, isActive: boole
   }
 }
 
+export async function deleteApplicationAction(id: string): Promise<ActionResult<{ id: string }>> {
+  try {
+    const { audit } = await requirePermission("applications.manage");
+    const result = await service.deleteApplication(audit, id);
+    revalidatePath("/applications");
+    return ok(result);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
 export async function createAssignmentAction(raw: unknown): Promise<ActionResult<{ id: string }>> {
   try {
     const { audit } = await requirePermission("applications.assignments.manage");

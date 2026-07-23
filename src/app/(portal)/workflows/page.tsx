@@ -5,7 +5,13 @@ import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge } from "@/shared/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { fullName, formatDate } from "@/shared/utils";
-import { WorkflowDialog, WorkflowToggleButton, DelegationDialog, DelegationToggleButton } from "./workflow-dialogs";
+import {
+  WorkflowDialog,
+  WorkflowToggleButton,
+  WorkflowDeleteButton,
+  DelegationDialog,
+  DelegationToggleButton,
+} from "./workflow-dialogs";
 
 export const metadata = { title: "Workflows" };
 export const dynamic = "force-dynamic";
@@ -124,6 +130,7 @@ export default async function WorkflowsPage({
                             }}
                           />
                           <WorkflowToggleButton id={workflow.id} isActive={workflow.isActive} />
+                          <WorkflowDeleteButton id={workflow.id} name={workflow.name} />
                         </>
                       ) : null}
                     </div>

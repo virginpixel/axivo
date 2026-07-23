@@ -28,6 +28,117 @@ function companyScope(user: AuthenticatedUser): { companyId?: string } {
 
 export const STANDARD_REPORTS: ReportDefinition[] = [
   {
+    key: "requests-by-application",
+    name: "Access Requests by Application",
+    category: "Audit evidence",
+    description:
+      "Every application access request with its approvers and outcome. Filter by application to hand an auditor the sample they ask for.",
+    run: async (user) => {
+      const items = await db.requestItem.findMany({
+        where: { itemType: "APPLICATION", request: companyScope(user) },
+        orderBy: { request: { submittedAt: "desc" } },
+        include: {
+          application: { select: { name: true } },
+          applicationRole: { select: { name: true } },
+          request: true,
+          workflowInstances: {
+            include: {
+              stepInstances: {
+                orderBy: { stepOrder: "asc" },
+                include: { actions: { include: { person: true }, orderBy: { createdAt: "asc" } } },
+              },
+            },
+          },
+        },
+      });
+      return {
+        headers: [
+          "Request",
+          "Application",
+          "Role",
+          "Requested for",
+          "Employee ID",
+          "Department",
+          "Requested by",
+          "Submitted",
+          "Status",
+          "Approvals",
+          "Completed",
+        ],
+        rows: items.map((item) => {
+          // Names come from the snapshot when the live record is gone.
+          const application = item.application?.name ?? item.targetNameSnapshot ?? "Removed";
+          const role = item.applicationRole?.name ?? item.roleNameSnapshot ?? "None";
+          const approvals = item.workflowInstances
+            .flatMap((instance) => instance.stepInstances)
+            .flatMap((step) =>
+              step.actions.map(
+                (action) =>
+                  `${action.person.firstName} ${action.person.lastName}: ${action.action} (${formatDate(action.createdAt)})`,
+              ),
+            )
+            .join(" | ");
+          return [
+            item.request.requestNumber,
+            application,
+            role,
+            item.request.requestedForName,
+            item.request.requestedForEmployeeId ?? "None",
+            item.request.requestedForDepartment ?? "None",
+            item.request.requesterName,
+            formatDate(item.request.submittedAt),
+            item.status,
+            approvals || "None",
+            item.implementedAt ? formatDate(item.implementedAt) : "None",
+          ];
+        }),
+      };
+    },
+  },
+  {
+    key: "clearances",
+    name: "Employee Clearances",
+    category: "Audit evidence",
+    description: "Clearance records with what was recovered, who verified it and the final employment status.",
+    run: async (user) => {
+      const clearances = await db.clearance.findMany({
+        where: companyScope(user),
+        orderBy: { createdAt: "desc" },
+        include: {
+          person: { include: { company: true, department: true } },
+          items: true,
+        },
+      });
+      return {
+        headers: [
+          "Employee",
+          "Employee ID",
+          "Company",
+          "Department",
+          "Started",
+          "Completed",
+          "Status",
+          "Items",
+          "Outstanding",
+        ],
+        rows: clearances.map((clearance) => {
+          const outstanding = clearance.items.filter((item) => item.status !== "RECEIVED").length;
+          return [
+            fullName(clearance.person),
+            clearance.person.employeeId,
+            clearance.person.company.name,
+            clearance.person.department?.name ?? "None",
+            formatDate(clearance.createdAt),
+            clearance.completedAt ? formatDate(clearance.completedAt) : "None",
+            clearance.status,
+            String(clearance.items.length),
+            outstanding > 0 ? String(outstanding) : "None",
+          ];
+        }),
+      };
+    },
+  },
+  {
     key: "people-by-department",
     name: "Employees by Department",
     category: "People",

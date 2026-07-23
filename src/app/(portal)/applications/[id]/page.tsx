@@ -9,6 +9,7 @@ import { fullName } from "@/shared/utils";
 import {
   ApplicationDialog,
   ApplicationToggle,
+  ApplicationDeleteButton,
   AppRoleDialog,
   RoleToggle,
   CredentialFieldDialog,
@@ -84,6 +85,7 @@ export default async function ApplicationDetailPage({ params }: { params: Promis
                   }}
                 />
                 <ApplicationToggle id={application.id} isActive={application.isActive} />
+                <ApplicationDeleteButton id={application.id} name={application.name} />
               </>
             ) : null}
           </div>

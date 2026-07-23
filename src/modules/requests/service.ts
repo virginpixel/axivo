@@ -77,11 +77,18 @@ export async function submitPublicRequest(
   const itemPayloads: {
     itemData: Record<string, unknown> | null;
     workflowId: string;
+    targetName: string | null;
+    roleName: string | null;
+    fieldLabels: Record<string, string> | null;
   }[] = [];
   const itemFieldErrors: Record<string, string> = {};
 
   for (const [index, item] of input.items.entries()) {
     let workflowId = form.workflowId;
+    // Captured now so the request still reads correctly if the application,
+    // category or its fields are later renamed or removed.
+    let targetName: string | null = null;
+    let roleName: string | null = null;
     let targetFields: Awaited<ReturnType<typeof listActiveRequestFieldsFor>> = [];
 
     if (item.itemType === "APPLICATION") {
@@ -94,11 +101,13 @@ export async function submitPublicRequest(
         },
       });
       if (!application) throw new BusinessRuleError("A selected application is not available.");
+      targetName = application.name;
       if (item.applicationRoleId) {
         const role = await db.applicationRole.findFirst({
           where: { id: item.applicationRoleId, applicationId: item.applicationId, isActive: true, deletedAt: null },
         });
         if (!role) throw new BusinessRuleError("A selected application role is not available.");
+        roleName = role.name;
       } else {
         // Only applications with no roles defined may be requested without one.
         const roleCount = await db.applicationRole.count({
@@ -119,6 +128,7 @@ export async function submitPublicRequest(
         where: { id: item.assetCategoryId, isActive: true, deletedAt: null },
       });
       if (!category) throw new BusinessRuleError("A selected asset category is not available.");
+      targetName = category.name;
       if (category.workflowId) workflowId = category.workflowId;
       targetFields = await listActiveRequestFieldsFor([], [category.id]);
     }
@@ -135,7 +145,10 @@ export async function submitPublicRequest(
       }
       itemData = result.values;
     }
-    itemPayloads.push({ itemData, workflowId });
+    const fieldLabels = targetFields.length
+      ? Object.fromEntries(targetFields.map((field) => [field.fieldKey, field.label]))
+      : null;
+    itemPayloads.push({ itemData, workflowId, targetName, roleName, fieldLabels });
   }
   if (Object.keys(itemFieldErrors).length > 0) {
     throw new ValidationError(undefined, itemFieldErrors);
@@ -227,6 +240,10 @@ export async function submitPublicRequest(
           assetCategoryId: item.assetCategoryId ?? null,
           description: item.description ?? null,
           itemData: (payload.itemData ?? undefined) as Prisma.InputJsonValue | undefined,
+          formNameSnapshot: form.name,
+          targetNameSnapshot: payload.targetName,
+          roleNameSnapshot: payload.roleName,
+          fieldLabelsSnapshot: (payload.fieldLabels ?? undefined) as Prisma.InputJsonValue | undefined,
           status: "PENDING_APPROVAL",
         },
       });

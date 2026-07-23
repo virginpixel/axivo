@@ -344,9 +344,8 @@ export async function deleteForm(context: AuditContext, id: string) {
     include: { _count: { select: { requests: true } } },
   });
   if (!form) throw new NotFoundError("Form not found.");
-  if (form._count.requests > 0) {
-    throw new BusinessRuleError("This form has submitted requests and cannot be deleted. Archive it instead.");
-  }
+  // Requests snapshot the form name at submission, so deleting the form no
+  // longer takes the history with it.
   await db.form.update({
     where: { id },
     data: { deletedAt: new Date(), isActive: false, status: "ARCHIVED", deletedById: context.actorUserId ?? null },
