@@ -27,7 +27,12 @@ export default async function PublicFormPage({ params }: { params: Promise<{ slu
             isActive: true,
             deletedAt: null,
             ...(form.applicationId ? { id: form.applicationId } : {}),
-            OR: [{ companyId: form.companyId }, { isShared: true }],
+            // A company-bound form filters here. An all-company form carries
+            // every company's applications and the browser narrows them once
+            // the requested-for employee's company is chosen.
+            ...(form.companyId
+              ? { OR: [{ companyId: form.companyId }, { isShared: true }] }
+              : {}),
           },
           orderBy: { name: "asc" },
           include: {
@@ -127,10 +132,10 @@ export default async function PublicFormPage({ params }: { params: Promise<{ slu
                 </div>
               </div>
             ) : null}
-            <p className="text-sm font-semibold uppercase tracking-wide text-primary">
-              {form.company.name}
+            <p className="label-caps text-primary">
+              {form.company?.name ?? "All companies"}
             </p>
-            <h1 className="mt-1 text-2xl font-bold">{form.name}</h1>
+            <h1 className="mt-1.5 text-3xl font-semibold">{form.name}</h1>
             {form.description ? (
               <p className="mt-2 text-sm text-muted-foreground">{form.description}</p>
             ) : null}
@@ -152,6 +157,8 @@ export default async function PublicFormPage({ params }: { params: Promise<{ slu
             applications={applications.map((application) => ({
               id: application.id,
               name: application.name,
+              companyId: application.companyId,
+              isShared: application.isShared,
               roles: application.roles.map((role) => ({ id: role.id, name: role.name })),
             }))}
             assetCategories={assetCategories.map((category) => ({

@@ -106,7 +106,7 @@ export default async function ApprovalActionPage({
 
             {Object.keys(fieldData).length > 0 ? (
               <div className="rounded-md border bg-muted/40 p-3">
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <h3 className="mb-2 label-caps text-muted-foreground">
                   Submitted details
                 </h3>
                 <dl className="grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
@@ -123,7 +123,7 @@ export default async function ApprovalActionPage({
 
             {stepInstance.actions.length > 0 ? (
               <div className="rounded-md border p-3 text-sm">
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <h3 className="mb-2 label-caps text-muted-foreground">
                   Actions on this step
                 </h3>
                 <ul className="space-y-1">

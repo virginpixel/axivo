@@ -157,7 +157,7 @@ export default async function ContractsPage({
               <option key={category.id} value={category.name}>{category.name}</option>
             ))}
           </Select>
-          <button type="submit" className="h-9 rounded-md border bg-card px-4 text-sm hover:bg-accent">Filter</button>
+          <button type="submit" className="h-9 rounded-md border border-input bg-card px-3.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">Filter</button>
         </form>
       </div>
 

@@ -127,7 +127,7 @@ export function CredentialsReveal({
         )}
         {revealed.fields.length > 0 ? (
           <div className="border-t pt-3">
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <h3 className="mb-2 label-caps text-muted-foreground">
               Additional information
             </h3>
             {revealed.fields.map((field) => (

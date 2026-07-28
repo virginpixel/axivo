@@ -46,7 +46,7 @@ interface FieldDraft {
 
 export interface ExistingForm {
   id: string;
-  companyId: string;
+  companyId: string | null;
   requestTypeId: string;
   workflowId: string;
   name: string;
@@ -77,7 +77,12 @@ export function FormBuilder({
 }) {
   const router = useRouter();
   const { run, loading, fieldErrors } = useAction();
-  const [companyId, setCompanyId] = useState(existing?.companyId ?? companies[0]?.id ?? "");
+  // "" means the form serves every company: what it offers is resolved from the
+  // requested-for employee rather than fixed here.
+  const [companyId, setCompanyId] = useState(
+    existing ? existing.companyId ?? "" : companies[0]?.id ?? "",
+  );
+  const allCompanies = companyId === "";
   const [requestTypeId, setRequestTypeId] = useState(existing?.requestTypeId ?? "");
   const [workflowId, setWorkflowId] = useState(existing?.workflowId ?? "");
   const [name, setName] = useState(existing?.name ?? "");
@@ -92,12 +97,12 @@ export function FormBuilder({
   const [fields, setFields] = useState<FieldDraft[]>(existing?.fields ?? []);
 
   const companyRequestTypes = useMemo(
-    () => requestTypes.filter((requestType) => requestType.companyId === companyId),
-    [requestTypes, companyId],
+    () => (allCompanies ? requestTypes : requestTypes.filter((entry) => entry.companyId === companyId)),
+    [requestTypes, companyId, allCompanies],
   );
   const companyWorkflows = useMemo(
-    () => workflows.filter((workflow) => workflow.companyId === companyId),
-    [workflows, companyId],
+    () => (allCompanies ? workflows : workflows.filter((entry) => entry.companyId === companyId)),
+    [workflows, companyId, allCompanies],
   );
   const selectedKind = companyRequestTypes.find((requestType) => requestType.id === requestTypeId)?.kind;
 
@@ -143,7 +148,7 @@ export function FormBuilder({
 
   async function save() {
     const payload = {
-      companyId,
+      companyId: companyId || undefined,
       requestTypeId,
       workflowId,
       name,
@@ -191,10 +196,16 @@ export function FormBuilder({
               disabled={!!existing}
               onChange={(e) => { setCompanyId(e.target.value); setRequestTypeId(""); setWorkflowId(""); }}
             >
+              <option value="">All companies</option>
               {companies.map((company) => (
                 <option key={company.id} value={company.id}>{company.name}</option>
               ))}
             </Select>
+            <HelperText>
+              {allCompanies
+                ? "One form for every company. The applications and asset categories on offer follow the employee the request is for."
+                : "Only this company's applications and asset categories can be requested."}
+            </HelperText>
           </div>
           <div>
             <Label htmlFor="fb-name" required>Form name</Label>
@@ -266,7 +277,7 @@ export function FormBuilder({
               >
                 <option value="">Any application the requester chooses</option>
                 {applications
-                  .filter((application) => application.companyId === companyId || application.isShared)
+                  .filter((application) => allCompanies || application.companyId === companyId || application.isShared)
                   .map((application) => (
                     <option key={application.id} value={application.id}>{application.name}</option>
                   ))}

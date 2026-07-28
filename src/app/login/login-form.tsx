@@ -36,7 +36,7 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-lg bg-card p-6 shadow-xl" noValidate>
+    <form onSubmit={handleSubmit} noValidate>
       <div className="space-y-4">
         <div>
           <Label htmlFor="username" required>
@@ -69,7 +69,7 @@ export function LoginForm() {
           <FieldError message={fieldErrors.password} />
         </div>
         {error ? (
-          <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <p role="alert" className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             {error}
           </p>
         ) : null}

@@ -23,7 +23,7 @@ export default async function NotFound() {
         <p className="text-sm font-semibold uppercase tracking-wide text-primary">
           {branding.systemName ?? "Axivo"}
         </p>
-        <h1 className="mt-2 text-3xl font-bold">This page does not exist</h1>
+        <h1 className="mt-2 text-3xl font-semibold">This page does not exist</h1>
         <p className="mt-3 text-sm text-muted-foreground">
           The link may be out of date, or the request form it pointed to is no longer published.
           You can still submit a request from the list of available forms.

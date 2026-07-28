@@ -19,6 +19,7 @@ const REQUEST_STATUSES: RequestStatus[] = [
   "CORRECTION_REQUESTED",
   "APPROVED",
   "IMPLEMENTATION_PENDING",
+  "PENDING_ACKNOWLEDGEMENT",
   "COMPLETED",
   "REJECTED",
   "CANCELLED",
@@ -110,7 +111,7 @@ export default async function RequestsPage({
             ))}
           </Select>
         ) : null}
-        <button type="submit" className="h-9 rounded-md border bg-card px-4 text-sm hover:bg-accent">
+        <button type="submit" className="h-9 rounded-md border border-input bg-card px-3.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">
           Filter
         </button>
       </form>
@@ -139,7 +140,7 @@ export default async function RequestsPage({
                 <TR key={request.id}>
                   <TD>
                     <Link href={`/requests/${request.id}`} className="font-medium text-primary hover:underline">
-                      {request.requestNumber}
+                      <span className="font-register">{request.requestNumber}</span>
                     </Link>
                     <p className="text-xs text-muted-foreground">by {request.requesterName}</p>
                   </TD>

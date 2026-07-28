@@ -58,6 +58,15 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // The navigation rail: its own tokens, so a customer's brand color
+        // override never has to carry the shell.
+        rail: {
+          DEFAULT: "hsl(var(--rail))",
+          foreground: "hsl(var(--rail-foreground))",
+          muted: "hsl(var(--rail-muted))",
+          border: "hsl(var(--rail-border))",
+          active: "hsl(var(--rail-active))",
+        },
         popover: {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",
@@ -66,18 +75,33 @@ const config: Config = {
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        sm: "calc(var(--radius) - 3px)",
       },
       fontFamily: {
-        sans: [
-          "Inter",
-          "ui-sans-serif",
-          "system-ui",
-          "-apple-system",
-          "Segoe UI",
-          "Roboto",
-          "sans-serif",
-        ],
+        // Three roles from one superfamily: condensed display, sans interface,
+        // mono register. Loaded and self-hosted in app/layout.tsx.
+        sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+        display: ["var(--font-display)", "var(--font-sans)", "ui-sans-serif", "sans-serif"],
+        mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular", "monospace"],
+      },
+      fontSize: {
+        // Deliberate scale; the interface stays between "micro" and "title".
+        micro: ["0.6875rem", { lineHeight: "1rem", letterSpacing: "0.04em" }],
+        xs: ["0.75rem", { lineHeight: "1.125rem" }],
+        sm: ["0.8125rem", { lineHeight: "1.25rem" }],
+        base: ["0.875rem", { lineHeight: "1.375rem" }],
+        lg: ["1rem", { lineHeight: "1.5rem" }],
+        xl: ["1.125rem", { lineHeight: "1.5rem" }],
+        "2xl": ["1.375rem", { lineHeight: "1.75rem" }],
+        "3xl": ["1.75rem", { lineHeight: "2.125rem" }],
+      },
+      boxShadow: {
+        // Structure comes from hairlines, not drop shadows. These are for
+        // things that genuinely float above the page.
+        sm: "0 1px 2px 0 hsl(230 30% 12% / 0.04)",
+        DEFAULT: "0 1px 2px 0 hsl(230 30% 12% / 0.05)",
+        pop: "0 10px 30px -12px hsl(230 30% 12% / 0.22), 0 2px 6px -2px hsl(230 30% 12% / 0.08)",
+        rail: "1px 0 0 0 hsl(230 30% 20%)",
       },
       keyframes: {
         "accordion-down": {

@@ -36,6 +36,17 @@ function expiryFrom(now: Date, ms: number): Date {
   return ms <= 0 ? NEVER : new Date(now.getTime() + ms);
 }
 
+/**
+ * Cookie lifetime in seconds. An absolute timeout of 0 means "never", but
+ * passing maxAge: 0 to the browser expires the cookie immediately, which signed
+ * the user straight back out. Chrome caps cookie lifetime at 400 days anyway,
+ * so that is as close to never as a cookie gets.
+ */
+const NEVER_MAX_AGE_SECONDS = 400 * 24 * 3600;
+function cookieMaxAge(absoluteHours: number): number {
+  return absoluteHours > 0 ? absoluteHours * 3600 : NEVER_MAX_AGE_SECONDS;
+}
+
 export async function createSession(systemUserId: string): Promise<string> {
   const [idleMinutes, absoluteHours] = await Promise.all([
     getSetting<number>(SETTING_KEYS.SESSION_IDLE_MINUTES),
@@ -62,7 +73,7 @@ export async function createSession(systemUserId: string): Promise<string> {
     secure: isProduction(),
     sameSite: "lax",
     path: "/",
-    maxAge: absoluteHours * 3600,
+    maxAge: cookieMaxAge(absoluteHours),
   });
   return token;
 }

@@ -1,4 +1,5 @@
 import { db, type DbClient } from "@/shared/db";
+import { wrapEmail, type EmailChrome } from "@/shared/email/template";
 import { enqueueEmail } from "@/shared/queue/queue";
 import { sendEmail } from "@/shared/email/mailer";
 import { recordAudit, SYSTEM_ACTOR, type AuditContext } from "@/shared/audit/audit";
@@ -136,26 +137,35 @@ export async function createInAppNotification(
   }
 }
 
-const EMAIL_WRAPPER = (subject: string, bodyHtml: string) => `<!DOCTYPE html>
-<html>
-<body style="margin:0;padding:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;">
-        <tr><td style="background:#1d4ed8;padding:16px 32px;">
-          <span style="color:#ffffff;font-size:18px;font-weight:bold;">Axivo</span>
-        </td></tr>
-        <tr><td style="padding:32px;color:#1f2937;font-size:14px;line-height:1.6;">
-          ${bodyHtml}
-        </td></tr>
-        <tr><td style="padding:16px 32px;background:#f9fafb;color:#6b7280;font-size:11px;">
-          This is an automated message from Axivo regarding "${subject}". Please do not reply to this email.
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+/**
+ * Resolve the chrome an email is wrapped in. Both real delivery and the
+ * Notifications preview call this, so what an administrator previews is what a
+ * recipient receives - previously the preview showed the bare template body
+ * while the delivered mail carried a header and footer nobody could see.
+ */
+export async function getEmailChrome(): Promise<EmailChrome> {
+  try {
+    const { getSetting, SETTING_KEYS } = await import("@/shared/settings/settings");
+    const { publicBaseUrl } = await import("@/shared/settings/runtime");
+    const branding = await getSetting<{
+      systemName?: string;
+      primaryColor?: string;
+      logoStorageKey?: string;
+    }>(SETTING_KEYS.BRANDING);
+    const baseUrl = await publicBaseUrl();
+    return {
+      // Email clients cannot reach a relative path, so the logo needs the
+      // configured public base URL in front of it.
+      logoUrl: branding.logoStorageKey ? `${baseUrl}/api/branding/logo` : null,
+      systemName: branding.systemName || "Axivo",
+      primaryColor: branding.primaryColor || "#1d4ed8",
+    };
+  } catch {
+    return { logoUrl: null, systemName: "Axivo", primaryColor: "#1d4ed8" };
+  }
+}
+
+
 
 /**
  * Deliver a queued email notification. Called from the background worker; the
@@ -183,7 +193,7 @@ export async function deliverEmailNotification(notificationId: string): Promise<
         name: recipient.name,
       })),
       subject: notification.subject,
-      html: EMAIL_WRAPPER(notification.subject, notification.body),
+      html: wrapEmail(notification.subject, notification.body, await getEmailChrome()),
     });
     await db.notification.update({
       where: { id: notificationId },

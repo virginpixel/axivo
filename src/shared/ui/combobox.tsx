@@ -145,7 +145,7 @@ export function Combobox({
             event.preventDefault();
             inputRef.current?.focus();
           }}
-          className="z-[200] w-[var(--radix-popover-trigger-width)] rounded-md border bg-card shadow-lg"
+          className="z-[200] w-[var(--radix-popover-trigger-width)] overflow-hidden rounded-lg border bg-popover shadow-pop"
         >
           <div className="flex items-center gap-2 border-b px-3">
             <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />

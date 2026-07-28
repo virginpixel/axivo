@@ -1,6 +1,20 @@
 import { type ClassValue, clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { extendTailwindMerge } from "tailwind-merge";
 import { getAppTimeZone, timeZoneLabel } from "@/shared/app-config";
+
+/*
+ * tailwind-merge has to be told about font sizes we invented, or it reads
+ * "text-micro" as a text color and lets a later "text-muted-foreground" delete
+ * it. The symptom is subtle - the class silently vanishes from the rendered
+ * markup - so the custom scale is declared here alongside the config.
+ */
+const twMerge = extendTailwindMerge({
+  extend: {
+    classGroups: {
+      "font-size": [{ text: ["micro"] }],
+    },
+  },
+});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

@@ -34,7 +34,9 @@ async function main() {
       lastName: "Tester",
       email,
     },
-    update: {},
+    // Testing lifecycle features (clearance, resignation) deactivates this
+    // person, which then blocks sign-in, so reactivate on every run.
+    update: { isActive: true, employmentStatus: "ACTIVE", deletedAt: null },
   });
 
   const passwordHash = await hash(password, { memoryCost: 19456, timeCost: 2, parallelism: 1 });

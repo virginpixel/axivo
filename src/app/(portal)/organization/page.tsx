@@ -101,7 +101,7 @@ export default async function OrganizationPage({
             <input type="checkbox" name="showInactive" value="1" defaultChecked={showInactive} className="h-4 w-4" />
             Show inactive
           </label>
-          <button type="submit" className="h-9 rounded-md border bg-card px-4 text-sm hover:bg-accent">
+          <button type="submit" className="h-9 rounded-md border border-input bg-card px-3.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">
             Apply
           </button>
         </form>

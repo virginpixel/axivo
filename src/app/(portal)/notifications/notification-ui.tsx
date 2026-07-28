@@ -1,5 +1,7 @@
 "use client";
 
+import { wrapEmail, type EmailChrome } from "@/shared/email/template";
+
 import { useState } from "react";
 import { Pencil, RotateCw, XCircle, Eraser, Eye } from "lucide-react";
 import {
@@ -72,8 +74,11 @@ function renderPreview(template: string, variables: string[]): string {
 
 export function TemplateDialog({
   template,
+  chrome,
 }: {
   template: { key: string; name: string; type: string; subject: string; body: string; variables: string[] };
+  /** Resolved on the server so the preview matches delivered mail exactly. */
+  chrome: EmailChrome;
 }) {
   const { run, loading, fieldErrors } = useAction();
   const [open, setOpen] = useState(false);
@@ -118,15 +123,27 @@ export function TemplateDialog({
             </HelperText>
           ) : null}
           {showPreview ? (
-            <div className="rounded-md border bg-muted/30 p-4">
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Preview</p>
-              <p
-                className="mb-2 border-b pb-2 text-sm font-semibold"
-                dangerouslySetInnerHTML={{ __html: renderPreview(form.subject, template.variables) }}
-              />
-              <div
-                className="text-sm [&_mark]:rounded [&_mark]:bg-primary/15 [&_mark]:px-1 [&_mark]:text-primary"
-                dangerouslySetInnerHTML={{ __html: renderPreview(form.body, template.variables) }}
+            <div className="rounded-md border bg-muted/30 p-3">
+              <p className="mb-2 label-caps text-muted-foreground">
+                Preview: exactly what the recipient receives
+              </p>
+              <p className="mb-2 truncate text-sm">
+                <span className="text-muted-foreground">Subject: </span>
+                <span
+                  className="font-semibold"
+                  dangerouslySetInnerHTML={{ __html: renderPreview(form.subject, template.variables) }}
+                />
+              </p>
+              {/* Rendered in an isolated document so the portal's own styles
+                  neither leak into the preview nor mask what the email does. */}
+              <iframe
+                title="Email preview"
+                className="h-[28rem] w-full rounded border bg-white"
+                srcDoc={wrapEmail(
+                  renderPreview(form.subject, template.variables),
+                  renderPreview(form.body, template.variables),
+                  chrome,
+                )}
               />
             </div>
           ) : null}

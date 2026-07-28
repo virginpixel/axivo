@@ -155,16 +155,34 @@ async function loadGeneratedLogos(): Promise<{ left?: Buffer; center?: Buffer; r
   }
 }
 
+/** The configured brand colour, so generated documents match the portal. */
+async function loadBrandPrimaryColor(): Promise<string | null> {
+  try {
+    const { getSetting, SETTING_KEYS } = await import("@/shared/settings/settings");
+    const branding = await getSetting<{ primaryColor?: string }>(SETTING_KEYS.BRANDING);
+    return branding.primaryColor ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function createGeneratedPdf(
   context: AuditContext,
   input: CreateGeneratedPdfInput,
   client: DbClient = db,
 ): Promise<Document> {
-  // Stamp the configured generated-document logos (left/center/right) onto the PDF header.
-  const logos = await loadGeneratedLogos();
-  const definition = logos
-    ? { ...input.definition, branding: { ...input.definition.branding, logos } }
-    : input.definition;
+  // Stamp the configured generated-document logos (left/center/right) and the
+  // configured brand colour onto the PDF, so a printed form matches the portal
+  // rather than carrying a hard-coded blue.
+  const [logos, primaryColor] = await Promise.all([loadGeneratedLogos(), loadBrandPrimaryColor()]);
+  const definition = {
+    ...input.definition,
+    branding: {
+      ...input.definition.branding,
+      ...(logos ? { logos } : {}),
+      ...(primaryColor ? { primaryColor } : {}),
+    },
+  };
   const pdf = await renderPdf(definition);
   const stored = await storage.save(pdf, "pdf", "generated");
 

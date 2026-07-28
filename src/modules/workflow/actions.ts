@@ -186,7 +186,9 @@ export async function resendApprovalNotificationsAction(stepInstanceId: string):
         });
       }
     }
-    await engine.sendApprovalEmails(audit, stepInstanceId);
+    // An explicit resend must always send, even when an identical email was
+            // already delivered for this step.
+    await engine.sendApprovalEmails(audit, stepInstanceId, { force: true });
     await recordAudit(audit, {
       module: "workflow",
       eventType: "workflow.notifications_resent",
@@ -258,7 +260,9 @@ export async function transferStepApproverAction(
         tx,
       );
     });
-    await engine.sendApprovalEmails(audit, stepInstanceId);
+    // An explicit resend must always send, even when an identical email was
+            // already delivered for this step.
+    await engine.sendApprovalEmails(audit, stepInstanceId, { force: true });
     revalidatePath("/requests");
     return ok(undefined);
   } catch (error) {

@@ -4,7 +4,7 @@ import { db } from "@/shared/db";
 import { publicBaseUrl } from "@/shared/settings/runtime";
 import { PageHeader, Pagination } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
-import { StatusBadge } from "@/shared/ui/badge";
+import { StatusBadge, Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Plus } from "lucide-react";
 import { FormRowActions, CopyLinkButton } from "./form-actions-ui";
@@ -86,7 +86,13 @@ export default async function FormsPage({
                     </p>
                   ) : null}
                 </TD>
-                <TD>{form.company.name}</TD>
+                <TD>
+                  {form.company ? (
+                    form.company.name
+                  ) : (
+                    <Badge variant="info">All companies</Badge>
+                  )}
+                </TD>
                 <TD>{form.requestType.name}</TD>
                 <TD>{form.workflow.name}</TD>
                 <TD>v{form.currentVersion?.versionNumber ?? "None"}</TD>

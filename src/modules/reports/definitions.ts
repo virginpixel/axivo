@@ -1,6 +1,10 @@
 import { db } from "@/shared/db";
 import { fullName, formatDate, formatDateTime } from "@/shared/utils";
 import type { AuthenticatedUser } from "@/shared/auth/session";
+import type { AuditContext } from "@/shared/audit/audit";
+import { buildRequestEvidencePdf } from "@/modules/requests/evidence-pdf";
+import { leaveTypeLabel } from "@/modules/assets/checkouts";
+import { getDocumentFileForUser } from "@/modules/documents/service";
 
 /**
  * Standard report definitions (SDS Doc 15 Ch2).
@@ -14,6 +18,11 @@ export interface ReportResult {
   rows: string[][];
   /** Optional per-row link (e.g. a request PDF), aligned to `rows`. */
   rowLinks?: (string | null)[];
+  /**
+   * Identifier of the document behind each row, aligned to `rows`. Rows that
+   * carry one can be ticked and downloaded together as a ZIP via `bundle`.
+   */
+  rowIds?: (string | null)[];
 }
 
 export interface ReportFilter {
@@ -32,11 +41,147 @@ export interface ReportDefinition {
   description: string;
   /** Filter controls this report offers, resolved live for the current user. */
   filters?: (user: AuthenticatedUser) => Promise<ReportFilter[]>;
+  /** Placeholder for a free-text search box; omitted when the report has none. */
+  searchPlaceholder?: string;
+  /**
+   * Header of the column holding the company, so every report can offer the
+   * same company filter without each one re-implementing it. Omit when the
+   * report has no company dimension.
+   */
+  companyColumn?: string;
+  /** Header of the column the date-range filter applies to. */
+  dateColumn?: string;
   run: (user: AuthenticatedUser, filters?: ReportFilters) => Promise<ReportResult>;
+  /** Build one PDF per selected `rowIds` entry, for the bulk ZIP download. */
+  bundle?: (
+    user: AuthenticatedUser,
+    context: AuditContext,
+    ids: string[],
+  ) => Promise<{ fileName: string; data: Buffer }[]>;
+}
+
+/** A report's rows after the shared filters and paging have been applied. */
+export interface ReportView extends ReportResult {
+  /** Rows matching the filters, before paging: what an export should contain. */
+  filteredRows: string[][];
+  filteredRowLinks?: (string | null)[];
+  filteredRowIds?: (string | null)[];
+  /** Distinct values found in the company column, for the filter control. */
+  companyOptions: string[];
+  total: number;
+  page: number;
+  pageCount: number;
+}
+
+/**
+ * Apply the filters every report shares - company, date range, free text - and
+ * then page the result.
+ *
+ * Deliberately generic and applied after the query rather than inside each of
+ * the seventeen reports: one implementation means the controls behave
+ * identically everywhere and cannot drift apart. The reports already load their
+ * full result set, so this adds no extra database cost; if one ever grows large
+ * enough to matter, that report should gain a real indexed filter of its own
+ * rather than this being made cleverer.
+ */
+export function buildReportView(
+  definition: ReportDefinition,
+  result: ReportResult,
+  filters: ReportFilters,
+  page: number,
+  pageSize: number,
+): ReportView {
+  const companyIndex = definition.companyColumn
+    ? result.headers.indexOf(definition.companyColumn)
+    : -1;
+  const dateIndex = definition.dateColumn ? result.headers.indexOf(definition.dateColumn) : -1;
+
+  const companyOptions =
+    companyIndex >= 0
+      ? Array.from(new Set(result.rows.map((row) => row[companyIndex] ?? "").filter(Boolean))).sort()
+      : [];
+
+  const term = filters.q?.trim().toLowerCase();
+  const from = filters.from ? new Date(filters.from) : null;
+  const to = filters.to ? new Date(`${filters.to}T23:59:59`) : null;
+
+  // Filter by index so the per-row links and ids stay aligned with their rows.
+  const keptIndexes: number[] = [];
+  result.rows.forEach((row, index) => {
+    if (filters.company && companyIndex >= 0 && row[companyIndex] !== filters.company) return;
+    if ((from || to) && dateIndex >= 0) {
+      const raw = row[dateIndex];
+      const value = raw && raw !== "None" && raw !== "-" ? new Date(raw) : null;
+      // A row with no date cannot satisfy a date range, so it drops out.
+      if (!value || Number.isNaN(value.getTime())) return;
+      if (from && value < from) return;
+      if (to && value > to) return;
+    }
+    if (term && !row.some((cell) => cell.toLowerCase().includes(term))) return;
+    keptIndexes.push(index);
+  });
+
+  const filteredRows = keptIndexes.map((index) => result.rows[index]!);
+  const filteredRowLinks = result.rowLinks
+    ? keptIndexes.map((index) => result.rowLinks![index] ?? null)
+    : undefined;
+  const filteredRowIds = result.rowIds
+    ? keptIndexes.map((index) => result.rowIds![index] ?? null)
+    : undefined;
+
+  const total = filteredRows.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(Math.max(1, page), pageCount);
+  const start = (safePage - 1) * pageSize;
+  const slice = keptIndexes.slice(start, start + pageSize);
+
+  return {
+    headers: result.headers,
+    rows: slice.map((index) => result.rows[index]!),
+    rowLinks: result.rowLinks ? slice.map((index) => result.rowLinks![index] ?? null) : undefined,
+    rowIds: result.rowIds ? slice.map((index) => result.rowIds![index] ?? null) : undefined,
+    filteredRows,
+    filteredRowLinks,
+    filteredRowIds,
+    companyOptions,
+    total,
+    page: safePage,
+    pageCount,
+  };
+}
+
+/** Free-text search term, trimmed; undefined when the box is empty. */
+export function searchTerm(filters?: ReportFilters): string | undefined {
+  const value = filters?.q?.trim();
+  return value ? value : undefined;
+}
+
+/**
+ * Turn a stored enum into something a person reads: IMPLEMENTATION_PENDING
+ * becomes "Implementation pending". Reports are read on screen and handed to
+ * auditors as spreadsheets, so raw constants have no place in either.
+ */
+export function readableEnum(value: string): string {
+  if (!value) return value;
+  const words = value.toLowerCase().split("_");
+  return words
+    .map((word, index) => (index === 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word))
+    .join(" ");
 }
 
 function companyScope(user: AuthenticatedUser): { companyId?: string } {
   return user.systemRoleKey === "SYSTEM_ADMINISTRATOR" ? {} : { companyId: user.companyId };
+}
+
+/** Company options for a report filter, empty for a single-company user. */
+async function companyFilterOptions(user: AuthenticatedUser): Promise<{ value: string; label: string }[]> {
+  if (user.systemRoleKey !== "SYSTEM_ADMINISTRATOR") return [];
+  const companies = await db.company.findMany({
+    where: { deletedAt: null, isActive: true },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
+  return companies.map((company) => ({ value: company.id, label: company.name }));
 }
 
 export const STANDARD_REPORTS: ReportDefinition[] = [
@@ -46,6 +191,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
     category: "Audit evidence",
     description:
       "Every application access request with its approvers and outcome. Filter by application, status or department, then download each request as a PDF to hand an auditor the sample they ask for.",
+    dateColumn: "Submitted",
     filters: async (user) => {
       const [applications, departments] = await Promise.all([
         db.application.findMany({
@@ -71,10 +217,11 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           options: [
             "PENDING_APPROVAL",
             "IMPLEMENTATION_PENDING",
+            "IMPLEMENTED",
             "COMPLETED",
             "REJECTED",
             "CANCELLED",
-          ].map((status) => ({ value: status, label: status.replace(/_/g, " ") })),
+          ].map((status) => ({ value: status, label: readableEnum(status) })),
         },
         {
           key: "departmentName",
@@ -83,16 +230,27 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
         },
       ];
     },
+    searchPlaceholder: "Employee name, employee ID or request number",
     run: async (user, filters) => {
+      const term = searchTerm(filters);
       const items = await db.requestItem.findMany({
         where: {
           itemType: "APPLICATION",
-          request: companyScope(user),
           ...(filters?.applicationId ? { applicationId: filters.applicationId } : {}),
           ...(filters?.status ? { status: filters.status as never } : {}),
-          ...(filters?.departmentName
-            ? { request: { ...companyScope(user), requestedForDepartment: filters.departmentName } }
-            : {}),
+          request: {
+            ...companyScope(user),
+            ...(filters?.departmentName ? { requestedForDepartment: filters.departmentName } : {}),
+            ...(term
+              ? {
+                  OR: [
+                    { requestedForName: { contains: term, mode: "insensitive" as const } },
+                    { requestedForEmployeeId: { contains: term, mode: "insensitive" as const } },
+                    { requestNumber: { contains: term, mode: "insensitive" as const } },
+                  ],
+                }
+              : {}),
+          },
         },
         orderBy: { request: { submittedAt: "desc" } },
         include: {
@@ -125,6 +283,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
         ],
         // Each row links to that request's evidence PDF.
         rowLinks: items.map((item) => `/api/requests/${item.requestId}/pdf`),
+        rowIds: items.map((item) => item.requestId),
         rows: items.map((item) => {
           // Names come from the snapshot when the live record is gone.
           const application = item.application?.name ?? item.targetNameSnapshot ?? "Removed";
@@ -147,12 +306,20 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
             item.request.requestedForDepartment ?? "None",
             item.request.requesterName,
             formatDate(item.request.submittedAt),
-            item.status,
+            readableEnum(item.status),
             approvals || "None",
             item.implementedAt ? formatDate(item.implementedAt) : "None",
           ];
         }),
       };
+    },
+    bundle: async (user, _context, ids) => {
+      const files = [];
+      for (const id of ids) {
+        const pdf = await buildRequestEvidencePdf(user, id);
+        if (pdf) files.push(pdf);
+      }
+      return files;
     },
   },
   {
@@ -160,11 +327,64 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
     name: "Employee Clearances",
     category: "Audit evidence",
     description: "Completed employee clearances with what was recovered and who verified it. Cancelled and in-progress clearances are excluded.",
-    run: async (user) => {
+    companyColumn: "Company",
+    dateColumn: "Completed",
+    filters: async (user) => {
+      const [companies, departments] = await Promise.all([
+        db.company.findMany({
+          where: {
+            deletedAt: null,
+            ...(user.systemRoleKey === "SYSTEM_ADMINISTRATOR" ? {} : { id: user.companyId }),
+          },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true },
+        }),
+        db.department.findMany({
+          where: { deletedAt: null, ...companyScope(user) },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true },
+        }),
+      ]);
+      return [
+        {
+          key: "companyId",
+          label: "Company",
+          options: companies.map((company) => ({ value: company.id, label: company.name })),
+        },
+        {
+          key: "departmentId",
+          label: "Department",
+          options: departments.map((department) => ({ value: department.id, label: department.name })),
+        },
+      ];
+    },
+    searchPlaceholder: "Employee name or employee ID",
+    run: async (user, filters) => {
+      const term = searchTerm(filters);
       const clearances = await db.clearance.findMany({
         // Only completed clearances are audit evidence; cancelled and
         // in-progress records are not kept here.
-        where: { ...companyScope(user), status: "COMPLETED" },
+        where: {
+          ...companyScope(user),
+          status: "COMPLETED",
+          ...(filters?.companyId ? { companyId: filters.companyId } : {}),
+          ...(filters?.departmentId || term
+            ? {
+                person: {
+                  ...(filters?.departmentId ? { departmentId: filters.departmentId } : {}),
+                  ...(term
+                    ? {
+                        OR: [
+                          { firstName: { contains: term, mode: "insensitive" as const } },
+                          { lastName: { contains: term, mode: "insensitive" as const } },
+                          { employeeId: { contains: term, mode: "insensitive" as const } },
+                        ],
+                      }
+                    : {}),
+                },
+              }
+            : {}),
+        },
         orderBy: { completedAt: "desc" },
         include: {
           person: { include: { company: true, department: true } },
@@ -183,6 +403,11 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           "Items",
           "Outstanding",
         ],
+        // The completed clearance form is filed as a document on the employee.
+        rowLinks: clearances.map((clearance) =>
+          clearance.documentId ? `/api/documents/${clearance.documentId}/download` : null,
+        ),
+        rowIds: clearances.map((clearance) => clearance.documentId),
         rows: clearances.map((clearance) => {
           const outstanding = clearance.items.filter((item) => item.status !== "RECEIVED").length;
           return [
@@ -192,12 +417,188 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
             clearance.person.department?.name ?? "None",
             formatDate(clearance.createdAt),
             clearance.completedAt ? formatDate(clearance.completedAt) : "None",
-            clearance.status,
+            readableEnum(clearance.status),
             String(clearance.items.length),
             outstanding > 0 ? String(outstanding) : "None",
           ];
         }),
       };
+    },
+    bundle: async (user, context, ids) => {
+      const files = [];
+      for (const id of ids) {
+        // Clearance forms are stored documents rather than rendered on demand.
+        const file = await getDocumentFileForUser(user, context, id);
+        files.push({ fileName: file.version.fileName, data: file.content });
+      }
+      return files;
+    },
+  },
+  {
+    key: "role-changes",
+    name: "Access Role Changes",
+    category: "Audit evidence",
+    description:
+      "Every change to access somebody already had: what the role and request fields were, what they became, and the approval filed for it.",
+    companyColumn: "Company",
+    dateColumn: "Changed",
+    searchPlaceholder: "Employee, application or role",
+    filters: async (user) => {
+      const applications = await db.application.findMany({
+        where: { deletedAt: null, ...companyScope(user) },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true },
+      });
+      return [
+        {
+          key: "applicationId",
+          label: "Application",
+          options: applications.map((application) => ({ value: application.id, label: application.name })),
+        },
+      ];
+    },
+    run: async (user, filters) => {
+      const changes = await db.assignmentChange.findMany({
+        where: {
+          ...companyScope(user),
+          ...(filters?.applicationId
+            ? { applicationAssignment: { applicationId: filters.applicationId } }
+            : {}),
+        },
+        orderBy: { changedAt: "desc" },
+        include: {
+          applicationAssignment: {
+            include: {
+              application: { select: { name: true } },
+              person: { include: { company: true, department: true } },
+            },
+          },
+        },
+      });
+
+      /** Render request-field answers as "Label: a, b" for side-by-side reading. */
+      const describe = (data: unknown): string => {
+        const record = (data as Record<string, unknown> | null) ?? {};
+        const parts = Object.entries(record)
+          .filter(([, value]) => value !== null && value !== "" && !(Array.isArray(value) && value.length === 0))
+          .map(([key, value]) =>
+            `${key.replace(/_/g, " ")}: ${Array.isArray(value) ? value.join(", ") : String(value)}`,
+          );
+        return parts.length > 0 ? parts.join(" | ") : "None";
+      };
+
+      return {
+        headers: [
+          "Employee",
+          "Employee ID",
+          "Company",
+          "Application",
+          "Role before",
+          "Role after",
+          "Fields before",
+          "Fields after",
+          "Reason",
+          "Changed by",
+          "Changed",
+        ],
+        // The filed approval, so an auditor can open the evidence from the row.
+        rowLinks: changes.map((change) =>
+          change.proofDocumentId ? `/api/documents/${change.proofDocumentId}/download` : null,
+        ),
+        rowIds: changes.map((change) => change.proofDocumentId),
+        rows: changes.map((change) => [
+          fullName(change.applicationAssignment.person),
+          change.applicationAssignment.person.employeeId,
+          change.applicationAssignment.person.company.name,
+          change.applicationAssignment.application.name,
+          change.previousRoleName ?? "None",
+          change.newRoleName ?? "None",
+          describe(change.previousFieldData),
+          describe(change.newFieldData),
+          change.reason ?? "None",
+          change.changedByLabel ?? "System",
+          formatDate(change.changedAt),
+        ]),
+      };
+    },
+    bundle: async (user, context, ids) => {
+      const files = [];
+      for (const id of ids) {
+        const file = await getDocumentFileForUser(user, context, id);
+        files.push({ fileName: file.version.fileName, data: file.content });
+      }
+      return files;
+    },
+  },
+  {
+    key: "asset-checkouts",
+    name: "Asset Checkouts",
+    category: "Audit evidence",
+    description:
+      "Equipment taken off site for leave, and whether it has come back. Anything still out past its return date is called out so it can be chased.",
+    companyColumn: "Company",
+    dateColumn: "Until",
+    searchPlaceholder: "Employee, asset or serial number",
+    run: async (user) => {
+      const checkouts = await db.assetCheckout.findMany({
+        where: { ...companyScope(user), status: { not: "CANCELLED" } },
+        orderBy: [{ status: "asc" }, { endDate: "desc" }],
+        include: {
+          person: { include: { company: true, department: true } },
+          asset: { include: { category: true } },
+        },
+      });
+      const today = new Date();
+      return {
+        headers: [
+          "Employee",
+          "Employee ID",
+          "Company",
+          "Department",
+          "Asset",
+          "Serial number",
+          "Leave",
+          "From",
+          "Until",
+          "Status",
+        ],
+        // The authorisation PDF, where one was generated.
+        rowLinks: checkouts.map((checkout) =>
+          checkout.documentId ? `/api/documents/${checkout.documentId}/download` : null,
+        ),
+        rowIds: checkouts.map((checkout) => checkout.documentId),
+        rows: checkouts.map((checkout) => {
+          // "Overdue" is a reading of the data, not a stored state: an approved
+          // checkout whose return date has passed and which has not been
+          // checked in is what somebody needs to chase.
+          const overdue =
+            checkout.status === "APPROVED" && !checkout.returnedAt && checkout.endDate < today;
+          return [
+            fullName(checkout.person),
+            checkout.person.employeeId,
+            checkout.person.company.name,
+            checkout.person.department?.name ?? "None",
+            [checkout.asset.category?.name, checkout.asset.name].filter(Boolean).join(" · "),
+            checkout.asset.serialNumber ?? "None",
+            leaveTypeLabel(checkout.leaveType),
+            formatDate(checkout.startDate),
+            formatDate(checkout.endDate),
+            overdue
+              ? "Overdue"
+              : checkout.returnedAt
+                ? `Returned ${formatDate(checkout.returnedAt)}`
+                : readableEnum(checkout.status),
+          ];
+        }),
+      };
+    },
+    bundle: async (user, context, ids) => {
+      const files = [];
+      for (const id of ids) {
+        const file = await getDocumentFileForUser(user, context, id);
+        files.push({ fileName: file.version.fileName, data: file.content });
+      }
+      return files;
     },
   },
   {
@@ -205,9 +606,33 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
     name: "Employees by Department",
     category: "People",
     description: "Active employees grouped with company, department, position and portal account status.",
-    run: async (user) => {
+    searchPlaceholder: "Name, employee ID or email",
+    filters: async (user) => {
+      const [companies, departments] = await Promise.all([
+        companyFilterOptions(user),
+        db.department.findMany({
+          where: { deletedAt: null, isActive: true, ...companyScope(user) },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true },
+        }),
+      ]);
+      const built: ReportFilter[] = [];
+      if (companies.length > 0) built.push({ key: "companyId", label: "Company", options: companies });
+      built.push({
+        key: "departmentId",
+        label: "Department",
+        options: departments.map((department) => ({ value: department.id, label: department.name })),
+      });
+      return built;
+    },
+    run: async (user, filters) => {
       const people = await db.person.findMany({
-        where: { deletedAt: null, ...companyScope(user) },
+        where: {
+          deletedAt: null,
+          ...companyScope(user),
+          ...(filters?.companyId ? { companyId: filters.companyId } : {}),
+          ...(filters?.departmentId ? { departmentId: filters.departmentId } : {}),
+        },
         orderBy: [{ company: { name: "asc" } }, { department: { name: "asc" } }, { lastName: "asc" }],
         include: { company: true, department: true, position: true, systemUser: true },
       });
@@ -220,27 +645,46 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           person.company.name,
           person.department?.name ?? "None",
           person.position?.name ?? "None",
-          person.employmentStatus,
+          readableEnum(person.employmentStatus),
           person.systemUser ? person.systemUser.username : "None",
         ]),
       };
     },
   },
   {
-    key: "people-without-accounts",
-    name: "Employees without Portal Accounts",
+    key: "people-with-accounts",
+    name: "Employees with Portal Accounts",
     category: "People",
-    description: "Active employees who have no Axivo portal account.",
-    run: async (user) => {
+    description: "Employees who hold an Axivo portal account, with their role and whether it is enabled. Most staff have none; this is the short list that does.",
+    searchPlaceholder: "Name, employee ID or username",
+    filters: async (user) => {
+      const companies = await companyFilterOptions(user);
+      return companies.length > 0
+        ? [{ key: "companyId", label: "Company", options: companies }]
+        : [];
+    },
+    run: async (user, filters) => {
       const people = await db.person.findMany({
-        where: { deletedAt: null, isActive: true, systemUser: null, ...companyScope(user) },
+        where: {
+          deletedAt: null,
+          systemUser: { isNot: null },
+          ...companyScope(user),
+          ...(filters?.companyId ? { companyId: filters.companyId } : {}),
+        },
         orderBy: { lastName: "asc" },
-        include: { company: true, department: true },
+        include: { company: true, department: true, systemUser: { include: { systemRole: true } } },
       });
       return {
-        headers: ["Employee ID", "Name", "Email", "Company", "Department"],
+        headers: ["Employee ID", "Name", "Company", "Department", "Username", "Role", "Account", "Last login"],
         rows: people.map((person) => [
-          person.employeeId, fullName(person), person.email, person.company.name, person.department?.name ?? "None",
+          person.employeeId,
+          fullName(person),
+          person.company.name,
+          person.department?.name ?? "None",
+          person.systemUser?.username ?? "None",
+          person.systemUser?.systemRole.name ?? "None",
+          person.systemUser ? (person.systemUser.isEnabled ? "Enabled" : "Disabled") : "None",
+          person.systemUser?.lastLoginAt ? formatDate(person.systemUser.lastLoginAt) : "Never",
         ]),
       };
     },
@@ -250,12 +694,36 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
     name: "Users by Application",
     category: "Applications",
     description: "Active application assignments with role and username.",
-    run: async (user) => {
+    searchPlaceholder: "Employee, username or role",
+    filters: async (user) => {
+      const [companies, applications] = await Promise.all([
+        companyFilterOptions(user),
+        db.application.findMany({
+          where: { deletedAt: null, ...companyScope(user) },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true },
+        }),
+      ]);
+      const built: ReportFilter[] = [];
+      if (companies.length > 0) built.push({ key: "companyId", label: "Company", options: companies });
+      built.push({
+        key: "applicationId",
+        label: "Application",
+        options: applications.map((application) => ({ value: application.id, label: application.name })),
+      });
+      return built;
+    },
+    run: async (user, filters) => {
       const assignments = await db.applicationAssignment.findMany({
         where: {
           deletedAt: null,
           status: { in: ["ACTIVE", "PENDING", "SUSPENDED"] },
-          application: { deletedAt: null, ...companyScope(user) },
+          ...(filters?.applicationId ? { applicationId: filters.applicationId } : {}),
+          application: {
+            deletedAt: null,
+            ...companyScope(user),
+            ...(filters?.companyId ? { companyId: filters.companyId } : {}),
+          },
         },
         orderBy: [{ application: { name: "asc" } }],
         include: { application: { include: { company: true } }, person: true, applicationRole: true },
@@ -268,7 +736,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           fullName(assignment.person),
           assignment.applicationRole?.name ?? "None",
           assignment.username ?? "None",
-          assignment.status,
+          readableEnum(assignment.status),
           formatDate(assignment.assignedAt),
         ]),
       };
@@ -279,6 +747,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
     name: "Pending Implementations",
     category: "Requests",
     description: "Approved request items waiting for IT implementation.",
+    dateColumn: "Submitted",
     run: async (user) => {
       const items = await db.requestItem.findMany({
         where: { status: "IMPLEMENTATION_PENDING", request: companyScope(user) },
@@ -302,9 +771,33 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
     name: "Requests by Status",
     category: "Requests",
     description: "All requests with per-item counts and current workflow status.",
-    run: async (user) => {
+    dateColumn: "Submitted",
+    searchPlaceholder: "Request number or requested-for name",
+    filters: async (user) => {
+      const [companies, forms] = await Promise.all([
+        companyFilterOptions(user),
+        db.form.findMany({
+          where: { deletedAt: null, ...companyScope(user) },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true },
+        }),
+      ]);
+      const built: ReportFilter[] = [];
+      if (companies.length > 0) built.push({ key: "companyId", label: "Company", options: companies });
+      built.push({
+        key: "formId",
+        label: "Form",
+        options: forms.map((form) => ({ value: form.id, label: form.name })),
+      });
+      return built;
+    },
+    run: async (user, filters) => {
       const requests = await db.request.findMany({
-        where: companyScope(user),
+        where: {
+          ...companyScope(user),
+          ...(filters?.companyId ? { companyId: filters.companyId } : {}),
+          ...(filters?.formId ? { formId: filters.formId } : {}),
+        },
         orderBy: { submittedAt: "desc" },
         include: { company: true, items: true, form: true },
         take: 2000,
@@ -317,7 +810,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           request.company.name,
           request.requestedForName,
           String(request.items.length),
-          request.status,
+          readableEnum(request.status),
           formatDateTime(request.submittedAt),
           request.completedAt ? formatDateTime(request.completedAt) : "None",
         ]),
@@ -353,7 +846,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           return [
             step.workflowInstance.requestItem.request.requestNumber,
             step.stepName,
-            step.status,
+            readableEnum(step.status),
             formatDateTime(step.activatedAt),
             formatDateTime(step.completedAt),
             hours,
@@ -367,6 +860,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
     name: "License Utilization",
     category: "Licenses",
     description: "Purchased vs assigned seats per license with availability.",
+    companyColumn: "Company",
     run: async (user) => {
       const licenses = await db.license.findMany({
         where: { deletedAt: null, ...companyScope(user) },
@@ -388,7 +882,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
             license.application?.name ?? "Standalone",
             license.company.name,
             license.licenseType,
-            license.status,
+            readableEnum(license.status),
             String(purchased),
             String(assigned),
             String(purchased - assigned),
@@ -402,6 +896,8 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
     name: "Expiring Licenses (90 days)",
     category: "Licenses",
     description: "Subscription licenses with purchase windows expiring within 90 days.",
+    companyColumn: "Company",
+    dateColumn: "Expires",
     run: async (user) => {
       const soon = new Date(Date.now() + 90 * 86_400_000);
       const purchases = await db.licensePurchase.findMany({
@@ -431,9 +927,33 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
     name: "Assets by Status",
     category: "Assets",
     description: "Full asset register with category, holder and status.",
-    run: async (user) => {
+    searchPlaceholder: "Asset, serial or holder",
+    filters: async (user) => {
+      const [companies, categories] = await Promise.all([
+        companyFilterOptions(user),
+        db.assetCategory.findMany({
+          where: { deletedAt: null, isActive: true },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true },
+        }),
+      ]);
+      const built: ReportFilter[] = [];
+      if (companies.length > 0) built.push({ key: "companyId", label: "Company", options: companies });
+      built.push({
+        key: "categoryId",
+        label: "Category",
+        options: categories.map((category) => ({ value: category.id, label: category.name })),
+      });
+      return built;
+    },
+    run: async (user, filters) => {
       const assets = await db.asset.findMany({
-        where: { deletedAt: null, ...companyScope(user) },
+        where: {
+          deletedAt: null,
+          ...companyScope(user),
+          ...(filters?.companyId ? { companyId: filters.companyId } : {}),
+          ...(filters?.categoryId ? { categoryId: filters.categoryId } : {}),
+        },
         orderBy: [{ status: "asc" }, { assetTag: "asc" }],
         include: {
           company: true,
@@ -454,7 +974,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           asset.company.name,
           [asset.manufacturer, asset.model].filter(Boolean).join(" ") || "None",
           asset.serialNumber ?? "None",
-          asset.status,
+          readableEnum(asset.status),
           asset.assignments[0] ? fullName(asset.assignments[0].person) : "None",
           asset.warrantyExpiry ? formatDate(asset.warrantyExpiry) : "None",
         ]),
@@ -466,6 +986,8 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
     name: "Warranty Expiry (180 days)",
     category: "Assets",
     description: "Assets whose warranty expires within 180 days.",
+    companyColumn: "Company",
+    dateColumn: "Warranty expires",
     run: async (user) => {
       const soon = new Date(Date.now() + 180 * 86_400_000);
       const assets = await db.asset.findMany({
@@ -494,12 +1016,21 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
     name: "Expiring Contracts (90 days)",
     category: "Contracts",
     description: "Contracts ending or renewing within 90 days.",
-    run: async (user) => {
+    dateColumn: "End date",
+    searchPlaceholder: "Contract, name or vendor",
+    filters: async (user) => {
+      const companies = await companyFilterOptions(user);
+      return companies.length > 0
+        ? [{ key: "companyId", label: "Company", options: companies }]
+        : [];
+    },
+    run: async (user, filters) => {
       const soon = new Date(Date.now() + 90 * 86_400_000);
       const contracts = await db.contract.findMany({
         where: {
           deletedAt: null,
           ...companyScope(user),
+          ...(filters?.companyId ? { companyId: filters.companyId } : {}),
           status: { notIn: ["TERMINATED"] },
           OR: [
             { endDate: { not: null, lte: soon, gte: new Date() } },
@@ -554,6 +1085,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
     name: "Credential Deliveries",
     category: "Applications",
     description: "Credential delivery history with acknowledgement status.",
+    dateColumn: "Sent",
     run: async (user) => {
       const deliveries = await db.credentialDelivery.findMany({
         where: { person: companyScope(user) },
@@ -567,7 +1099,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           fullName(delivery.person),
           delivery.application.name,
           delivery.username,
-          delivery.status,
+          readableEnum(delivery.status),
           delivery.sentAt ? formatDateTime(delivery.sentAt) : "None",
           delivery.acknowledgedAt ? formatDateTime(delivery.acknowledgedAt) : "None",
         ]),
@@ -592,7 +1124,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
         headers: ["Event type", "Status", "Count"],
         rows: groups
           .sort((a, b) => a.eventType.localeCompare(b.eventType))
-          .map((group) => [group.eventType, group.status, String(group._count)]),
+          .map((group) => [readableEnum(group.eventType), readableEnum(group.status), String(group._count)]),
       };
     },
   },

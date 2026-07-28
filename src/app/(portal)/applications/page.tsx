@@ -21,13 +21,16 @@ export const dynamic = "force-dynamic";
 export default async function ApplicationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; apage?: string }>;
 }) {
   const { user } = await requirePermission("applications.view");
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
   const page = Math.max(1, Number(params.page) || 1);
   const pageSize = 25;
+  // Assignments paginate independently of the application cards above them.
+  const assignmentPage = Math.max(1, Number(params.apage) || 1);
+  const assignmentPageSize = 25;
   const isGlobalAdmin = user.systemRoleKey === "SYSTEM_ADMINISTRATOR";
   const canManage = user.permissions.has("applications.manage");
   const canAssign = user.permissions.has("applications.assignments.manage");
@@ -38,7 +41,20 @@ export default async function ApplicationsPage({
     ...companyScope,
     ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {}),
   };
-  const [applications, total, companies, people, assignments, workflows] = await Promise.all([
+  const assignmentWhere = {
+    deletedAt: null,
+    application: { deletedAt: null, ...companyScope },
+    ...(q
+      ? {
+          OR: [
+            { application: { name: { contains: q, mode: "insensitive" as const } } },
+            { username: { contains: q, mode: "insensitive" as const } },
+            { person: { lastName: { contains: q, mode: "insensitive" as const } } },
+          ],
+        }
+      : {}),
+  };
+  const [applications, total, companies, people, assignments, assignmentTotal, workflows] = await Promise.all([
     db.application.findMany({
       where: applicationWhere,
       skip: (page - 1) * pageSize,
@@ -63,27 +79,17 @@ export default async function ApplicationsPage({
       select: { id: true, firstName: true, lastName: true, companyId: true },
     }),
     db.applicationAssignment.findMany({
-      where: {
-        deletedAt: null,
-        application: { deletedAt: null, ...companyScope },
-        ...(q
-          ? {
-              OR: [
-                { application: { name: { contains: q, mode: "insensitive" } } },
-                { username: { contains: q, mode: "insensitive" } },
-                { person: { lastName: { contains: q, mode: "insensitive" } } },
-              ],
-            }
-          : {}),
-      },
+      where: assignmentWhere,
       orderBy: { assignedAt: "desc" },
-      take: 100,
+      skip: (assignmentPage - 1) * assignmentPageSize,
+      take: assignmentPageSize,
       include: {
         person: true,
         application: { select: { id: true, name: true } },
         applicationRole: { select: { name: true } },
       },
     }),
+    db.applicationAssignment.count({ where: assignmentWhere }),
     db.workflow.findMany({
       where: { deletedAt: null, isActive: true },
       orderBy: { name: "asc" },
@@ -216,6 +222,18 @@ export default async function ApplicationsPage({
             </TBody>
           </Table>
         )}
+        <Pagination
+          page={assignmentPage}
+          pageCount={Math.max(1, Math.ceil(assignmentTotal / assignmentPageSize))}
+          total={assignmentTotal}
+          buildHref={(next) => {
+            const search = new URLSearchParams();
+            if (q) search.set("q", q);
+            if (page > 1) search.set("page", String(page));
+            search.set("apage", String(next));
+            return `/applications?${search.toString()}`;
+          }}
+        />
       </section>
     </div>
   );

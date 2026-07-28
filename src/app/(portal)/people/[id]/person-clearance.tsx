@@ -1,5 +1,7 @@
 "use client";
 
+import { checkInAssetCheckoutAction } from "@/modules/assets/actions";
+
 import { useEffect, useState } from "react";
 import { ClipboardCheck, Undo2, FileText, Trash2 } from "lucide-react";
 import {
@@ -269,6 +271,23 @@ export function ReturnAssetButton({ assignmentId }: { assignmentId: string }) {
       onClick={() => run(() => returnAssetAction(assignmentId), { successMessage: "Asset returned." })}
     >
       <Undo2 className="h-4 w-4" />
+    </Button>
+  );
+}
+
+/** Mark an asset that went off site on leave as back in the building. */
+export function CheckInButton({ checkoutId }: { checkoutId: string }) {
+  const { run, loading } = useAction();
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      loading={loading}
+      onClick={() =>
+        run(() => checkInAssetCheckoutAction(checkoutId), { successMessage: "Asset checked back in." })
+      }
+    >
+      Check in
     </Button>
   );
 }

@@ -14,8 +14,8 @@ export function ActionShell({
     <main className="min-h-screen bg-background py-8">
       <div className="mx-auto w-full max-w-2xl px-4">
         <div className="mb-6 text-center">
-          <p className="text-sm font-semibold uppercase tracking-wide text-primary">Axivo</p>
-          <h1 className="mt-1 text-2xl font-bold">{title}</h1>
+          <p className="label-caps text-primary">Axivo</p>
+          <h1 className="mt-1.5 text-3xl font-semibold">{title}</h1>
           {subtitle ? <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p> : null}
         </div>
         {children}
@@ -36,7 +36,7 @@ export function InvalidTokenNotice({ reason, flow }: { reason: string; flow: str
           : "This secure link is invalid.";
   return (
     <ActionShell title="Link not available">
-      <div className="rounded-lg border bg-card p-8 text-center shadow-sm">
+      <div className="rounded-xl border bg-card p-8 text-center">
         <p className="text-sm">{message}</p>
         <p className="mt-3 text-sm text-muted-foreground">
           {flow === "credentials"

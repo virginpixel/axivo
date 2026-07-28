@@ -77,6 +77,8 @@ enum RequestStatus {
   CORRECTION_REQUESTED
   APPROVED
   IMPLEMENTATION_PENDING
+  /// IT has finished the work; only the employee's acknowledgement is outstanding.
+  PENDING_ACKNOWLEDGEMENT
   COMPLETED
   REJECTED
   CANCELLED
@@ -104,9 +106,27 @@ enum RequestTypeKind {
   APPLICATION_ACCESS
   ASSET_REQUEST
   ASSET_HANDOVER
+  /// Taking an already-assigned asset off site for a period of leave.
+  ASSET_CHECKOUT
   ROLE_CHANGE
   CLEARANCE
   GENERAL
+}
+
+/// Why an asset is leaving the office on a checkout (Doc 11).
+enum LeaveType {
+  ANNUAL
+  BUSINESS
+  SICK
+  OTHER
+}
+
+enum AssetCheckoutStatus {
+  PENDING_APPROVAL
+  APPROVED
+  RETURNED
+  REJECTED
+  CANCELLED
 }
 
 enum AppAssignmentStatus {
@@ -337,6 +357,8 @@ model Company {
   delegations             Delegation[]
   handovers               Handover[]
   clearances              Clearance[]
+  assetCheckouts          AssetCheckout[]
+  assignmentChanges       AssignmentChange[]
   settings                SystemSetting[]
   notifications           Notification[]
 
@@ -526,6 +548,7 @@ model Person {
   requestsAsRequestedFor  Request[]                @relation("request_requested_for")
   handovers               Handover[]
   clearances              Clearance[]
+  assetCheckouts          AssetCheckout[]
   delegationsFrom         Delegation[]             @relation("delegation_from")
   delegationsTo           Delegation[]             @relation("delegation_to")
   approvalAssignments     ApprovalAssignment[]
@@ -781,6 +804,10 @@ model ApplicationAssignment {
   assignedAt        DateTime            @default(now()) @map("assigned_at")
   implementedById   String?             @map("implemented_by") @db.Uuid
   requestItemId     String?             @map("request_item_id") @db.Uuid
+  /// Current answers to the application's request fields, keyed by field key
+  /// (e.g. which outlets this person holds). Kept live so role/field changes
+  /// update it in place.
+  fieldData         Json?               @map("field_data")
   removedAt         DateTime?           @map("removed_at")
   removalReason     String?             @map("removal_reason")
   notes             String?             @map("notes")
@@ -796,6 +823,7 @@ model ApplicationAssignment {
   requestItem     RequestItem?         @relation(fields: [requestItemId], references: [id])
   deliveries      CredentialDelivery[]
   clearanceItems  ClearanceItem[]
+  changes         AssignmentChange[]
 
   @@index([personId, status])
   @@index([applicationId, status])
@@ -1007,6 +1035,7 @@ model Asset {
   location     Location?          @relation(fields: [locationId], references: [id])
   assignments  AssetAssignment[]
   maintenance  AssetMaintenance[]
+  checkouts    AssetCheckout[]
   disposal     AssetDisposal?
 
   @@unique([companyId, assetTag])
@@ -1037,6 +1066,7 @@ model AssetAssignment {
   requestItem    RequestItem?    @relation(fields: [requestItemId], references: [id])
   handoverAssets HandoverAsset[]
   clearanceItems ClearanceItem[]
+  checkouts      AssetCheckout[]
 
   @@index([assetId, status])
   @@index([personId, status])
@@ -1122,6 +1152,77 @@ model HandoverAsset {
 
   @@unique([handoverId, assetAssignmentId])
   @@map("handover_assets")
+}
+
+/// An employee taking an already-assigned asset off site for a period of leave
+/// (Doc 11). Unlike a handover this is requested by the employee and approved
+/// through a workflow, and the asset is expected back on a known date.
+model AssetCheckout {
+  id                String              @id @default(uuid()) @db.Uuid
+  companyId         String              @map("company_id") @db.Uuid
+  personId          String              @map("person_id") @db.Uuid
+  assetId           String              @map("asset_id") @db.Uuid
+  assetAssignmentId String?             @map("asset_assignment_id") @db.Uuid
+  requestItemId     String?             @map("request_item_id") @db.Uuid
+  leaveType         LeaveType           @map("leave_type")
+  startDate         DateTime            @map("start_date")
+  endDate           DateTime            @map("end_date")
+  status            AssetCheckoutStatus @default(PENDING_APPROVAL) @map("status")
+  /// Set by the check-in action when the asset comes back.
+  returnedAt        DateTime?           @map("returned_at")
+  returnedById      String?             @map("returned_by") @db.Uuid
+  documentId        String?             @map("document_id") @db.Uuid
+  notes             String?             @map("notes")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  createdById       String?             @map("created_by") @db.Uuid
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  company         Company          @relation(fields: [companyId], references: [id])
+  person          Person           @relation(fields: [personId], references: [id])
+  asset           Asset            @relation(fields: [assetId], references: [id])
+  assetAssignment AssetAssignment? @relation(fields: [assetAssignmentId], references: [id])
+  requestItem     RequestItem?     @relation(fields: [requestItemId], references: [id])
+  document        Document?        @relation(fields: [documentId], references: [id])
+
+  @@index([personId, status])
+  @@index([assetId, status])
+  @@index([status, endDate])
+  @@map("asset_checkouts")
+}
+
+/// Audit evidence for a change to somebody's existing application access: what
+/// the role and request fields were before, what they became, and the proof
+/// that was filed for it (Doc 08, Doc 16). Immutable once written.
+model AssignmentChange {
+  id                      String   @id @default(uuid()) @db.Uuid
+  applicationAssignmentId String   @map("application_assignment_id") @db.Uuid
+  companyId               String   @map("company_id") @db.Uuid
+  previousRoleId          String?  @map("previous_role_id") @db.Uuid
+  newRoleId               String?  @map("new_role_id") @db.Uuid
+  /// Role names are snapshotted so the record survives a role being renamed
+  /// or deleted, the same way request items snapshot their targets.
+  previousRoleName        String?  @map("previous_role_name")
+  newRoleName             String?  @map("new_role_name")
+  previousFieldData       Json?    @map("previous_field_data")
+  newFieldData            Json?    @map("new_field_data")
+  /// Where the change came from: an approved request, or an inline edit by IT.
+  requestItemId           String?  @map("request_item_id") @db.Uuid
+  /// Required for inline edits: the signed form, email or screenshot filed as
+  /// proof that the change was authorised.
+  proofDocumentId         String?  @map("proof_document_id") @db.Uuid
+  reason                  String?  @map("reason")
+  changedAt               DateTime @default(now()) @map("changed_at")
+  changedById             String?  @map("changed_by") @db.Uuid
+  changedByLabel          String?  @map("changed_by_label")
+
+  applicationAssignment ApplicationAssignment @relation(fields: [applicationAssignmentId], references: [id])
+  company               Company               @relation(fields: [companyId], references: [id])
+  requestItem           RequestItem?          @relation(fields: [requestItemId], references: [id])
+  proofDocument         Document?             @relation("assignment_change_proof", fields: [proofDocumentId], references: [id])
+
+  @@index([applicationAssignmentId, changedAt])
+  @@index([companyId, changedAt])
+  @@map("assignment_changes")
 }
 
 /// Asset clearance when an employee leaves / transfers (Doc 11 Ch7).
@@ -1457,7 +1558,10 @@ model RequestType {
 
 model Form {
   id                  String     @id @default(uuid()) @db.Uuid
-  companyId           String     @map("company_id") @db.Uuid
+  /// Null means the form serves every company: the applications and asset
+  /// categories offered are resolved from the requested-for employee's own
+  /// company instead of being fixed when the form is built.
+  companyId           String?    @map("company_id") @db.Uuid
   requestTypeId       String     @map("request_type_id") @db.Uuid
   workflowId          String     @map("workflow_id") @db.Uuid
   name                String     @map("name")
@@ -1484,7 +1588,7 @@ model Form {
   deletedAt           DateTime?  @map("deleted_at")
   deletedById         String?    @map("deleted_by") @db.Uuid
 
-  company        Company        @relation(fields: [companyId], references: [id])
+  company        Company?       @relation(fields: [companyId], references: [id])
   requestType    RequestType    @relation(fields: [requestTypeId], references: [id])
   workflow       Workflow       @relation(fields: [workflowId], references: [id])
   application    Application?   @relation(fields: [applicationId], references: [id])
@@ -1635,6 +1739,8 @@ model RequestItem {
   licenseAssignments LicenseAssignment[]
   assetAssignments AssetAssignment[]
   credentialDeliveries CredentialDelivery[]
+  assetCheckouts   AssetCheckout[]
+  assignmentChanges AssignmentChange[]
 
   @@index([requestId])
   @@index([status])
@@ -1735,6 +1841,9 @@ model Document {
   handovers  Handover[]
   clearances Clearance[]
   disposals  AssetDisposal[]
+  checkouts  AssetCheckout[]
+
+  assignmentChangeProofs AssignmentChange[] @relation("assignment_change_proof")
 
   @@index([companyId, kind])
   @@index([categoryId])

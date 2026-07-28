@@ -178,7 +178,7 @@ export default async function AssetsPage({
               <option key={category.id} value={category.id}>{category.name}</option>
             ))}
           </Select>
-          <button type="submit" className="h-9 rounded-md border bg-card px-4 text-sm hover:bg-accent">Filter</button>
+          <button type="submit" className="h-9 rounded-md border border-input bg-card px-3.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">Filter</button>
         </form>
       </div>
 
@@ -203,7 +203,7 @@ export default async function AssetsPage({
                         {asset.name || asset.assetTag || "Unnamed asset"}
                       </Link>
                       {asset.assetTag ? (
-                        <p className="text-xs text-muted-foreground">{asset.assetTag}</p>
+                        <p className="font-register text-xs text-muted-foreground">{asset.assetTag}</p>
                       ) : null}
                     </TD>
                     <TD>{asset.category.name}</TD>

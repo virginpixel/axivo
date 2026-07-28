@@ -8,6 +8,7 @@ import { Input, Select } from "@/shared/ui/input";
 import { formatDateTime } from "@/shared/utils";
 import { UploadDocumentDialog, NewVersionDialog } from "./document-dialogs";
 import { Download, Eye } from "lucide-react";
+import { documentKindLabel } from "@/modules/documents/categories";
 import type { Prisma } from "@prisma/client";
 
 export const metadata = { title: "Documents" };
@@ -107,7 +108,7 @@ export default async function DocumentsPage({
           <option value="WORD_DOCUMENT">Word document</option>
           <option value="OTHER">Other</option>
         </Select>
-        <button type="submit" className="h-9 rounded-md border bg-card px-4 text-sm hover:bg-accent">Filter</button>
+        <button type="submit" className="h-9 rounded-md border border-input bg-card px-3.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">Filter</button>
       </form>
 
       {documents.length === 0 ? (
@@ -141,7 +142,7 @@ export default async function DocumentsPage({
                     <TD>{document.company.name}</TD>
                     <TD>
                       <Badge variant={document.isGenerated ? "primary" : "default"}>
-                        {document.kind.replace(/_/g, " ").toLowerCase()}
+                        {documentKindLabel(document.kind)}
                       </Badge>
                     </TD>
                     <TD>v{document.currentVersion}</TD>

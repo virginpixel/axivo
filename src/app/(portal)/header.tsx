@@ -33,9 +33,9 @@ export function Header({
 }) {
   const router = useRouter();
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center justify-end gap-3 border-b bg-card px-4 shadow-sm md:px-6">
+    <header className="sticky top-0 z-30 flex h-14 items-center justify-end gap-2 border-b bg-card/85 px-4 backdrop-blur-md md:px-6">
       {maintenanceEnabled ? (
-        <span className="mr-auto inline-flex items-center gap-1.5 rounded-full bg-warning/10 px-3 py-1 text-xs font-medium text-warning">
+        <span className="mr-auto inline-flex items-center gap-1.5 rounded-full border border-warning/30 bg-warning/10 px-2.5 py-1 text-xs font-medium text-warning">
           <Wrench className="h-3.5 w-3.5" /> Maintenance mode active
         </span>
       ) : null}
@@ -50,12 +50,12 @@ export function Header({
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
-            className="relative rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="relative rounded-md p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
           >
             <Bell className="h-5 w-5" />
             {unreadCount > 0 ? (
-              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
+              <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-card bg-destructive px-1 text-[10px] font-semibold tabular-nums leading-none text-white">
                 {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             ) : null}
@@ -65,10 +65,10 @@ export function Header({
           <DropdownMenu.Content
             align="end"
             sideOffset={6}
-            className="z-50 w-96 rounded-md border bg-card p-1 shadow-lg"
+            className="z-50 w-96 rounded-lg border bg-popover p-1 shadow-pop"
           >
             <div className="flex items-center justify-between px-3 py-2">
-              <span className="text-sm font-semibold">Notifications</span>
+              <span className="label-caps text-muted-foreground">Notifications</span>
               <Link href="/notifications/inbox" className="text-xs text-primary hover:underline">
                 View all
               </Link>
@@ -84,7 +84,7 @@ export function Header({
                   <DropdownMenu.Item key={notification.id} asChild>
                     <Link
                       href={notification.link ?? "/notifications/inbox"}
-                      className="flex cursor-pointer flex-col gap-0.5 rounded px-3 py-2 outline-none hover:bg-accent"
+                      className="flex cursor-pointer flex-col gap-0.5 rounded px-3 py-2 outline-none transition-colors hover:bg-accent focus-visible:bg-accent"
                     >
                       <span className="flex items-center gap-2 text-sm font-medium">
                         {!notification.read ? (
@@ -95,7 +95,7 @@ export function Header({
                       {notification.body ? (
                         <span className="truncate text-xs text-muted-foreground">{notification.body}</span>
                       ) : null}
-                      <span className="text-[11px] text-muted-foreground">
+                      <span className="font-register text-[11px] text-muted-foreground">
                         {notification.createdAt.replace("T", " ").slice(0, 16)} UTC
                       </span>
                     </Link>
@@ -110,10 +110,10 @@ export function Header({
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
-            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
+            className="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-sm transition-colors hover:bg-accent"
             aria-label="User menu"
           >
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-[11px] font-semibold tracking-wide text-primary-foreground">
               {displayName
                 .split(" ")
                 .map((part) => part.charAt(0))
@@ -131,27 +131,27 @@ export function Header({
           <DropdownMenu.Content
             align="end"
             sideOffset={6}
-            className="z-50 min-w-48 rounded-md border bg-card p-1 shadow-lg"
+            className="z-50 min-w-52 rounded-lg border bg-popover p-1 shadow-pop"
           >
             <div className="px-3 py-2 text-xs text-muted-foreground">
-              Signed in as <span className="font-medium text-foreground">{username}</span>
+              Signed in as <span className="font-register font-medium text-foreground">{username}</span>
             </div>
             <DropdownMenu.Separator className="my-1 h-px bg-border" />
             <DropdownMenu.Item asChild>
               <Link
                 href="/account"
-                className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm outline-none hover:bg-accent"
+                className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm outline-none transition-colors hover:bg-accent focus-visible:bg-accent"
               >
-                <UserRound className="h-4 w-4" /> My account
+                <UserRound className="h-4 w-4 text-muted-foreground" /> My account
               </Link>
             </DropdownMenu.Item>
             <DropdownMenu.Item asChild>
               <button
                 type="button"
                 onClick={() => logoutAction()}
-                className="flex w-full cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm outline-none hover:bg-accent"
+                className="flex w-full cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm outline-none transition-colors hover:bg-accent focus-visible:bg-accent"
               >
-                <LogOut className="h-4 w-4" /> Sign out
+                <LogOut className="h-4 w-4 text-muted-foreground" /> Sign out
               </button>
             </DropdownMenu.Item>
           </DropdownMenu.Content>

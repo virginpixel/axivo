@@ -33,6 +33,21 @@ interface NavItem {
   permission: string;
 }
 
+/**
+ * Section boundaries for the rail. Fifteen undifferentiated links are hard to
+ * scan, so the list is banded by what the operator is doing: working the queue,
+ * keeping the records, configuring how requests flow, looking things up, and
+ * administering the system. The order of the items themselves is unchanged;
+ * a section only labels where one band starts.
+ */
+const NAV_SECTIONS: { startsAt: string; label: string | null }[] = [
+  { startsAt: "/dashboard", label: null },
+  { startsAt: "/people", label: "Records" },
+  { startsAt: "/forms", label: "Process" },
+  { startsAt: "/documents", label: "Evidence" },
+  { startsAt: "/organization", label: "Administration" },
+];
+
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" />, permission: "reports.view" },
   { href: "/requests", label: "Requests", icon: <Inbox className="h-4 w-4" />, permission: "requests.view" },
@@ -64,26 +79,40 @@ export function Sidebar({
   // Only modules the user can access are displayed (Doc 03 Ch7).
   const items = NAV_ITEMS.filter((item) => permitted.has(item.permission));
 
+  const sectionFor = new Map(NAV_SECTIONS.map((section) => [section.startsAt, section.label]));
+
   const nav = (
-    <nav aria-label="Primary" className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4 scrollbar-thin">
+    <nav aria-label="Primary" className="flex-1 overflow-y-auto px-2.5 py-3 scrollbar-thin">
       {items.map((item) => {
         const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+        const heading = sectionFor.get(item.href);
         return (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={() => setMobileOpen(false)}
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-              active
-                ? "bg-primary text-primary-foreground"
-                : "text-secondary-foreground/70 hover:bg-white/10 hover:text-white",
-            )}
-          >
-            {item.icon}
-            {item.label}
-          </Link>
+          <div key={item.href}>
+            {heading ? (
+              <p className="px-2.5 pb-1 pt-4 text-micro font-semibold uppercase tracking-[0.11em] text-rail-muted/70">
+                {heading}
+              </p>
+            ) : null}
+            <Link
+              href={item.href}
+              onClick={() => setMobileOpen(false)}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "relative flex items-center gap-2.5 rounded-md py-1.5 pl-3 pr-2.5 text-sm transition-colors",
+                // The accent marks your position in the list; everything else
+                // is a quiet shift in surface and ink.
+                "before:absolute before:left-0 before:top-1/2 before:h-4 before:w-[2px] before:-translate-y-1/2 before:rounded-full before:bg-primary before:transition-opacity",
+                active
+                  ? "bg-rail-active font-medium text-rail-foreground before:opacity-100"
+                  : "font-normal text-rail-muted before:opacity-0 hover:bg-rail-active/60 hover:text-rail-foreground",
+              )}
+            >
+              <span className={cn("shrink-0 transition-opacity", active ? "opacity-100" : "opacity-70")}>
+                {item.icon}
+              </span>
+              {item.label}
+            </Link>
+          </div>
         );
       })}
     </nav>
@@ -94,7 +123,7 @@ export function Sidebar({
       {/* Mobile toggle */}
       <button
         type="button"
-        className="fixed left-3 top-3 z-40 rounded-md border bg-card p-2 shadow md:hidden"
+        className="fixed left-3 top-3 z-40 rounded-md border border-input bg-card p-2 shadow-pop md:hidden"
         onClick={() => setMobileOpen(true)}
         aria-label="Open navigation"
       >
@@ -105,17 +134,17 @@ export function Sidebar({
       {mobileOpen ? (
         <div className="fixed inset-0 z-50 md:hidden">
           <div
-            className="absolute inset-0 bg-black/50"
+            className="absolute inset-0 bg-rail/70 backdrop-blur-[2px]"
             onClick={() => setMobileOpen(false)}
             aria-hidden
           />
-          <aside className="absolute inset-y-0 left-0 flex w-64 flex-col bg-secondary">
-            <div className="flex items-center justify-between px-4 py-4">
-              <span className="text-lg font-bold text-white">{systemName}</span>
+          <aside className="absolute inset-y-0 left-0 flex w-64 flex-col bg-rail text-rail-foreground">
+            <div className="flex items-center justify-between border-b border-rail-border px-4 py-3.5">
+              <Wordmark systemName={systemName} />
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
-                className="text-white/70 hover:text-white"
+                className="rounded-md p-1 text-rail-muted transition-colors hover:bg-rail-active hover:text-rail-foreground"
                 aria-label="Close navigation"
               >
                 <X className="h-5 w-5" />
@@ -127,14 +156,29 @@ export function Sidebar({
       ) : null}
 
       {/* Desktop sidebar */}
-      <aside className="hidden w-60 shrink-0 flex-col bg-secondary md:flex">
-        <div className="px-6 py-5">
-          <Link href="/dashboard" className="text-xl font-bold text-white">
-            {systemName}
+      <aside className="hidden w-[15rem] shrink-0 flex-col border-r border-rail-border bg-rail text-rail-foreground md:flex">
+        <div className="flex h-14 items-center border-b border-rail-border px-4">
+          <Link href="/dashboard" className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            <Wordmark systemName={systemName} />
           </Link>
         </div>
         {nav}
       </aside>
     </>
+  );
+}
+
+/**
+ * The wordmark. A single accent tick before the name gives the rail a fixed
+ * point without turning the product name into a logo lockup it does not have.
+ */
+function Wordmark({ systemName }: { systemName: string }) {
+  return (
+    <span className="flex items-center gap-2">
+      <span className="h-4 w-[3px] rounded-full bg-primary" aria-hidden />
+      <span className="font-display text-lg font-semibold tracking-tight text-rail-foreground">
+        {systemName}
+      </span>
+    </span>
   );
 }

@@ -367,7 +367,7 @@ export function AssetDialog({
           </div>
           {modelFields.length > 0 ? (
             <div className="sm:col-span-2 rounded-md border bg-muted/30 p-3">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <p className="mb-2 label-caps text-muted-foreground">
                 {selectedModel?.name} details
               </p>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -741,7 +741,7 @@ export function ClearancePanel({
             if (groupItems.length === 0) return null;
             return (
               <div key={group.kind}>
-                <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.title}</h4>
+                <h4 className="mb-1.5 label-caps text-muted-foreground">{group.title}</h4>
                 <ul className="space-y-2">
                   {groupItems.map((item) => (
                     <ClearanceItemRow key={item.id} item={item} canManage={canManage} />
@@ -793,7 +793,7 @@ function ClearanceItemRow({ item, canManage }: { item: ClearanceItemView; canMan
               </Button>
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
-              <DropdownMenu.Content align="end" className="z-50 w-72 rounded-md border bg-card p-3 shadow-lg">
+              <DropdownMenu.Content align="end" className="z-50 w-72 rounded-lg border bg-popover p-3 shadow-pop">
                 <Label htmlFor={`clr-comments-${item.id}`}>Comments (required if missing/damaged)</Label>
                 <Textarea
                   id={`clr-comments-${item.id}`}

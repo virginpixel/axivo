@@ -66,12 +66,16 @@ export async function setRequestTypeActive(context: AuditContext, id: string, is
 }
 
 async function validateFormReferences(input: FormInput): Promise<void> {
+  // An all-company form has no company to match against, so its request type
+  // and fallback workflow may come from any company. A company-bound form must
+  // still keep everything inside its own company.
+  const companyScope = input.companyId ? { companyId: input.companyId } : {};
   const [requestType, workflow] = await Promise.all([
     db.requestType.findFirst({
-      where: { id: input.requestTypeId, companyId: input.companyId, deletedAt: null, isActive: true },
+      where: { id: input.requestTypeId, ...companyScope, deletedAt: null, isActive: true },
     }),
     db.workflow.findFirst({
-      where: { id: input.workflowId, companyId: input.companyId, deletedAt: null, isActive: true },
+      where: { id: input.workflowId, ...companyScope, deletedAt: null, isActive: true },
     }),
   ]);
   if (!requestType) throw new BusinessRuleError("The request type must be active and belong to the same company.");
@@ -79,20 +83,28 @@ async function validateFormReferences(input: FormInput): Promise<void> {
 }
 
 export async function createForm(context: AuditContext, input: FormInput) {
-  const company = await db.company.findFirst({
-    where: { id: input.companyId, deletedAt: null, isActive: true },
-  });
-  if (!company) throw new BusinessRuleError("Company not found or disabled.");
+  if (input.companyId) {
+    const company = await db.company.findFirst({
+      where: { id: input.companyId, deletedAt: null, isActive: true },
+    });
+    if (!company) throw new BusinessRuleError("Company not found or disabled.");
+  }
   await validateFormReferences(input);
+  // Postgres treats NULLs as distinct, so the database unique index cannot keep
+  // all-company form names unique on its own; that case is checked here.
   const duplicate = await db.form.findFirst({
     where: {
-      companyId: input.companyId,
+      companyId: input.companyId ?? null,
       name: { equals: input.name, mode: "insensitive" },
       deletedAt: null,
     },
   });
   if (duplicate) {
-    throw new ValidationError(undefined, { name: "A form with this name already exists in this company." });
+    throw new ValidationError(undefined, {
+      name: input.companyId
+        ? "A form with this name already exists in this company."
+        : "An all-company form with this name already exists.",
+    });
   }
   // Unguessable public slug: readable prefix + random suffix.
   const slug = `${slugify(input.name)}-${randomToken(6)}`;
@@ -100,7 +112,7 @@ export async function createForm(context: AuditContext, input: FormInput) {
   return db.$transaction(async (tx) => {
     const form = await tx.form.create({
       data: {
-        companyId: input.companyId,
+        companyId: input.companyId ?? null,
         requestTypeId: input.requestTypeId,
         workflowId: input.workflowId,
         name: input.name,

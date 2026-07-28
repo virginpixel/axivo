@@ -9,6 +9,7 @@ import { StatusBadge } from "@/shared/ui/badge";
 import { formatDateTime } from "@/shared/utils";
 import { RequestAdminActions, ImplementationPanel, StepAdminControls, RequestedForResolution } from "./request-actions";
 import { ResendAckButton } from "@/shared/ui/resend-ack-button";
+import { isStoredSecretResendable } from "@/modules/credentials/service";
 import { AutoRefresh } from "@/shared/ui/auto-refresh";
 import { fullName } from "@/shared/utils";
 import { listActiveRequestFieldsFor } from "@/modules/request-fields/service";
@@ -186,7 +187,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
               </dl>
               {Object.keys(fieldData).length > 0 ? (
                 <div className="mt-4 rounded-md border bg-muted/40 p-3">
-                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <h3 className="mb-2 label-caps text-muted-foreground">
                     Submitted details
                   </h3>
                   <dl className="grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
@@ -364,7 +365,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
 
                   {item.credentialDeliveries.length > 0 ? (
                     <div className="rounded-md border p-3 text-sm">
-                      <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <h4 className="mb-1 label-caps text-muted-foreground">
                         Credential deliveries
                       </h4>
                       {item.credentialDeliveries.map((delivery) => (
@@ -379,6 +380,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                                 kind="credential"
                                 targetId={delivery.id}
                                 defaultEmail={request.requestedForEmail}
+                                secretResendable={isStoredSecretResendable(delivery)}
                               />
                             ) : null}
                             <StatusBadge status={delivery.status} />
@@ -389,7 +391,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                   ) : null}
                   {item.assetAssignments.length > 0 ? (
                     <div className="rounded-md border p-3 text-sm">
-                      <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <h4 className="mb-1 label-caps text-muted-foreground">
                         Assigned assets
                       </h4>
                       {item.assetAssignments.map((assignment) => (

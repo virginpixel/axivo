@@ -1,20 +1,33 @@
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/shared/auth/guard";
 import { db } from "@/shared/db";
-import { getLicenseAvailability } from "@/modules/licenses/service";
-import { PageHeader, StatCard } from "@/shared/ui/page";
+import { getLicenseAvailability, getLicenseCoverage } from "@/modules/licenses/service";
+import { PageHeader, StatCard, Pagination } from "@/shared/ui/page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
-import { StatusBadge } from "@/shared/ui/badge";
+import { StatusBadge, Badge } from "@/shared/ui/badge";
 import { formatDate, fullName } from "@/shared/utils";
+import { UtilizationBar } from "@/shared/ui/utilization-bar";
 import { LicenseAssignDialog, LicenseAssignmentActions, PurchaseDialog } from "../license-dialogs";
 
 export const dynamic = "force-dynamic";
 
 /** License detail: availability, full assignment history and purchases (SDS Doc 10). */
-export default async function LicenseDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function LicenseDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ hpage?: string }>;
+}) {
   const { user } = await requirePermission("licenses.view");
   const { id } = await params;
+  const { hpage } = await searchParams;
+  // Removed assignments are history: they accumulate forever and are never the
+  // reason someone opens this page, so they get their own paginated card.
+  const historyPage = Math.max(1, Number(hpage) || 1);
+  const historyPageSize = 10;
+  const ACTIVE_ASSIGNMENT_STATUSES = ["PENDING", "ACTIVE", "SUSPENDED"] as const;
 
   const license = await db.license.findFirst({
     where: { id, deletedAt: null },
@@ -24,7 +37,7 @@ export default async function LicenseDetailPage({ params }: { params: Promise<{ 
       contract: true,
       purchases: { where: { deletedAt: null }, orderBy: { purchaseDate: "desc" } },
       assignments: {
-        where: { deletedAt: null },
+        where: { deletedAt: null, status: { in: ["PENDING", "ACTIVE", "SUSPENDED"] } },
         include: { person: true },
         orderBy: { assignedAt: "desc" },
       },
@@ -34,6 +47,22 @@ export default async function LicenseDetailPage({ params }: { params: Promise<{ 
   if (license.companyId !== user.companyId && user.systemRoleKey !== "SYSTEM_ADMINISTRATOR") notFound();
 
   const availability = await getLicenseAvailability(license.id);
+  const coverage = getLicenseCoverage(license.purchases);
+  const historyWhere = {
+    licenseId: license.id,
+    deletedAt: null,
+    status: { notIn: [...ACTIVE_ASSIGNMENT_STATUSES] },
+  };
+  const [history, historyTotal] = await Promise.all([
+    db.licenseAssignment.findMany({
+      where: historyWhere,
+      include: { person: true },
+      orderBy: { removedAt: "desc" },
+      skip: (historyPage - 1) * historyPageSize,
+      take: historyPageSize,
+    }),
+    db.licenseAssignment.count({ where: historyWhere }),
+  ]);
   const canManage = user.permissions.has("licenses.manage");
   const canAssign = user.permissions.has("licenses.assignments.manage");
 
@@ -61,6 +90,19 @@ export default async function LicenseDetailPage({ params }: { params: Promise<{ 
         actions={
           <div className="flex items-center gap-2">
             <StatusBadge status={license.status} />
+            {coverage.expiresAt ? (
+              <Badge
+                variant={
+                  coverage.state === "expired"
+                    ? "destructive"
+                    : coverage.state === "expiring"
+                      ? "warning"
+                      : "success"
+                }
+              >
+                {coverage.state === "expired" ? "Expired" : "Covered until"} {formatDate(coverage.expiresAt)}
+              </Badge>
+            ) : null}
             {canManage ? <PurchaseDialog licenseId={license.id} licenseType={license.licenseType} /> : null}
             {canAssign ? (
               <LicenseAssignDialog
@@ -81,15 +123,18 @@ export default async function LicenseDetailPage({ params }: { params: Promise<{ 
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Card>
-          <CardHeader><CardTitle>Assignments</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>Current assignments</CardTitle>
+            <UtilizationBar used={availability.assigned} total={availability.purchased} className="mt-2 w-full" />
+          </CardHeader>
           <CardContent>
             {license.assignments.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No assignments yet.</p>
+              <p className="text-sm text-muted-foreground">No one holds a seat on this license.</p>
             ) : (
               <Table>
                 <THead>
                   <TR>
-                    <TH>Employee</TH><TH>Assigned</TH><TH>Removed</TH><TH>Status</TH>
+                    <TH>Employee</TH><TH>Assigned</TH><TH>Status</TH>
                     {canAssign ? <TH /> : null}
                   </TR>
                 </THead>
@@ -98,7 +143,6 @@ export default async function LicenseDetailPage({ params }: { params: Promise<{ 
                     <TR key={assignment.id}>
                       <TD className="font-medium">{fullName(assignment.person)}</TD>
                       <TD>{formatDate(assignment.assignedAt)}</TD>
-                      <TD>{assignment.removedAt ? formatDate(assignment.removedAt) : "None"}</TD>
                       <TD><StatusBadge status={assignment.status} /></TD>
                       {canAssign ? (
                         <TD className="text-right">
@@ -109,6 +153,39 @@ export default async function LicenseDetailPage({ params }: { params: Promise<{ 
                   ))}
                 </TBody>
               </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle>Assignment history</CardTitle></CardHeader>
+          <CardContent>
+            {historyTotal === 0 ? (
+              <p className="text-sm text-muted-foreground">No seats have been released yet.</p>
+            ) : (
+              <>
+                <Table>
+                  <THead>
+                    <TR><TH>Employee</TH><TH>Assigned</TH><TH>Removed</TH><TH>Status</TH></TR>
+                  </THead>
+                  <TBody>
+                    {history.map((assignment) => (
+                      <TR key={assignment.id}>
+                        <TD className="font-medium">{fullName(assignment.person)}</TD>
+                        <TD>{formatDate(assignment.assignedAt)}</TD>
+                        <TD>{assignment.removedAt ? formatDate(assignment.removedAt) : "-"}</TD>
+                        <TD><StatusBadge status={assignment.status} /></TD>
+                      </TR>
+                    ))}
+                  </TBody>
+                </Table>
+                <Pagination
+                  page={historyPage}
+                  pageCount={Math.max(1, Math.ceil(historyTotal / historyPageSize))}
+                  total={historyTotal}
+                  buildHref={(next) => `/licenses/${license.id}?hpage=${next}`}
+                />
+              </>
             )}
           </CardContent>
         </Card>

@@ -5,7 +5,7 @@ import { cn } from "@/shared/utils";
 
 export function Table({ className, ...props }: React.HTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="relative w-full overflow-auto rounded-lg border bg-card">
+    <div className="relative w-full overflow-x-auto rounded-lg border bg-card">
       <table className={cn("w-full caption-bottom text-sm", className)} {...props} />
     </div>
   );
@@ -14,7 +14,12 @@ export function Table({ className, ...props }: React.HTMLAttributes<HTMLTableEle
 export function THead({ className, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) {
   return (
     <thead
-      className={cn("sticky top-0 z-10 bg-muted/80 backdrop-blur [&_tr]:border-b", className)}
+      className={cn(
+        // A firm rule under the header is what separates the key from the data;
+        // the band behind it stays almost invisible.
+        "sticky top-0 z-10 bg-muted/70 backdrop-blur [&_tr]:border-b-[1.5px] [&_tr]:border-border",
+        className,
+      )}
       {...props}
     />
   );
@@ -26,7 +31,13 @@ export function TBody({ className, ...props }: React.HTMLAttributes<HTMLTableSec
 
 export function TR({ className, ...props }: React.HTMLAttributes<HTMLTableRowElement>) {
   return (
-    <tr className={cn("border-b transition-colors hover:bg-muted/40", className)} {...props} />
+    <tr
+      className={cn(
+        "border-b border-border/70 transition-colors last:border-0 hover:bg-accent/50",
+        className,
+      )}
+      {...props}
+    />
   );
 }
 
@@ -34,7 +45,7 @@ export function TH({ className, ...props }: React.ThHTMLAttributes<HTMLTableCell
   return (
     <th
       className={cn(
-        "h-10 px-3 text-left align-middle text-xs font-semibold uppercase tracking-wide text-muted-foreground",
+        "h-9 whitespace-nowrap px-3 text-left align-middle text-micro font-semibold uppercase tracking-[0.07em] text-muted-foreground",
         className,
       )}
       {...props}
@@ -56,8 +67,8 @@ export function EmptyState({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-card px-6 py-14 text-center">
-      <div className="rounded-full bg-muted p-3">
+    <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-input bg-card px-6 py-16 text-center">
+      <div className="rounded-full bg-muted p-3 text-muted-foreground">
         <svg
           className="h-6 w-6 text-muted-foreground"
           fill="none"
@@ -73,8 +84,10 @@ export function EmptyState({
           />
         </svg>
       </div>
-      <h3 className="text-sm font-semibold">{title}</h3>
-      {description ? <p className="max-w-sm text-sm text-muted-foreground">{description}</p> : null}
+      <h3 className="font-display text-base font-semibold">{title}</h3>
+      {description ? (
+        <p className="max-w-sm text-balance text-sm text-muted-foreground">{description}</p>
+      ) : null}
       {action ? <div className="mt-2">{action}</div> : null}
     </div>
   );

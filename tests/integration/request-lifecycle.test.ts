@@ -230,6 +230,9 @@ describe("end-to-end request lifecycle", () => {
     expect(delivery.secretCiphertext).toBeTruthy();
     const itemAfterImplementation = await db.requestItem.findUniqueOrThrow({ where: { id: request.items[0]!.id } });
     expect(itemAfterImplementation.status).toBe("IMPLEMENTED");
+    // IT has finished; the parent must stop claiming an implementation is due.
+    const requestAwaitingAck = await db.request.findUniqueOrThrow({ where: { id: request.id } });
+    expect(requestAwaitingAck.status).toBe("PENDING_ACKNOWLEDGEMENT");
 
     // --- Employee acknowledges credentials: secret revealed exactly once ---
     const revealed = await credentialsService.acknowledgeAndReveal(actor, delivery.id);
@@ -257,8 +260,12 @@ describe("end-to-end request lifecycle", () => {
     const engine = await import("@/modules/workflow/engine");
     // Build a second request with two items via direct service calls.
     const requestsService = await import("@/modules/requests/service");
-    const form = await db.form.findFirstOrThrow({ where: { status: "PUBLISHED" } });
-    const company = await db.company.findFirstOrThrow({ where: { id: form.companyId } });
+    // The fixture form is company-bound; an all-company form would resolve its
+    // company from the requested-for employee instead.
+    const form = await db.form.findFirstOrThrow({
+      where: { status: "PUBLISHED", companyId: { not: null } },
+    });
+    const company = await db.company.findFirstOrThrow({ where: { id: form.companyId! } });
     const application = await db.application.findFirstOrThrow();
     const hod = await db.person.findFirstOrThrow({ where: { employeeId: "E-100" } });
 
@@ -456,4 +463,91 @@ describe("email approval tokens (Doc 05 Ch8)", () => {
     // A genuine second use is still refused.
     await expect(tokens.consumeToken(issued.record.id)).rejects.toThrow(/already been used/i);
   }, 30_000);
+});
+
+describe("corrections return an item to its approver (Doc 09 Ch6)", () => {
+  it("re-notifies the approver and keeps the corrected answers", async () => {
+    const engine = await import("@/modules/workflow/engine");
+    const requestsService = await import("@/modules/requests/service");
+
+    const form = await db.form.findFirstOrThrow({
+      where: { status: "PUBLISHED", companyId: { not: null } },
+    });
+    const company = await db.company.findFirstOrThrow({ where: { id: form.companyId! } });
+    const application = await db.application.findFirstOrThrow();
+    const hod = await db.person.findFirstOrThrow({ where: { employeeId: "E-100" } });
+    const department = await db.department.findFirstOrThrow({ where: { name: "Front Office" } });
+    const position = await db.position.findFirstOrThrow({ where: { name: "Agent" } });
+
+    const submission = await requestsService.submitPublicRequest(
+      { ...actor, ipAddress: "10.0.0.3" },
+      {
+        slug: form.slug,
+        requesterName: "Requester",
+        requesterEmail: "requester3@test.local",
+        requesterEmployeeId: "E-902",
+        requesterCompanyId: company.id,
+        requesterDepartmentId: department.id,
+        requesterPositionTitle: position.name,
+        requestedForName: "New Employee",
+        requestedForEmail: "employee@test.local",
+        requestedForEmployeeId: "E-200",
+        requestedForCompanyId: company.id,
+        requestedForDepartmentId: department.id,
+        requestedForPositionTitle: position.name,
+        fieldValues: { justification: "Original reason" },
+        items: [
+          { itemType: "APPLICATION", applicationId: application.id, applicationRoleId: undefined, assetCategoryId: undefined, description: undefined, fieldValues: {} },
+        ],
+        website: "",
+      },
+    );
+
+    const request = await db.request.findUniqueOrThrow({
+      where: { id: submission.requestId },
+      include: { items: { include: { workflowInstances: { include: { stepInstances: true } } } } },
+    });
+    const item = request.items[0]!;
+    const step = item.workflowInstances[0]!.stepInstances.find((entry) => entry.stepOrder === 1)!;
+
+    const approvalEmailCount = () =>
+      db.notification.count({
+        where: { eventType: "APPROVAL_REQUIRED", entityId: step.id, status: { notIn: ["FAILED", "CANCELLED"] } },
+      });
+    const initialEmails = await approvalEmailCount();
+    expect(initialEmails).toBeGreaterThan(0);
+
+    // --- Approver sends it back ---
+    await engine.applyApprovalAction(actor, {
+      stepInstanceId: step.id,
+      actingPersonId: hod.id,
+      action: "CORRECTION_REQUESTED",
+      comments: "Please justify this properly.",
+      viaSecureToken: true,
+    });
+    expect((await db.requestItem.findUniqueOrThrow({ where: { id: item.id } })).status).toBe(
+      "CORRECTION_REQUESTED",
+    );
+
+    // --- Requester corrects and resubmits ---
+    await requestsService.submitCorrection(actor, item.id, {
+      fieldValues: { justification: "Corrected reason" },
+      itemFieldValues: {},
+      itemDescription: undefined,
+      comments: "Updated as asked.",
+    });
+
+    const corrected = await db.requestItem.findUniqueOrThrow({ where: { id: item.id } });
+    expect(corrected.status).toBe("PENDING_APPROVAL");
+    const correctedRequest = await db.request.findUniqueOrThrow({ where: { id: request.id } });
+    expect((correctedRequest.fieldData as Record<string, unknown>).justification).toBe(
+      "Corrected reason",
+    );
+
+    // The regression this guards: the approval email dedupe key used to be
+    // fixed per step and assignment, so resuming after a correction found the
+    // already-delivered email and sent nothing. The approver was left waiting
+    // for a request that had been sitting in their queue the whole time.
+    expect(await approvalEmailCount()).toBeGreaterThan(initialEmails);
+  }, 120_000);
 });

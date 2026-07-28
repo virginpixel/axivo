@@ -84,7 +84,8 @@ export const formFieldSchema = z
 
 export const formSchema = z
   .object({
-    companyId: uuidSchema,
+    /** Omitted for an all-company form: its catalogue follows the requester. */
+    companyId: uuidSchema.optional(),
     requestTypeId: uuidSchema,
     workflowId: uuidSchema,
     name: requiredText("Form name"),
@@ -144,7 +145,15 @@ export const requestTypeSchema = z
   .object({
     companyId: uuidSchema,
     name: requiredText("Request type name"),
-    kind: z.enum(["APPLICATION_ACCESS", "ASSET_REQUEST", "ASSET_HANDOVER", "ROLE_CHANGE", "CLEARANCE", "GENERAL"]),
+    kind: z.enum([
+      "APPLICATION_ACCESS",
+      "ASSET_REQUEST",
+      "ASSET_HANDOVER",
+      "ASSET_CHECKOUT",
+      "ROLE_CHANGE",
+      "CLEARANCE",
+      "GENERAL",
+    ]),
     description: optionalText(),
   })
   .strict();

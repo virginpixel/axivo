@@ -27,6 +27,13 @@ export function hexToHslTriple(hex: string): string | null {
   return `${Math.round(hue * 360)} ${Math.round(saturation * 100)}% ${Math.round(lightness * 100)}%`;
 }
 
+/** Raise the lightness of an "H S% L%" triple, clamped to legal values. */
+function lighten(triple: string, byPercent: number): string {
+  const [hue, saturation, lightness] = triple.split(" ");
+  const value = Math.min(100, Number.parseInt(lightness ?? "0", 10) + byPercent);
+  return `${hue} ${saturation} ${value}%`;
+}
+
 export interface BrandingConfig {
   systemName?: string;
   primaryColor?: string;
@@ -44,6 +51,13 @@ export function brandingStyle(branding: BrandingConfig): Record<string, string> 
   }
   if (secondary) {
     style["--secondary"] = secondary;
+    // The navigation rail has always been painted by the configured secondary
+    // color, so it keeps following it. Its border and active surface are
+    // derived a few steps lighter than the ground rather than being separate
+    // settings, which is what an administrator would have to reason about.
+    style["--rail"] = secondary;
+    style["--rail-border"] = lighten(secondary, 9);
+    style["--rail-active"] = lighten(secondary, 7);
   }
   return style;
 }

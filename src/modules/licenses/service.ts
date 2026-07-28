@@ -36,6 +36,39 @@ export async function getLicenseAvailability(
   return { purchased, assigned, available: purchased - assigned };
 }
 
+/** How a licence's cover reads once every purchase is taken into account. */
+export type LicenseCoverageState = "none" | "valid" | "expiring" | "expired";
+
+export interface LicenseCoverage {
+  /** Furthest-out expiry across all purchases: when cover actually ends. */
+  expiresAt: Date | null;
+  state: LicenseCoverageState;
+}
+
+/** Days before expiry at which a licence starts being called out as expiring. */
+export const LICENSE_EXPIRY_WARNING_DAYS = 60;
+
+/**
+ * Resolve licence cover from its purchases (SDS Doc 10 Ch4). A licence renewed
+ * every year carries several purchases, and it is the latest one that says
+ * whether cover has actually lapsed - the earlier ones are meant to be expired.
+ * Perpetual licences carry no expiry at all, which is "none", not "expired".
+ */
+export function getLicenseCoverage(
+  purchases: { expiryDate: Date | null }[],
+  now: Date = new Date(),
+): LicenseCoverage {
+  const dates = purchases
+    .map((purchase) => purchase.expiryDate)
+    .filter((date): date is Date => date !== null);
+  if (dates.length === 0) return { expiresAt: null, state: "none" };
+
+  const expiresAt = dates.reduce((latest, date) => (date > latest ? date : latest));
+  if (expiresAt < now) return { expiresAt, state: "expired" };
+  const warnFrom = new Date(now.getTime() + LICENSE_EXPIRY_WARNING_DAYS * 86_400_000);
+  return { expiresAt, state: expiresAt <= warnFrom ? "expiring" : "valid" };
+}
+
 export async function createLicense(context: AuditContext, input: LicenseInput) {
   if (input.applicationId) {
     const application = await db.application.findFirst({

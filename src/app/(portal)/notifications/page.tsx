@@ -1,5 +1,6 @@
 import { requirePermission } from "@/shared/auth/guard";
 import { db } from "@/shared/db";
+import { getEmailChrome } from "@/modules/notifications/service";
 import { LiveSearch } from "@/shared/ui/live-search";
 import { PageHeader, StatCard, Pagination } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
@@ -45,6 +46,8 @@ export default async function NotificationsPage({
       : {}),
   };
 
+  // The same chrome delivery uses, so the preview is faithful.
+  const emailChrome = await getEmailChrome();
   const [rows, total, statusCounts, templates] = await Promise.all([
     db.notification.findMany({
       where,
@@ -89,7 +92,7 @@ export default async function NotificationsPage({
             <option key={status} value={status}>{status}</option>
           ))}
         </Select>
-        <button type="submit" className="h-9 rounded-md border bg-card px-4 text-sm hover:bg-accent">Filter</button>
+        <button type="submit" className="h-9 rounded-md border border-input bg-card px-3.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">Filter</button>
       </form>
 
       {rows.length === 0 ? (
@@ -171,6 +174,7 @@ export default async function NotificationsPage({
                         body: template.body,
                         variables: (template.variables as string[] | null) ?? [],
                       }}
+                      chrome={emailChrome}
                     />
                   </TD>
                 ) : null}

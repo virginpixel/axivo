@@ -353,7 +353,13 @@ export async function deleteApplication(context: AuditContext, id: string) {
 export async function createAssignment(
   context: AuditContext,
   input: AssignmentInput,
-  options: { requestItemId?: string; status?: "PENDING" | "ACTIVE"; implementedById?: string } = {},
+  options: {
+    requestItemId?: string;
+    status?: "PENDING" | "ACTIVE";
+    implementedById?: string;
+    /** Answers to the application's request fields, kept live on the assignment. */
+    fieldData?: Record<string, unknown> | null;
+  } = {},
   client: DbClient = db,
 ) {
   const [person, application] = await Promise.all([
@@ -399,6 +405,10 @@ export async function createAssignment(
       username: input.username ?? null,
       notes: input.notes ?? null,
       status: options.status ?? "ACTIVE",
+      // The answers to the application's request fields (which outlets, which
+      // cost centre). Kept on the assignment so a person's page can show what
+      // they actually hold, not only what was originally asked for.
+      fieldData: (options.fieldData ?? undefined) as never,
       requestItemId: options.requestItemId ?? null,
       implementedById: options.implementedById ?? null,
       createdById: context.actorUserId ?? null,
@@ -417,6 +427,107 @@ export async function createAssignment(
     client,
   );
   return assignment;
+}
+
+/**
+ * Change the role and/or request-field values on access somebody already has,
+ * recording what it was, what it became, and the proof that authorised it
+ * (Doc 08 Ch5, Doc 16).
+ *
+ * Every change writes an AssignmentChange row. That row is the audit story: the
+ * assignment itself only ever shows the current state, so without it there is
+ * no way to answer "who had which outlets in March, and who approved the
+ * change". Proof is required for an inline edit because such a change carries
+ * no approval workflow of its own; a change arriving from an approved request
+ * passes its request item instead.
+ */
+export async function changeAssignmentAccess(
+  context: AuditContext,
+  assignmentId: string,
+  input: {
+    applicationRoleId?: string | null;
+    fieldData?: Record<string, unknown> | null;
+    reason?: string;
+    proofDocumentId?: string;
+    requestItemId?: string;
+  },
+  client: DbClient = db,
+) {
+  const assignment = await client.applicationAssignment.findFirst({
+    where: { id: assignmentId, deletedAt: null },
+    include: { application: true, person: true, applicationRole: true },
+  });
+  if (!assignment) throw new NotFoundError("Assignment not found.");
+  if (!input.proofDocumentId && !input.requestItemId) {
+    throw new BusinessRuleError(
+      "A role or field change needs either an approved request or an attached proof document.",
+    );
+  }
+
+  let newRole = null;
+  if (input.applicationRoleId) {
+    newRole = await client.applicationRole.findFirst({
+      where: {
+        id: input.applicationRoleId,
+        applicationId: assignment.applicationId,
+        deletedAt: null,
+        isActive: true,
+      },
+    });
+    if (!newRole) throw new BusinessRuleError("The selected application role is not available.");
+  }
+
+  const previousFieldData = (assignment.fieldData as Record<string, unknown> | null) ?? null;
+  const nextFieldData = input.fieldData === undefined ? previousFieldData : input.fieldData;
+  const nextRoleId =
+    input.applicationRoleId === undefined ? assignment.applicationRoleId : input.applicationRoleId;
+
+  const roleUnchanged = nextRoleId === assignment.applicationRoleId;
+  const fieldsUnchanged = JSON.stringify(previousFieldData) === JSON.stringify(nextFieldData);
+  if (roleUnchanged && fieldsUnchanged) {
+    throw new BusinessRuleError("Nothing was changed.");
+  }
+
+  await client.applicationAssignment.update({
+    where: { id: assignmentId },
+    data: {
+      applicationRoleId: nextRoleId,
+      fieldData: (nextFieldData ?? undefined) as never,
+      updatedById: context.actorUserId ?? null,
+    },
+  });
+
+  await client.assignmentChange.create({
+    data: {
+      applicationAssignmentId: assignmentId,
+      companyId: assignment.application.companyId,
+      previousRoleId: assignment.applicationRoleId,
+      newRoleId: nextRoleId,
+      // Names are snapshotted so the record survives a role being renamed.
+      previousRoleName: assignment.applicationRole?.name ?? null,
+      newRoleName: newRole?.name ?? (nextRoleId ? null : null),
+      previousFieldData: (previousFieldData ?? undefined) as never,
+      newFieldData: (nextFieldData ?? undefined) as never,
+      requestItemId: input.requestItemId ?? null,
+      proofDocumentId: input.proofDocumentId ?? null,
+      reason: input.reason ?? null,
+      changedById: context.actorUserId ?? null,
+      changedByLabel: context.actorLabel ?? null,
+    },
+  });
+
+  await recordAudit(
+    { ...context, companyId: assignment.application.companyId },
+    {
+      module: MODULE,
+      eventType: "assignment.access_changed",
+      action: `Changed ${assignment.person.firstName} ${assignment.person.lastName}'s access to "${assignment.application.name}"`,
+      targetType: "application_assignment",
+      targetId: assignmentId,
+      targetLabel: assignment.application.name,
+    },
+    client,
+  );
 }
 
 export async function updateAssignment(context: AuditContext, id: string, input: UpdateAssignmentInput) {

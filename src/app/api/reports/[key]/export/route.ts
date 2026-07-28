@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import ExcelJS from "exceljs";
 import { getCurrentUser, getClientIp } from "@/shared/auth/session";
 import { recordAudit } from "@/shared/audit/audit";
-import { getReport } from "@/modules/reports/definitions";
+import { getReport, buildReportView } from "@/modules/reports/definitions";
 
 /** Report export endpoint (SDS Doc 15 Ch8): CSV/XLSX with generation metadata. */
 export async function GET(
@@ -26,7 +26,12 @@ export async function GET(
   for (const [param, value] of url.searchParams.entries()) {
     if (param !== "format" && value) filters[param] = value;
   }
-  const result = await report.run(user, filters);
+  const queried = await report.run(user, filters);
+  // Export what the filters select, not the unfiltered report: an operator who
+  // narrows the screen and then exports expects the same rows. Paging is
+  // deliberately not applied - an export is the whole filtered set.
+  const view = buildReportView(report, queried, filters, 1, Number.MAX_SAFE_INTEGER);
+  const result = { headers: view.headers, rows: view.filteredRows };
   const generatedAt = new Date();
 
   const requestHeaders = await headers();

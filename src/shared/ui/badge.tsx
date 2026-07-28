@@ -2,18 +2,22 @@ import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/shared/utils";
 
+/*
+ * Status chip. A tinted ground plus a hairline in the same hue reads as a
+ * discrete piece of state at a glance, where flat colored text does not.
+ */
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
+  "inline-flex items-center whitespace-nowrap rounded-full border px-2 py-px text-xs font-medium leading-5",
   {
     variants: {
       variant: {
-        default: "bg-muted text-muted-foreground",
-        primary: "bg-primary/10 text-primary",
-        success: "bg-success/10 text-success",
-        warning: "bg-warning/10 text-warning",
-        destructive: "bg-destructive/10 text-destructive",
-        info: "bg-info/10 text-info",
-        outline: "border text-foreground",
+        default: "border-border bg-muted text-muted-foreground",
+        primary: "border-primary/25 bg-primary/10 text-primary",
+        success: "border-success/25 bg-success/10 text-success",
+        warning: "border-warning/30 bg-warning/10 text-warning",
+        destructive: "border-destructive/25 bg-destructive/10 text-destructive",
+        info: "border-info/25 bg-info/10 text-info",
+        outline: "border-input text-foreground",
       },
     },
     defaultVariants: { variant: "default" },
@@ -50,12 +54,13 @@ const STATUS_VARIANTS: Record<string, VariantProps<typeof badgeVariants>["varian
   CANCELLED: "default",
   CORRECTION_REQUESTED: "warning",
   IMPLEMENTATION_PENDING: "info",
+  PENDING_ACKNOWLEDGEMENT: "warning",
   SUSPENDED: "warning",
   REMOVED: "default",
   EXPIRED: "destructive",
   EXPIRING: "warning",
   RENEWED: "success",
-  TERMINATED: "default",
+  TERMINATED: "destructive",
   ARCHIVED: "default",
   DISCARDED: "default",
   DRAFT: "default",
@@ -65,7 +70,7 @@ const STATUS_VARIANTS: Record<string, VariantProps<typeof badgeVariants>["varian
   RESERVED: "info",
   RETIRED: "default",
   ON_LEAVE: "warning",
-  RESIGNED: "default",
+  RESIGNED: "destructive",
   QUEUED: "info",
   SENDING: "info",
   FAILED: "destructive",
@@ -76,12 +81,14 @@ const STATUS_VARIANTS: Record<string, VariantProps<typeof badgeVariants>["varian
   SCHEDULED: "info",
 };
 
-export function StatusBadge({ status }: { status: string }) {
+export function StatusBadge({ status, label }: { status: string; label?: string }) {
   const variant = STATUS_VARIANTS[status] ?? "default";
-  const label = status
-    .toLowerCase()
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-  return <Badge variant={variant}>{label}</Badge>;
+  const text =
+    label ??
+    status
+      .toLowerCase()
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+  return <Badge variant={variant}>{text}</Badge>;
 }

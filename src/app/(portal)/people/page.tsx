@@ -3,7 +3,7 @@ import { requirePermission } from "@/shared/auth/guard";
 import { db } from "@/shared/db";
 import { PageHeader, Pagination } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
-import { StatusBadge } from "@/shared/ui/badge";
+import { StatusBadge, Badge } from "@/shared/ui/badge";
 import { Input, Select } from "@/shared/ui/input";
 import { LiveSearch } from "@/shared/ui/live-search";
 import { fullName } from "@/shared/utils";
@@ -110,7 +110,7 @@ export default async function PeoplePage({
               <option key={status} value={status}>{status.replace("_", " ")}</option>
             ))}
           </Select>
-          <button type="submit" className="h-9 rounded-md border bg-card px-4 text-sm hover:bg-accent">
+          <button type="submit" className="h-9 rounded-md border border-input bg-card px-3.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">
             Filter
           </button>
         </form>
@@ -139,15 +139,15 @@ export default async function PeoplePage({
                     </Link>
                     <p className="text-xs text-muted-foreground">{person.email}</p>
                   </TD>
-                  <TD>{person.employeeId}</TD>
+                  <TD className="font-register text-muted-foreground">{person.employeeId}</TD>
                   <TD>{person.company.name}</TD>
                   <TD>{person.department?.name ?? "None"}</TD>
                   <TD>{person.position?.name ?? "None"}</TD>
                   <TD>
                     {person.systemUser ? (
-                      <span className="text-xs">
-                        {person.systemUser.username}{" "}
-                        {!person.systemUser.isEnabled ? <span className="text-destructive">(disabled)</span> : null}
+                      <span className="flex items-center gap-1.5 text-xs">
+                        <span className="font-register">{person.systemUser.username}</span>
+                        {!person.systemUser.isEnabled ? <Badge variant="destructive">Disabled</Badge> : null}
                       </span>
                     ) : (
                       <span className="text-xs text-muted-foreground">None</span>

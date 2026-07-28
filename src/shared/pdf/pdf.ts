@@ -62,24 +62,26 @@ export async function renderPdf(definition: PdfDefinition): Promise<Buffer> {
       doc.y = bandY + h + 6;
     }
 
-    // Header
-    doc.fillColor(primary).fontSize(20).font("Helvetica-Bold").text(definition.branding.systemName);
-    if (definition.branding.companyName) {
-      doc.fillColor("#444444").fontSize(10).font("Helvetica").text(definition.branding.companyName);
+    // Header: the document is the form, so its own title leads. The product
+    // name and the company used to sit above it, which made every printed form
+    // announce the software before saying what it was; the company now appears
+    // where it belongs, among the employee's details.
+    doc.fillColor("#111111").fontSize(18).font("Helvetica-Bold").text(definition.title, {
+      align: "center",
+    });
+    if (definition.subtitle) {
+      doc.moveDown(0.2);
+      doc.fillColor("#555555").fontSize(10).font("Helvetica").text(definition.subtitle, {
+        align: "center",
+      });
     }
     doc.moveDown(0.5);
     doc
       .moveTo(50, doc.y)
       .lineTo(545, doc.y)
       .strokeColor(primary)
-      .lineWidth(2)
+      .lineWidth(1.5)
       .stroke();
-    doc.moveDown(1);
-
-    doc.fillColor("#111111").fontSize(16).font("Helvetica-Bold").text(definition.title);
-    if (definition.subtitle) {
-      doc.fillColor("#555555").fontSize(10).font("Helvetica").text(definition.subtitle);
-    }
     doc.moveDown(1);
 
     for (const section of definition.sections) {

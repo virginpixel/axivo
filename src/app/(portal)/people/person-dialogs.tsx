@@ -188,9 +188,19 @@ export function PersonDialog({ orgData, person }: { orgData: OrgData; person?: P
             <Input id="p-phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
           </div>
           <div>
+            <Label htmlFor="p-extension">Extension</Label>
+            <Input
+              id="p-extension"
+              value={form.extension}
+              onChange={(e) => setForm({ ...form, extension: e.target.value })}
+              placeholder="Desk extension"
+            />
+          </div>
+          <div>
             <Label htmlFor="p-status" required>Employment status</Label>
             <Select id="p-status" value={form.employmentStatus} onChange={(e) => setForm({ ...form, employmentStatus: e.target.value })}>
-              {["ACTIVE", "ON_LEAVE", "SUSPENDED", "RESIGNED", "TERMINATED"].map((status) => (
+              {/* Resigned and Terminated are set by completing a clearance. */}
+              {SELECTABLE_STATUSES.map((status) => (
                 <option key={status} value={status}>{status.replace("_", " ")}</option>
               ))}
             </Select>
@@ -204,6 +214,9 @@ export function PersonDialog({ orgData, person }: { orgData: OrgData; person?: P
     </Dialog>
   );
 }
+
+/** Clearance completion sets Resigned/Terminated, so they are not hand-picked. */
+const SELECTABLE_STATUSES = ["ACTIVE", "ON_LEAVE", "SUSPENDED"];
 
 export function EmploymentStatusSelect({ personId, current }: { personId: string; current: string }) {
   const { run, loading } = useAction();
@@ -219,7 +232,9 @@ export function EmploymentStatusSelect({ personId, current }: { personId: string
         })
       }
     >
-      {["ACTIVE", "ON_LEAVE", "SUSPENDED", "RESIGNED", "TERMINATED"].map((status) => (
+      {/* The current value may be Resigned/Terminated from a clearance; keep it
+          listed so the control shows it, but do not offer it as a new choice. */}
+      {(SELECTABLE_STATUSES.includes(current) ? SELECTABLE_STATUSES : [current, ...SELECTABLE_STATUSES]).map((status) => (
         <option key={status} value={status}>{status.replace("_", " ")}</option>
       ))}
     </Select>

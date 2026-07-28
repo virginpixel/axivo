@@ -3,6 +3,7 @@ import { db } from "@/shared/db";
 import { ToastProvider } from "@/shared/ui/toast";
 import { ActionShell, InvalidTokenNotice } from "../shell";
 import { CorrectionForm } from "./correction-form";
+import { listActiveRequestFieldsFor } from "@/modules/request-fields/service";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +47,18 @@ export default async function CorrectionActionPage({
   }
 
   const itemLabel =
-    item.application?.name ?? item.assetCategory?.name ?? item.description ?? item.itemType;
+    item.application?.name ??
+    item.assetCategory?.name ??
+    item.targetNameSnapshot ??
+    item.description ??
+    item.itemType;
+
+  // The request fields of whatever this item targets. These are usually the
+  // reason an approver sent it back, so they must be correctable here.
+  const itemFields = await listActiveRequestFieldsFor(
+    item.applicationId ? [item.applicationId] : [],
+    item.assetCategoryId ? [item.assetCategoryId] : [],
+  );
 
   return (
     <ToastProvider>
@@ -69,6 +81,15 @@ export default async function CorrectionActionPage({
             options: (field.options as string[] | null) ?? [],
           }))}
           currentValues={(item.request.fieldData ?? {}) as Record<string, string | string[]>}
+          itemLabel={itemLabel}
+          itemFields={itemFields.map((field) => ({
+            fieldKey: field.fieldKey,
+            label: field.label,
+            fieldType: field.fieldType,
+            isRequired: field.isRequired,
+            options: (field.options as string[] | null) ?? [],
+          }))}
+          currentItemValues={(item.itemData ?? {}) as Record<string, string | string[]>}
         />
       </ActionShell>
     </ToastProvider>

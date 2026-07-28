@@ -236,6 +236,24 @@ export async function acknowledgeAndReveal(
 }
 
 /**
+ * Whether the stored temporary secret can still be re-sent as-is. Once the
+ * employee has opened the link, or the retention window lapsed, the plaintext is
+ * unrecoverable and IT must supply a fresh password. Exported so the UI can show
+ * the right resend affordance instead of letting the user hit the error.
+ */
+export function isStoredSecretResendable(
+  delivery: { secretCiphertext: string | null; secretExpiresAt: Date | null; viewedAt: Date | null },
+  now: Date = new Date(),
+): boolean {
+  return (
+    delivery.secretCiphertext !== null &&
+    delivery.secretExpiresAt !== null &&
+    delivery.secretExpiresAt > now &&
+    delivery.viewedAt === null
+  );
+}
+
+/**
  * Resend credentials (Doc 05 Ch4): while the previous secret is valid IT may
  * resend it or replace it; once expired a new password is mandatory.
  */
@@ -254,11 +272,7 @@ export async function resendDelivery(
     throw new BusinessRuleError("Revoked deliveries cannot be resent. Create a new delivery.");
   }
   const now = new Date();
-  const secretStillValid =
-    delivery.secretCiphertext !== null &&
-    delivery.secretExpiresAt !== null &&
-    delivery.secretExpiresAt > now &&
-    delivery.viewedAt === null;
+  const secretStillValid = isStoredSecretResendable(delivery, now);
 
   if (!secretStillValid && !newSecret) {
     throw new BusinessRuleError(

@@ -122,6 +122,7 @@ export default async function DashboardPage() {
           <CardContent>
             <StatusDonut
               ariaLabel="Assets by status"
+              totalLabel="assets"
               data={assetsByStatus.map((entry) => ({ name: label(entry.status), value: entry._count }))}
             />
           </CardContent>
@@ -133,6 +134,7 @@ export default async function DashboardPage() {
           <CardContent>
             <StatusDonut
               ariaLabel="Requests by status"
+              totalLabel="requests"
               data={requestsByStatus.map((entry) => ({ name: label(entry.status), value: entry._count }))}
             />
           </CardContent>
@@ -142,27 +144,21 @@ export default async function DashboardPage() {
             <CardTitle>Asset categories</CardTitle>
           </CardHeader>
           <CardContent>
-            {categoryList.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No assets registered yet.</p>
-            ) : (
-              <ul className="space-y-2">
-                {categoryList.slice(0, 8).map((entry) => (
-                  <li key={entry.name} className="flex items-center justify-between text-sm">
-                    <span>{entry.name}</span>
-                    <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold">
-                      {entry.count}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <StatusDonut
+              ariaLabel="Assets by category"
+              totalLabel="assets"
+              data={categoryList.slice(0, 8).map((entry) => ({ name: entry.name, value: entry.count }))}
+            />
           </CardContent>
         </Card>
       </div>
 
       <Card className="mt-6">
-        <CardHeader>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
           <CardTitle>Recent requests</CardTitle>
+          <Link href="/requests" className="text-xs font-medium text-primary hover:underline">
+            View all
+          </Link>
         </CardHeader>
         <CardContent>
           {recentRequests.length === 0 ? (
@@ -173,7 +169,7 @@ export default async function DashboardPage() {
                 <li key={request.id} className="flex items-center justify-between gap-3 py-2.5">
                   <div className="min-w-0">
                     <Link href={`/requests/${request.id}`} className="font-medium text-primary hover:underline">
-                      {request.requestNumber}
+                      <span className="font-register">{request.requestNumber}</span>
                     </Link>
                     <p className="truncate text-xs text-muted-foreground">
                       For {request.requestedForName} · {request.items.length} item(s) ·{" "}

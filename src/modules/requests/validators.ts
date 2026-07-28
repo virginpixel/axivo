@@ -65,7 +65,14 @@ export const publicSubmissionSchema = z
 
 export const correctionSubmissionSchema = z
   .object({
+    /** Answers to the form's own questions. */
     fieldValues: z.record(z.unknown()).default({}),
+    /**
+     * Answers to the request fields of the thing being asked for (which
+     * outlets, which cost centre). An approver who sends an item back is
+     * usually objecting to exactly these, so they have to be correctable.
+     */
+    itemFieldValues: z.record(z.unknown()).default({}),
     itemDescription: optionalText(1000),
     comments: optionalText(2000),
   })

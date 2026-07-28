@@ -142,6 +142,21 @@ export async function assignAssetAction(raw: unknown): Promise<ActionResult<{ id
   }
 }
 
+/** Check an asset back in after a period of leave (Doc 11). */
+export async function checkInAssetCheckoutAction(checkoutId: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("assets.assignments.manage");
+    const { checkInAsset } = await import("./checkouts");
+    await checkInAsset(audit, checkoutId);
+    revalidatePath("/people", "layout");
+    revalidatePath("/assets", "layout");
+    revalidatePath("/reports");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
 export async function returnAssetAction(assignmentId: string, notes?: string): Promise<ActionResult<undefined>> {
   try {
     const { audit } = await requirePermission("assets.assignments.manage");

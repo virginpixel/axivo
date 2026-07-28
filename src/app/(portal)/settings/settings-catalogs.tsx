@@ -213,9 +213,11 @@ export function LogoUploadForm({ hasLogo }: { hasLogo: boolean }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Login page logo</CardTitle>
+        <CardTitle>Brand logo</CardTitle>
         <CardDescription>
-          Shown on the sign-in screen. PNG, JPG, SVG or WEBP up to 2 MB. Request forms use their own logos below.
+          Shown on the sign-in screen, on the public request portal, and at the top of every email
+          Axivo sends. PNG, JPG, SVG or WEBP up to 2 MB. Generated documents and request forms use
+          their own logos below.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -324,7 +326,7 @@ export function GeneratedLogosForm({ present }: { present: { left: boolean; cent
         <CardDescription>Shown in the header of generated PDFs such as asset handover and clearance forms.</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3">
           {(["left", "center", "right"] as const).map((position) => (
             <LogoSlot
               key={position}
@@ -353,7 +355,7 @@ export function RequestFormLogosForm({ present }: { present: { left: boolean; ce
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3">
           {(["left", "center", "right"] as const).map((position) => (
             <LogoSlot
               key={position}
@@ -397,7 +399,7 @@ function LogoSlot({
   }
   return (
     <div className="rounded-md border p-3">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{position}</p>
+      <p className="label-caps mb-2 text-muted-foreground">{position}</p>
       <div className="mb-2 flex h-16 items-center justify-center rounded bg-muted/40">
         {hasLogo ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -406,8 +408,8 @@ function LogoSlot({
           <span className="text-xs text-muted-foreground">No logo</span>
         )}
       </div>
-      <div className="flex items-center gap-2">
-        <label className="inline-flex cursor-pointer items-center gap-1 rounded-md border bg-card px-2.5 py-1.5 text-xs hover:bg-accent">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="inline-flex cursor-pointer items-center gap-1 whitespace-nowrap rounded-md border border-input bg-card px-2.5 py-1.5 text-xs font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">
           <Upload className="h-3.5 w-3.5" /> {hasLogo ? "Replace" : "Upload"}
           <input type="file" accept={accept} className="hidden" onChange={onFile} disabled={loading} />
         </label>

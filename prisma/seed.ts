@@ -69,6 +69,30 @@ const NOTIFICATION_TEMPLATES: { key: string; name: string; type: string; subject
     variables: ["employeeName", "assetCount", "actionUrl"],
   },
   {
+    key: "request_submitted",
+    name: "Request Submitted",
+    type: "REQUEST_SUBMITTED",
+    subject: "Request {{requestNumber}} received",
+    body: "Dear {{requesterName}},<br/><br/>We have received request <strong>{{requestNumber}}</strong> for {{requestedForName}}.<br/><br/>It is now with the approvers. We will email you once it has been fully approved, or if it is rejected or sent back for correction. You will not be emailed at each individual approval step.",
+    variables: ["requesterName", "requestNumber", "requestedForName"],
+  },
+  {
+    key: "implementation_required",
+    name: "Implementation Required",
+    type: "IMPLEMENTATION_REQUIRED",
+    subject: "Ready to implement: {{itemLabel}} ({{requestNumber}})",
+    body: "Dear {{recipientName}},<br/><br/><strong>{{itemLabel}}</strong> on request <strong>{{requestNumber}}</strong> has completed approval and is ready for IT to implement.<br/>Requested for: {{requestedForName}}<br/><br/><a href=\"{{actionUrl}}\">Open the request</a>",
+    variables: ["recipientName", "itemLabel", "requestNumber", "requestedForName", "actionUrl"],
+  },
+  {
+    key: "request_completed",
+    name: "Request Completed",
+    type: "REQUEST_COMPLETED",
+    subject: "Request {{requestNumber}} is complete",
+    body: "Dear {{requesterName}},<br/><br/>Request <strong>{{requestNumber}}</strong> for {{requestedForName}} is now complete.<br/><br/>{{itemSummary}}",
+    variables: ["requesterName", "requestNumber", "requestedForName", "itemSummary"],
+  },
+  {
     key: "reminder",
     name: "Pending Action Reminder",
     type: "REMINDER",
@@ -88,6 +112,9 @@ const NOTIFICATION_TEMPLATES: { key: string; name: string; type: string; subject
 
 const DOCUMENT_CATEGORIES = [
   "Asset Handover",
+  "Asset Checkout",
+  "Access Forms",
+  "Role Change Evidence",
   "Clearance",
   "Credential Delivery",
   "Application Request",
@@ -192,14 +219,29 @@ async function main(): Promise<void> {
       create: { companyId: company.id, name: "Asset Request", kind: "ASSET_REQUEST", description: "Request company assets such as laptops and phones." },
       update: {},
     });
+    await prisma.requestType.upsert({
+      where: { companyId_name: { companyId: company.id, name: "Asset Checkout" } },
+      create: { companyId: company.id, name: "Asset Checkout", kind: "ASSET_CHECKOUT", description: "Take equipment you already hold off site for a period of leave." },
+      update: {},
+    });
+    await prisma.requestType.upsert({
+      where: { companyId_name: { companyId: company.id, name: "Access Role Change" } },
+      create: { companyId: company.id, name: "Access Role Change", kind: "ROLE_CHANGE", description: "Change the role or request fields on access somebody already has." },
+      update: {},
+    });
   }
 
-  // Deduplicate down to exactly the two standard request types per company.
+  // Deduplicate down to exactly one request type per standard kind per company.
   // Legacy/duplicate rows from earlier builds are repointed and soft-deleted.
   console.log("[seed] Deduplicating request types...");
-  const standardKinds: Array<{ kind: "APPLICATION_ACCESS" | "ASSET_REQUEST"; name: string }> = [
+  const standardKinds: Array<{
+    kind: "APPLICATION_ACCESS" | "ASSET_REQUEST" | "ASSET_CHECKOUT" | "ROLE_CHANGE";
+    name: string;
+  }> = [
     { kind: "APPLICATION_ACCESS", name: "Application Access" },
     { kind: "ASSET_REQUEST", name: "Asset Request" },
+    { kind: "ASSET_CHECKOUT", name: "Asset Checkout" },
+    { kind: "ROLE_CHANGE", name: "Access Role Change" },
   ];
   for (const company of allCompanies) {
     for (const { kind, name } of standardKinds) {
@@ -222,7 +264,7 @@ async function main(): Promise<void> {
     const legacy = await prisma.requestType.findMany({
       where: {
         companyId: company.id,
-        kind: { notIn: ["APPLICATION_ACCESS", "ASSET_REQUEST"] },
+        kind: { notIn: ["APPLICATION_ACCESS", "ASSET_REQUEST", "ASSET_CHECKOUT", "ROLE_CHANGE"] },
         deletedAt: null,
       },
       include: { _count: { select: { forms: true } } },

@@ -111,7 +111,7 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
             </dl>
             {contract.licenses.length > 0 ? (
               <div className="mt-4 border-t pt-3 text-sm">
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Linked licenses</p>
+                <p className="mb-1 label-caps text-muted-foreground">Linked licenses</p>
                 <ul className="space-y-1">
                   {contract.licenses.map((license) => (
                     <li key={license.id}>

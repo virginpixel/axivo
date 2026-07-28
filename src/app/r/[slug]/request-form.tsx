@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import Link from "next/link";
+
+import { useMemo, useState, useEffect } from "react";
 import { Plus, Trash2, CheckCircle2 } from "lucide-react";
 import { submitPublicRequestAction } from "@/modules/requests/actions";
 import { isFieldVisible } from "@/modules/forms/visibility";
@@ -8,7 +10,7 @@ import type { VisibilityRule } from "@/modules/forms/validators";
 import { Button } from "@/shared/ui/button";
 import { Input, Textarea, Select, Label, FieldError, HelperText } from "@/shared/ui/input";
 import { Combobox } from "@/shared/ui/combobox";
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/shared/ui/card";
 import { useToast } from "@/shared/ui/toast";
 
 /**
@@ -31,6 +33,9 @@ export interface PublicField {
 interface PublicApplication {
   id: string;
   name: string;
+  /** Null on a shared application, which every company may request. */
+  companyId: string | null;
+  isShared: boolean;
   roles: { id: string; name: string }[];
 }
 
@@ -88,7 +93,7 @@ export function PublicRequestForm({
   departments: { id: string; name: string; companyId: string }[];
   positions: { id: string; name: string; companyId: string }[];
   companies: { id: string; name: string }[];
-  formCompanyId: string;
+  formCompanyId: string | null;
   /** Extra questions keyed by application id or asset category id (Doc 08/11). */
   requestFieldsByTarget: Record<string, PublicField[]>;
   /** All-in-one form: each row chooses its own kind. */
@@ -100,9 +105,18 @@ export function PublicRequestForm({
   const { toast } = useToast();
   const [requester, setRequester] = useState<ParticipantDraft>(EMPTY_PARTICIPANT);
   const [requestedFor, setRequestedFor] = useState<ParticipantDraft>(EMPTY_PARTICIPANT);
-  const [requesterCompanyId, setRequesterCompanyId] = useState(formCompanyId);
-  const [requestedForCompanyId, setRequestedForCompanyId] = useState(formCompanyId);
-  const [sameAsRequester, setSameAsRequester] = useState(false);
+  const [requesterCompanyId, setRequesterCompanyId] = useState(formCompanyId ?? "");
+  const [requestedForCompanyId, setRequestedForCompanyId] = useState(formCompanyId ?? "");
+
+  // An all-company form carries every company's applications; which of them may
+  // be requested depends on who the request is for, so the list narrows as soon
+  // as their company is chosen. Shared applications belong to everyone.
+  const availableApplications = applications.filter(
+    (application) =>
+      application.isShared ||
+      !application.companyId ||
+      application.companyId === requestedForCompanyId,
+  );
 
   // Each participant names their own company, since a form may be shared across
   // companies; their department and position lists follow that choice.
@@ -110,6 +124,48 @@ export function PublicRequestForm({
   const requesterPositions = positions.filter((entry) => entry.companyId === requesterCompanyId);
   const requestedForDepartments = departments.filter((entry) => entry.companyId === requestedForCompanyId);
   const requestedForPositions = positions.filter((entry) => entry.companyId === requestedForCompanyId);
+  const isCheckout = requestTypeKind === "ASSET_CHECKOUT";
+  const [myAssets, setMyAssets] = useState<
+    {
+      id: string;
+      name: string;
+      category: string | null;
+      categoryId: string | null;
+      model: string | null;
+      serialNumber: string | null;
+      assetTag: string | null;
+    }[]
+  >([]);
+  const [checkout, setCheckout] = useState({ assetId: "", leaveType: "", start: "", end: "" });
+  const selectedAsset = myAssets.find((asset) => asset.id === checkout.assetId);
+
+  // Look up what this employee holds as soon as they have named themselves.
+  // Debounced, because the employee ID is typed a character at a time. Both the
+  // ID and the work email are sent so the server can fall back to email when the
+  // stored employee ID has a stray character that the natural ID does not.
+  useEffect(() => {
+    const employeeId = requester.employeeId.trim();
+    const email = requester.email.trim();
+    if (!isCheckout || !requesterCompanyId || (!employeeId && !email)) {
+      setMyAssets([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      const query = new URLSearchParams({ companyId: requesterCompanyId });
+      if (employeeId) query.set("employeeId", employeeId);
+      if (email) query.set("email", email);
+      fetch(`/api/public/my-assets?${query.toString()}`, { signal: controller.signal })
+        .then((response) => response.json())
+        .then((data) => setMyAssets(data.assets ?? []))
+        .catch(() => undefined);
+    }, 400);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [isCheckout, requesterCompanyId, requester.employeeId, requester.email]);
+
   const [values, setValues] = useState<Record<string, string | string[]>>(() => {
     const initial: Record<string, string | string[]> = {};
     for (const field of fields) {
@@ -133,6 +189,7 @@ export function PublicRequestForm({
   const itemMode = useMemo(() => {
     if (requestTypeKind === "APPLICATION_ACCESS") return "APPLICATION" as const;
     if (requestTypeKind === "ASSET_REQUEST") return "ASSET" as const;
+    if (requestTypeKind === "ASSET_CHECKOUT") return "CHECKOUT" as const;
     if (requestTypeKind === "ROLE_CHANGE") return "ROLE_CHANGE" as const;
     return "GENERAL" as const;
   }, [requestTypeKind]);
@@ -150,7 +207,16 @@ export function PublicRequestForm({
 
   function validateClient(): boolean {
     const nextErrors: Record<string, string> = {};
-    const effectiveRequestedFor = sameAsRequester ? requester : requestedFor;
+    if (isCheckout) {
+      if (!checkout.assetId) nextErrors.item_0_checkout_asset_id = "Select the asset you are taking.";
+      if (!checkout.leaveType) nextErrors.item_0_checkout_leave_type = "Select the type of leave.";
+      if (!checkout.start) nextErrors.item_0_checkout_start_date = "Enter the date you are leaving.";
+      if (!checkout.end) nextErrors.item_0_checkout_end_date = "Enter the date you are back.";
+      if (checkout.start && checkout.end && checkout.end < checkout.start) {
+        nextErrors.item_0_checkout_end_date = "The return date cannot be before the start date.";
+      }
+    }
+    const effectiveRequestedFor = isCheckout ? requester : requestedFor;
     const checkParticipant = (prefix: string, participant: ParticipantDraft) => {
       if (!participant.name.trim()) nextErrors[`${prefix}Name`] = "Name is required.";
       if (!EMAIL_PATTERN.test(participant.email)) nextErrors[`${prefix}Email`] = "Enter a valid email address.";
@@ -180,7 +246,7 @@ export function PublicRequestForm({
       }
       // A role is required whenever the chosen application defines any.
       if (rowMode === "APPLICATION" && item.applicationId && !item.applicationRoleId) {
-        const roles = applications.find((application) => application.id === item.applicationId)?.roles ?? [];
+        const roles = availableApplications.find((application) => application.id === item.applicationId)?.roles ?? [];
         if (roles.length > 0) nextErrors[`item-${index}`] = "Select an access role.";
       }
       if (rowMode === "ASSET" && !item.assetCategoryId) {
@@ -213,7 +279,7 @@ export function PublicRequestForm({
     event.preventDefault();
     if (!validateClient()) return;
     setLoading(true);
-    const effectiveRequestedFor = sameAsRequester ? requester : requestedFor;
+    const effectiveRequestedFor = isCheckout ? requester : requestedFor;
     try {
       const result = await submitPublicRequestAction({
         slug,
@@ -226,12 +292,30 @@ export function PublicRequestForm({
         requestedForEmail: effectiveRequestedFor.email.trim(),
         requestedForEmployeeId: effectiveRequestedFor.employeeId.trim(),
         requesterCompanyId,
-        requestedForCompanyId: sameAsRequester ? requesterCompanyId : requestedForCompanyId,
+        requestedForCompanyId: isCheckout ? requesterCompanyId : requestedForCompanyId,
         requestedForDepartmentId: effectiveRequestedFor.departmentId,
         requestedForPositionTitle: effectiveRequestedFor.positionTitle.trim(),
         fieldValues: values,
         website: "",
-        items: items.map((item) => ({
+        items: isCheckout
+          ? [
+              {
+                itemType: "ASSET" as const,
+                applicationId: undefined,
+                applicationRoleId: undefined,
+                assetCategoryId: selectedAsset?.categoryId ?? undefined,
+                description: selectedAsset
+                  ? `${selectedAsset.name}${selectedAsset.assetTag ? ` (${selectedAsset.assetTag})` : ""}`
+                  : undefined,
+                fieldValues: {
+                  checkout_asset_id: checkout.assetId,
+                  checkout_leave_type: checkout.leaveType,
+                  checkout_start_date: checkout.start,
+                  checkout_end_date: checkout.end,
+                },
+              },
+            ]
+          : items.map((item) => ({
           itemType: allowsMixedItems ? (item.rowType ?? "APPLICATION") : itemMode,
           applicationId: item.applicationId || undefined,
           applicationRoleId: item.applicationRoleId || undefined,
@@ -258,7 +342,7 @@ export function PublicRequestForm({
       <Card>
         <CardContent className="p-8 text-center">
           <CheckCircle2 className="mx-auto h-12 w-12 text-success" aria-hidden />
-          <h2 className="mt-4 text-xl font-bold">Request submitted</h2>
+          <h2 className="mt-4 text-2xl font-semibold">Request submitted</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             {done.message ?? "Your request has been received and routed for approval."}
           </p>
@@ -266,7 +350,16 @@ export function PublicRequestForm({
             {done.requestNumber}
           </p>
           <p className="mt-4 text-xs text-muted-foreground">
-            Keep this reference number. You will receive email updates as your request progresses.
+            Keep this reference number. We will email you once the request has been fully approved
+            or if it is rejected. You will not be emailed at each individual approval step.
+          </p>
+          <p className="mt-5">
+            <Link
+              href="/"
+              className="inline-flex h-9 items-center rounded-md border border-input bg-card px-3.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground"
+            >
+              Back to forms
+            </Link>
           </p>
         </CardContent>
       </Card>
@@ -282,7 +375,7 @@ export function PublicRequestForm({
       </div>
 
       <ParticipantCard
-        title="Requested by"
+        title={isCheckout ? "Your details" : "Requested by"}
         prefix="requester"
         participant={requester}
         onChange={setRequester}
@@ -307,23 +400,16 @@ export function PublicRequestForm({
         }
       />
 
+      {isCheckout ? null : (
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Requested for</CardTitle>
-            <label className="flex items-center gap-2 text-sm font-normal">
-              <input
-                type="checkbox"
-                checked={sameAsRequester}
-                onChange={(event) => setSameAsRequester(event.target.checked)}
-                className="h-4 w-4"
-              />
-              Same as requester
-            </label>
-          </div>
+          <CardTitle>Requested for</CardTitle>
+          <CardDescription>
+            The person who will receive this access or equipment. This cannot be you: requests are
+            raised on someone else&apos;s behalf so that every approval trail involves two people.
+          </CardDescription>
         </CardHeader>
-        {!sameAsRequester ? (
-          <CardContent className="space-y-3">
+        <CardContent className="space-y-3">
             <div>
               <Label htmlFor="requestedFor-company" required>Company</Label>
               <Combobox
@@ -346,16 +432,104 @@ export function PublicRequestForm({
               positions={requestedForPositions}
               errors={errors}
             />
-          </CardContent>
-        ) : (
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              This request is for yourself; your details above are used.
-            </p>
-          </CardContent>
-        )}
+        </CardContent>
       </Card>
+      )}
 
+      {isCheckout ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Equipment and dates</CardTitle>
+            <CardDescription>
+              Only equipment already assigned to you can be taken off site. Model and serial number
+              are filled in from our records.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <Label htmlFor="checkout-asset" required>Asset</Label>
+              {myAssets.length === 0 ? (
+                <p className="rounded-md border border-dashed border-input px-3 py-2 text-sm text-muted-foreground">
+                  Enter your company and employee ID above and your assigned equipment will appear
+                  here.
+                </p>
+              ) : (
+                <Combobox
+                  id="checkout-asset"
+                  value={checkout.assetId}
+                  onChange={(value) => setCheckout((current) => ({ ...current, assetId: value }))}
+                  options={myAssets.map((asset) => ({
+                    value: asset.id,
+                    label: [asset.category, asset.name, asset.assetTag].filter(Boolean).join(" · "),
+                  }))}
+                  placeholder="Select the asset you are taking"
+                />
+              )}
+              <FieldError message={errors.item_0_checkout_asset_id} />
+            </div>
+
+            {selectedAsset ? (
+              <div className="grid gap-2 rounded-md border bg-muted/30 p-3 text-sm sm:col-span-2 sm:grid-cols-3">
+                <div>
+                  <p className="label-caps text-muted-foreground">Category</p>
+                  <p>{selectedAsset.category ?? "None"}</p>
+                </div>
+                <div>
+                  <p className="label-caps text-muted-foreground">Model</p>
+                  <p>{selectedAsset.model ?? "None"}</p>
+                </div>
+                <div>
+                  <p className="label-caps text-muted-foreground">Serial number</p>
+                  <p className="font-register">{selectedAsset.serialNumber ?? "None"}</p>
+                </div>
+              </div>
+            ) : null}
+
+            <div>
+              <Label htmlFor="checkout-leave" required>Leave type</Label>
+              <Select
+                id="checkout-leave"
+                value={checkout.leaveType}
+                onChange={(event) =>
+                  setCheckout((current) => ({ ...current, leaveType: event.target.value }))
+                }
+              >
+                <option value="">Select…</option>
+                <option value="ANNUAL">Annual leave</option>
+                <option value="BUSINESS">Business travel</option>
+                <option value="SICK">Sick leave</option>
+                <option value="OTHER">Other</option>
+              </Select>
+              <FieldError message={errors.item_0_checkout_leave_type} />
+            </div>
+            <div />
+            <div>
+              <Label htmlFor="checkout-start" required>Taking it from</Label>
+              <Input
+                id="checkout-start"
+                type="date"
+                value={checkout.start}
+                onChange={(event) =>
+                  setCheckout((current) => ({ ...current, start: event.target.value }))
+                }
+              />
+              <FieldError message={errors.item_0_checkout_start_date} />
+            </div>
+            <div>
+              <Label htmlFor="checkout-end" required>Returning on</Label>
+              <Input
+                id="checkout-end"
+                type="date"
+                value={checkout.end}
+                onChange={(event) =>
+                  setCheckout((current) => ({ ...current, end: event.target.value }))
+                }
+              />
+              <FieldError message={errors.item_0_checkout_end_date} />
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
       <Card>
         <CardHeader>
           <CardTitle>
@@ -410,7 +584,7 @@ export function PublicRequestForm({
                           id={`field-item-${index}`}
                           value={item.applicationId ?? ""}
                           placeholder="Select an application…"
-                          options={applications.map((application) => ({
+                          options={availableApplications.map((application) => ({
                             value: application.id,
                             label: application.name,
                           }))}
@@ -429,7 +603,7 @@ export function PublicRequestForm({
                         <Label
                           htmlFor={`field-item-role-${index}`}
                           required={
-                            (applications.find((application) => application.id === item.applicationId)?.roles ?? [])
+                            (availableApplications.find((application) => application.id === item.applicationId)?.roles ?? [])
                               .length > 0
                           }
                         >
@@ -441,7 +615,7 @@ export function PublicRequestForm({
                           placeholder="Select a role…"
                           disabled={!item.applicationId}
                           options={(
-                            applications.find((application) => application.id === item.applicationId)?.roles ?? []
+                            availableApplications.find((application) => application.id === item.applicationId)?.roles ?? []
                           ).map((role) => ({ value: role.id, label: role.name }))}
                           onChange={(value) =>
                             setItems((current) =>
@@ -575,6 +749,7 @@ export function PublicRequestForm({
           </p>
         </CardContent>
       </Card>
+      )}
 
       {visibleFields.length > 0 ? (
         <Card>

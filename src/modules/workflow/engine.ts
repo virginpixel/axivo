@@ -156,6 +156,10 @@ interface InstanceContext {
     id: string;
     requestId: string;
     label: string;
+    /** The access role asked for, when the target defines roles. */
+    roleName: string | null;
+    /** The item's own request-field answers, already label-resolved. */
+    details: { label: string; value: string }[];
   };
   request: {
     id: string;
@@ -178,6 +182,7 @@ async function loadInstanceContext(client: DbClient, instanceId: string): Promis
           request: true,
           application: true,
           assetCategory: true,
+          applicationRole: true,
         },
       },
     },
@@ -187,11 +192,32 @@ async function loadInstanceContext(client: DbClient, instanceId: string): Promis
   const label =
     item.application?.name ??
     item.assetCategory?.name ??
+    item.targetNameSnapshot ??
     item.description ??
     item.itemType;
+
+  // The answers to the target's own request fields (which outlets, which cost
+  // centre, and so on). Labels come from the snapshot taken at submission, so
+  // an approver reads the same wording the requester saw even if the field has
+  // since been renamed.
+  const labels = (item.fieldLabelsSnapshot as Record<string, string> | null) ?? {};
+  const answers = (item.itemData as Record<string, unknown> | null) ?? {};
+  const details = Object.entries(answers)
+    .filter(([, value]) => value !== null && value !== "" && !(Array.isArray(value) && value.length === 0))
+    .map(([key, value]) => ({
+      label: labels[key] ?? key.replace(/_/g, " "),
+      value: Array.isArray(value) ? value.join(", ") : String(value),
+    }));
+
   return {
     instanceId,
-    requestItem: { id: item.id, requestId: item.requestId, label },
+    requestItem: {
+      id: item.id,
+      requestId: item.requestId,
+      label,
+      roleName: item.applicationRole?.name ?? item.roleNameSnapshot ?? null,
+      details,
+    },
     request: {
       id: item.request.id,
       requestNumber: item.request.requestNumber,
@@ -368,14 +394,31 @@ export async function activateStep(
   await sendApprovalEmails(context, stepInstance.id);
 }
 
-/** Issue tokens and queue approval emails for every un-acted assignment of an active step. */
-export async function sendApprovalEmails(context: AuditContext, stepInstanceId: string): Promise<void> {
+/**
+ * Issue tokens and queue approval emails for every un-acted assignment of an
+ * active step.
+ *
+ * The dedupe key deserves a note. It used to be `approval:<step>:<assignment>`,
+ * which never changes for a given approver on a given step, and the dedupe
+ * lookup matches notifications that were already delivered. That silently
+ * swallowed two legitimate sends: resuming a step after a correction, and the
+ * "resend approval email" button, both of which reuse the same step and
+ * assignment. The key now includes the activation instant, so each fresh
+ * activation is its own business event, and an explicit resend bypasses dedupe
+ * entirely - the operator pressing the button is the intent.
+ */
+export async function sendApprovalEmails(
+  context: AuditContext,
+  stepInstanceId: string,
+  options: { force?: boolean } = {},
+): Promise<void> {
   const stepInstance = await db.workflowStepInstance.findUnique({
     where: { id: stepInstanceId },
     include: { assignments: { include: { person: true } } },
   });
   if (!stepInstance || stepInstance.status !== "ACTIVE") return;
   const ic = await loadInstanceContext(db, stepInstance.workflowInstanceId);
+  const round = stepInstance.activatedAt?.getTime() ?? 0;
 
   for (const assignment of stepInstance.assignments) {
     if (assignment.actedAt) continue;
@@ -397,6 +440,14 @@ export async function sendApprovalEmails(context: AuditContext, stepInstanceId: 
         ``,
         `Your approval is required for request <strong>${ic.request.requestNumber}</strong>.`,
         `Item: <strong>${ic.requestItem.label}</strong>`,
+        ...(ic.requestItem.roleName ? [`Access role: <strong>${ic.requestItem.roleName}</strong>`] : []),
+        // What was actually asked for. An approver deciding on "Micros Simphony"
+        // needs to see which outlets, not just the application name.
+        ...(ic.requestItem.details.length > 0
+          ? [``, `<strong>Details requested</strong>`,
+             ...ic.requestItem.details.map((detail) => `${detail.label}: ${detail.value}`)]
+          : []),
+        ``,
         `Requested for: <strong>${ic.request.requestedForName}</strong> (${ic.request.requestedForEmail})`,
         `Requested by: ${ic.request.requesterName} (${ic.request.requesterEmail})`,
         ``,
@@ -413,7 +464,7 @@ export async function sendApprovalEmails(context: AuditContext, stepInstanceId: 
       ],
       entityType: "workflow_step_instance",
       entityId: stepInstanceId,
-      dedupeKey: `approval:${stepInstanceId}:${assignment.id}`,
+      dedupeKey: options.force ? undefined : `approval:${stepInstanceId}:${assignment.id}:${round}`,
     });
   }
 }
@@ -787,10 +838,25 @@ export async function rollupRequestStatus(context: AuditContext, requestId: stri
     next = "CORRECTION_REQUESTED";
   } else if (statuses.has("PENDING_APPROVAL")) {
     next = "PENDING_APPROVAL";
-  } else if (statuses.has("IMPLEMENTATION_PENDING") || statuses.has("APPROVED") || statuses.has("IMPLEMENTED")) {
+  } else if (statuses.has("IMPLEMENTATION_PENDING") || statuses.has("APPROVED")) {
     next = "IMPLEMENTATION_PENDING";
+  } else if (statuses.has("IMPLEMENTED")) {
+    // IT has done the work; the only thing left is the employee acknowledging
+    // their credentials or asset handover, so do not keep telling IT that an
+    // implementation is outstanding.
+    next = "PENDING_ACKNOWLEDGEMENT";
   } else {
     next = request.status;
+  }
+
+  // Anything hanging off a request item's outcome is settled here, so it is
+  // reached by every path that changes an item: approval, rejection,
+  // cancellation and correction alike.
+  try {
+    const { syncCheckoutsForRequest } = await import("@/modules/assets/checkouts");
+    await syncCheckoutsForRequest(context, requestId);
+  } catch (error) {
+    console.error("[axivo] Failed to sync asset checkouts for request:", error);
   }
 
   if (next !== request.status) {

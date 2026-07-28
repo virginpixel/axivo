@@ -416,7 +416,7 @@ export async function createHandoverForAssignments(
 ) {
   const person = await db.person.findFirst({
     where: { id: personId, deletedAt: null },
-    include: { company: true, department: true },
+    include: { company: true, department: true, position: true },
   });
   if (!person) throw new NotFoundError("Employee not found.");
   const assignments = await db.assetAssignment.findMany({
@@ -468,7 +468,6 @@ export async function createHandoverForAssignments(
     ],
     definition: {
       title: "Asset Handover Form",
-      subtitle: `Handover reference ${handover.id}`,
       branding: { systemName: "Axivo", companyName: person.company.name },
       sections: [
         {
@@ -476,7 +475,9 @@ export async function createHandoverForAssignments(
           fields: [
             { label: "Name", value: `${person.firstName} ${person.lastName}` },
             { label: "Employee ID", value: person.employeeId },
+            { label: "Company", value: person.company.name },
             { label: "Department", value: person.department?.name ?? "None" },
+            { label: "Position", value: person.position?.name ?? "None" },
             { label: "Email", value: person.email },
           ],
         },
@@ -511,7 +512,18 @@ export async function createHandoverForAssignments(
         {
           heading: "Terms of Responsibility",
           paragraphs: [
-            "I acknowledge receipt of the company assets listed above. I agree to use them for business purposes, keep them in good condition, and return them upon request or at the end of my employment. I will report loss, theft or damage to the IT department immediately.",
+            "I hereby acknowledge that I have received the above mentioned asset/s. I understand that this/these asset/s belong to Dream Islands Development 2 Pvt. Ltd and is/are under my possession for carrying out my office work. I hereby assure that I will take care of the assets of the company to the best possible extent. Also, I am bound to return the specific asset/s when required by the company or at the termination of my employment.",
+          ],
+        },
+        {
+          // Filled in once the employee acknowledges through the secure link.
+          // Present but blank beforehand, so a printed copy has a place for it.
+          heading: "Acknowledgement",
+          fields: [
+            {
+              label: "Acknowledged on",
+              value: handover.acknowledgedAt ? formatDateTimeWithZone(handover.acknowledgedAt) : "Not yet acknowledged",
+            },
           ],
         },
       ],
@@ -766,7 +778,7 @@ export async function completeClearance(
   const clearance = await db.clearance.findFirst({
     where: { id: clearanceId },
     include: {
-      person: { include: { company: true, department: true } },
+      person: { include: { company: true, department: true, position: true } },
       items: {
         include: {
           assetAssignment: { include: { asset: true } },
@@ -847,7 +859,6 @@ export async function completeClearance(
     ],
     definition: {
       title: "Asset Clearance Form",
-      subtitle: `Clearance reference ${clearance.id}`,
       branding: { systemName: "Axivo", companyName: clearance.person.company.name },
       sections: [
         {
@@ -855,7 +866,9 @@ export async function completeClearance(
           fields: [
             { label: "Name", value: `${clearance.person.firstName} ${clearance.person.lastName}` },
             { label: "Employee ID", value: clearance.person.employeeId },
+            { label: "Company", value: clearance.person.company.name },
             { label: "Department", value: clearance.person.department?.name ?? "None" },
+            { label: "Position", value: clearance.person.position?.name ?? "None" },
           ],
         },
         {

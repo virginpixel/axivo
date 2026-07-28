@@ -7,6 +7,7 @@ import { matchPersonByEmail } from "@/modules/people/service";
 import { getPublicForm } from "@/modules/forms/service";
 import { validateSubmissionValues } from "@/modules/forms/submission-validation";
 import { listActiveRequestFieldsFor } from "@/modules/request-fields/service";
+import { validateCheckoutValues, createCheckoutForRequestItem } from "@/modules/assets/checkouts";
 import * as engine from "@/modules/workflow/engine";
 import * as applications from "@/modules/applications/service";
 import * as licenses from "@/modules/licenses/service";
@@ -70,6 +71,75 @@ export async function submitPublicRequest(
     throw new ValidationError(undefined, fieldErrors);
   }
 
+  // Both participants name their own company (forms may be shared), so each
+  // one's department and position are validated against their own company.
+  const [requesterCompany, requestedForCompany] = await Promise.all([
+    db.company.findFirst({ where: { id: input.requesterCompanyId, deletedAt: null, isActive: true } }),
+    db.company.findFirst({ where: { id: input.requestedForCompanyId, deletedAt: null, isActive: true } }),
+  ]);
+  if (!requesterCompany) {
+    throw new ValidationError(undefined, { requesterCompanyId: "Please select a valid company." });
+  }
+  if (!requestedForCompany) {
+    throw new ValidationError(undefined, { requestedForCompanyId: "Please select a valid company." });
+  }
+
+  // Departments and positions are stored as immutable name snapshots; the
+  // Requested For department drives Department Head routing (Doc 06 Ch3).
+  const [requesterDepartment, requestedForDepartment] =
+    await Promise.all([
+      db.department.findFirst({
+        where: { id: input.requesterDepartmentId, companyId: requesterCompany.id, deletedAt: null },
+      }),
+      db.department.findFirst({
+        where: { id: input.requestedForDepartmentId, companyId: requestedForCompany.id, deletedAt: null },
+      }),
+    ]);
+  if (!requesterDepartment || !requestedForDepartment) {
+    throw new ValidationError(undefined, {
+      requestedForDepartmentId: "Please select a valid department.",
+    });
+  }
+
+  /*
+   * Segregation of duties (Doc 00 §6): nobody may raise a request for
+   * themselves, so an approval trail always involves at least two people. The
+   * toggle that used to fill this in automatically has been removed, and this
+   * check is what actually enforces it - a requester can still type their own
+   * details into both halves of the form.
+   *
+   * Asset checkout is the one exemption, and deliberately so. It grants nothing
+   * new: the employee already holds the asset, and is asking permission to take
+   * it off site for a period of leave. The control that matters there is the
+   * approval step, not who typed the request, and requiring a second person to
+   * raise it would make the form unusable for its actual purpose.
+   */
+  const isSelfServiceKind = form.requestType.kind === "ASSET_CHECKOUT";
+  const sameEmployee =
+    requesterCompany.id === requestedForCompany.id &&
+    input.requesterEmployeeId.trim().toLowerCase() ===
+      input.requestedForEmployeeId.trim().toLowerCase();
+  const sameEmail =
+    input.requesterEmail.trim().toLowerCase() === input.requestedForEmail.trim().toLowerCase();
+  if (!isSelfServiceKind && (sameEmployee || sameEmail)) {
+    throw new ValidationError(
+      "A request must be raised by somebody other than the person it is for.",
+      {
+        requestedForEmployeeId: sameEmployee
+          ? "This is your own employee ID. Ask a colleague or your manager to raise this request."
+          : "",
+        requestedForEmail: sameEmail
+          ? "This is your own email address. Ask a colleague or your manager to raise this request."
+          : "",
+      },
+    );
+  }
+
+  // An all-company form has no catalogue of its own: what may be requested is
+  // decided by the company of the person it is for, so one form serves every
+  // company without listing another company's applications.
+  const catalogueCompanyId = form.companyId ?? requestedForCompany.id;
+
   // Validate items against the form's company catalogue, then validate each
   // item's answers against the request fields defined on the application or
   // asset category it targets (Doc 08/11). Errors are keyed per item so the
@@ -97,7 +167,7 @@ export async function submitPublicRequest(
           id: item.applicationId,
           isActive: true,
           deletedAt: null,
-          OR: [{ companyId: form.companyId }, { isShared: true }],
+          OR: [{ companyId: catalogueCompanyId }, { isShared: true }],
         },
       });
       if (!application) throw new BusinessRuleError("A selected application is not available.");
@@ -154,35 +224,7 @@ export async function submitPublicRequest(
     throw new ValidationError(undefined, itemFieldErrors);
   }
 
-  // Both participants name their own company (forms may be shared), so each
-  // one's department and position are validated against their own company.
-  const [requesterCompany, requestedForCompany] = await Promise.all([
-    db.company.findFirst({ where: { id: input.requesterCompanyId, deletedAt: null, isActive: true } }),
-    db.company.findFirst({ where: { id: input.requestedForCompanyId, deletedAt: null, isActive: true } }),
-  ]);
-  if (!requesterCompany) {
-    throw new ValidationError(undefined, { requesterCompanyId: "Please select a valid company." });
-  }
-  if (!requestedForCompany) {
-    throw new ValidationError(undefined, { requestedForCompanyId: "Please select a valid company." });
-  }
 
-  // Departments and positions are stored as immutable name snapshots; the
-  // Requested For department drives Department Head routing (Doc 06 Ch3).
-  const [requesterDepartment, requestedForDepartment] =
-    await Promise.all([
-      db.department.findFirst({
-        where: { id: input.requesterDepartmentId, companyId: requesterCompany.id, deletedAt: null },
-      }),
-      db.department.findFirst({
-        where: { id: input.requestedForDepartmentId, companyId: requestedForCompany.id, deletedAt: null },
-      }),
-    ]);
-  if (!requesterDepartment || !requestedForDepartment) {
-    throw new ValidationError(undefined, {
-      requestedForDepartmentId: "Please select a valid department.",
-    });
-  }
 
   // Match participants to People (Doc 00 §6): company + employee ID first,
   // then email as a fallback. This is what implementation later assigns to.
@@ -199,12 +241,30 @@ export async function submitPublicRequest(
     requestedForById ?? matchPersonByEmail(requestedForCompany.id, input.requestedForEmail),
   ]);
 
+  // Asset checkout carries built-in answers rather than admin-defined request
+  // fields: which of the employee's own assets is going off site, why, and for
+  // how long. Validated here against what they actually hold.
+  let checkoutDraft: Awaited<ReturnType<typeof validateCheckoutValues>>["draft"];
+  if (form.requestType.kind === "ASSET_CHECKOUT") {
+    const answers = (input.items[0]?.fieldValues ?? {}) as Record<string, unknown>;
+    const outcome = await validateCheckoutValues(answers, requestedForMatch?.id ?? null);
+    if (Object.keys(outcome.fieldErrors).length > 0) {
+      throw new ValidationError(
+        undefined,
+        Object.fromEntries(
+          Object.entries(outcome.fieldErrors).map(([key, message]) => [`item_0_${key}`, message]),
+        ),
+      );
+    }
+    checkoutDraft = outcome.draft;
+  }
+
   const { requestId, requestNumber, instanceIds } = await db.$transaction(async (tx) => {
     const number = await nextRequestNumber(tx);
     const request = await tx.request.create({
       data: {
         requestNumber: number,
-        companyId: form.companyId,
+        companyId: catalogueCompanyId,
         formId: form.id,
         formVersionId: form.currentVersion!.id,
         status: "PENDING_APPROVAL",
@@ -249,12 +309,21 @@ export async function submitPublicRequest(
       });
       // Every item runs its own workflow instance (Doc 00 §4), taken from the
       // application or category when it names one and the form's otherwise.
+      if (checkoutDraft && index === 0 && requestedForMatch) {
+        await createCheckoutForRequestItem(tx, {
+          companyId: catalogueCompanyId,
+          personId: requestedForMatch.id,
+          requestItemId: requestItem.id,
+          draft: checkoutDraft,
+          createdById: context.actorUserId ?? null,
+        });
+      }
       const instanceId = await engine.createInstanceForItem(tx, requestItem.id, payload.workflowId);
       createdInstanceIds.push(instanceId);
     }
 
     await recordAudit(
-      { ...context, companyId: form.companyId },
+      { ...context, companyId: catalogueCompanyId },
       {
         module: MODULE,
         eventType: "request.submitted",
@@ -329,6 +398,34 @@ export async function submitCorrection(
     cleanedValues = values;
   }
 
+  // Validate the item's own request fields against the live definitions of
+  // whatever it targets, so a correction is held to the same rules as the
+  // original submission. Errors are prefixed to keep them distinct from the
+  // form-level fields, which may legitimately share a key.
+  let cleanedItemValues: Record<string, unknown> | undefined;
+  if (input.itemFieldValues && Object.keys(input.itemFieldValues).length > 0) {
+    const targetFields = await listActiveRequestFieldsFor(
+      item.applicationId ? [item.applicationId] : [],
+      item.assetCategoryId ? [item.assetCategoryId] : [],
+    );
+    if (targetFields.length > 0) {
+      const { values, fieldErrors } = validateSubmissionValues(
+        targetFields,
+        input.itemFieldValues as Record<string, string | string[]>,
+        {},
+      );
+      if (Object.keys(fieldErrors).length > 0) {
+        throw new ValidationError(
+          undefined,
+          Object.fromEntries(
+            Object.entries(fieldErrors).map(([key, message]) => [`item_${key}`, message]),
+          ),
+        );
+      }
+      cleanedItemValues = values;
+    }
+  }
+
   await db.$transaction(async (tx) => {
     await tx.requestCorrection.update({
       where: { id: correction.id },
@@ -336,15 +433,19 @@ export async function submitCorrection(
         submittedAt: new Date(),
         correctedData: {
           fieldValues: cleanedValues ?? null,
+          itemFieldValues: cleanedItemValues ?? null,
           itemDescription: input.itemDescription ?? null,
           comments: input.comments ?? null,
         } as Prisma.InputJsonValue,
       },
     });
-    if (input.itemDescription) {
+    if (input.itemDescription || cleanedItemValues) {
       await tx.requestItem.update({
         where: { id: requestItemId },
-        data: { description: input.itemDescription },
+        data: {
+          ...(input.itemDescription ? { description: input.itemDescription } : {}),
+          ...(cleanedItemValues ? { itemData: cleanedItemValues as Prisma.InputJsonValue } : {}),
+        },
       });
     }
     if (cleanedValues) {
@@ -504,7 +605,14 @@ export async function completeImplementation(
           username: input.username,
           notes: input.notes,
         },
-        { requestItemId: item.id, status: "ACTIVE", implementedById: user.userId },
+        {
+          requestItemId: item.id,
+          status: "ACTIVE",
+          implementedById: user.userId,
+          // Carry the answers through from the request, so the person's page
+          // shows which outlets (and so on) they were actually granted.
+          fieldData: (item.itemData as Record<string, unknown> | null) ?? null,
+        },
         tx,
       );
       // License consumption (Doc 10 Ch7): assigned during implementation only.
@@ -538,6 +646,40 @@ export async function completeImplementation(
         });
         requiresCredentialAck = true;
       }
+    } else if (item.itemType === "ROLE_CHANGE") {
+      // An approved role change edits the access the person already holds
+      // rather than granting new access. The approved request item is itself
+      // the authorisation, so no separate proof document is required here.
+      if (!requestedForPersonId) {
+        throw new BusinessRuleError(
+          "The Requested For employee has no People record yet. Create the employee record first, then complete implementation.",
+        );
+      }
+      if (!item.applicationId) throw new BusinessRuleError("This item has no application.");
+      const existing = await tx.applicationAssignment.findFirst({
+        where: {
+          personId: requestedForPersonId,
+          applicationId: item.applicationId,
+          status: { in: ["PENDING", "ACTIVE", "SUSPENDED"] },
+          deletedAt: null,
+        },
+      });
+      if (!existing) {
+        throw new BusinessRuleError(
+          "This employee has no active assignment for that application, so there is nothing to change. Grant access instead.",
+        );
+      }
+      await applications.changeAssignmentAccess(
+        context,
+        existing.id,
+        {
+          applicationRoleId: item.applicationRoleId ?? undefined,
+          fieldData: (item.itemData as Record<string, unknown> | null) ?? undefined,
+          reason: input.notes ?? `Approved on ${item.request.requestNumber}`,
+          requestItemId: item.id,
+        },
+        tx,
+      );
     } else if (item.itemType === "ASSET") {
       if (!requestedForPersonId) {
         throw new BusinessRuleError(
