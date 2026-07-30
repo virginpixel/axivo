@@ -12,7 +12,14 @@ import type { AuditOutcome, Prisma } from "@prisma/client";
 export interface AuditContext {
   actorUserId?: string | null;
   actorPersonId?: string | null;
+  /** Login username, used for audit records. */
   actorLabel: string;
+  /**
+   * The actor's human name (e.g. "Ahmed Hasin"), for surfaces read by people
+   * rather than machines: "assigned by", "implemented by" and similar. Falls
+   * back to actorLabel when a friendlier name is not available (system, public).
+   */
+  actorName?: string | null;
   companyId?: string | null;
   ipAddress?: string | null;
   userAgent?: string | null;

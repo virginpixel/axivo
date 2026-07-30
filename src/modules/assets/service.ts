@@ -329,6 +329,7 @@ export async function assignAsset(
         requestItemId: options.requestItemId ?? null,
         status: "ASSIGNED",
         assignedById: context.actorUserId ?? null,
+        assignedByLabel: context.actorName ?? context.actorLabel,
         notes: input.notes ?? null,
       },
     });

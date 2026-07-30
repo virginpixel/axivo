@@ -803,6 +803,8 @@ model ApplicationAssignment {
   status            AppAssignmentStatus @default(PENDING) @map("status")
   assignedAt        DateTime            @default(now()) @map("assigned_at")
   implementedById   String?             @map("implemented_by") @db.Uuid
+  /// Human name of whoever granted this access (IT staff), for display.
+  assignedByLabel   String?             @map("assigned_by_label")
   requestItemId     String?             @map("request_item_id") @db.Uuid
   /// Current answers to the application's request fields, keyed by field key
   /// (e.g. which outlets this person holds). Kept live so role/field changes
@@ -952,6 +954,8 @@ model LicenseAssignment {
   status        LicenseAssignmentStatus @default(ACTIVE) @map("status")
   assignedAt    DateTime                @default(now()) @map("assigned_at")
   assignedById  String?                 @map("assigned_by") @db.Uuid
+  /// Human name of whoever assigned this licence seat, for display.
+  assignedByLabel String?               @map("assigned_by_label")
   removedAt     DateTime?               @map("removed_at")
   removedById   String?                 @map("removed_by") @db.Uuid
   notes         String?                 @map("notes")
@@ -1053,6 +1057,8 @@ model AssetAssignment {
   status         AssetAssignmentStatus @default(ASSIGNED) @map("status")
   assignedAt     DateTime              @default(now()) @map("assigned_at")
   assignedById   String?               @map("assigned_by") @db.Uuid
+  /// Human name of whoever assigned this asset, for display.
+  assignedByLabel String?              @map("assigned_by_label")
   returnedAt     DateTime?             @map("returned_at")
   returnedById   String?               @map("returned_by") @db.Uuid
   acknowledgedAt DateTime?             @map("acknowledged_at")
@@ -1725,6 +1731,8 @@ model RequestItem {
   status            RequestItemStatus @default(PENDING_APPROVAL) @map("status")
   implementedAt     DateTime?         @map("implemented_at")
   implementedById   String?           @map("implemented_by") @db.Uuid
+  /// Human name of the IT staff who implemented this item, for the evidence PDF.
+  implementedByLabel String?          @map("implemented_by_label")
   implementationNotes String?         @map("implementation_notes")
   createdAt         DateTime          @default(now()) @map("created_at")
   updatedAt         DateTime          @updatedAt @map("updated_at")

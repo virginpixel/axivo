@@ -109,6 +109,7 @@ export async function buildRequestEvidencePdf(
           value: Array.isArray(value) ? value.join(", ") : value === null || value === "" ? "None" : String(value),
         })),
         ...(item.implementedAt ? [{ label: "Implemented", value: formatDateTime(item.implementedAt) }] : []),
+        ...(item.implementedByLabel ? [{ label: "Implemented by", value: item.implementedByLabel }] : []),
       ],
     });
 

@@ -737,6 +737,7 @@ export async function completeImplementation(
         status: requiresCredentialAck || requiresHandoverAck ? "IMPLEMENTED" : "COMPLETED",
         implementedAt: new Date(),
         implementedById: user.userId,
+        implementedByLabel: context.actorName ?? context.actorLabel,
         implementationNotes: input.notes ?? null,
       },
     });

@@ -352,7 +352,7 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
               <Table>
                 <THead>
                   <TR>
-                    <TH>Application</TH><TH>Role</TH><TH>Holds</TH><TH>Username</TH><TH>Status</TH>
+                    <TH>Application</TH><TH>Role</TH><TH>Holds</TH><TH>Username</TH><TH>Assigned by</TH><TH>Status</TH>
                     {canManageAppAssignments ? <TH /> : null}
                   </TR>
                 </THead>
@@ -389,6 +389,7 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                           )}
                         </TD>
                         <TD className="font-register">{assignment.username ?? "None"}</TD>
+                        <TD>{assignment.assignedByLabel ?? "-"}</TD>
                         <TD><StatusBadge status={assignment.status} /></TD>
                         {canManageAppAssignments ? (
                           <TD>
@@ -442,7 +443,7 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
               <Table>
                 <THead>
                   <TR>
-                    <TH>Asset</TH><TH>Assigned</TH><TH>Returned</TH><TH>Status</TH>
+                    <TH>Asset</TH><TH>Assigned</TH><TH>Assigned by</TH><TH>Returned</TH><TH>Status</TH>
                     {canManageAssets ? <TH /> : null}
                   </TR>
                 </THead>
@@ -458,6 +459,7 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                         </p>
                       </TD>
                       <TD>{formatDate(assignment.assignedAt)}</TD>
+                      <TD>{assignment.assignedByLabel ?? "-"}</TD>
                       <TD>{assignment.returnedAt ? formatDate(assignment.returnedAt) : "-"}</TD>
                       <TD><StatusBadge status={assignment.status} /></TD>
                       {canManageAssets ? (
@@ -528,7 +530,7 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
               <Table>
                 <THead>
                   <TR>
-                    <TH>License</TH><TH>Assigned</TH><TH>Removed</TH><TH>Status</TH>
+                    <TH>License</TH><TH>Assigned</TH><TH>Assigned by</TH><TH>Removed</TH><TH>Status</TH>
                     {canManageLicenseAssignments ? <TH /> : null}
                   </TR>
                 </THead>
@@ -537,6 +539,7 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                     <TR key={assignment.id}>
                       <TD className="font-medium">{assignment.license.name}</TD>
                       <TD>{formatDate(assignment.assignedAt)}</TD>
+                      <TD>{assignment.assignedByLabel ?? "-"}</TD>
                       <TD>{assignment.removedAt ? formatDate(assignment.removedAt) : "-"}</TD>
                       <TD><StatusBadge status={assignment.status} /></TD>
                       {canManageLicenseAssignments ? (

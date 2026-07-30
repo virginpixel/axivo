@@ -290,7 +290,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
         <CardContent>
           <PaginatedTable
             emptyMessage="Never assigned."
-            headers={<><TH>Employee</TH><TH>Assigned</TH><TH>Returned</TH><TH>Acknowledged</TH><TH>Status</TH></>}
+            headers={<><TH>Employee</TH><TH>Assigned</TH><TH>Assigned by</TH><TH>Returned</TH><TH>Acknowledged</TH><TH>Status</TH></>}
             rows={asset.assignments.map((assignment) => ({
               key: assignment.id,
               node: (
@@ -301,6 +301,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                     </Link>
                   </TD>
                   <TD>{formatDate(assignment.assignedAt)}</TD>
+                  <TD>{assignment.assignedByLabel ?? "None"}</TD>
                   <TD>{assignment.returnedAt ? formatDate(assignment.returnedAt) : "None"}</TD>
                   <TD>{assignment.acknowledgedAt ? formatDate(assignment.acknowledgedAt) : "None"}</TD>
                   <TD><StatusBadge status={assignment.status} /></TD>

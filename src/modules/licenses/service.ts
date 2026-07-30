@@ -299,6 +299,7 @@ export async function assignLicense(
         requestItemId: options.requestItemId ?? null,
         status: "ACTIVE",
         assignedById: context.actorUserId ?? null,
+        assignedByLabel: context.actorName ?? context.actorLabel,
         notes: input.notes ?? null,
       },
     });

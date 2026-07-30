@@ -412,6 +412,7 @@ export async function createAssignment(
       requestItemId: options.requestItemId ?? null,
       implementedById: options.implementedById ?? null,
       createdById: context.actorUserId ?? null,
+      assignedByLabel: context.actorName ?? context.actorLabel,
     },
   });
   await recordAudit(
@@ -512,7 +513,7 @@ export async function changeAssignmentAccess(
       proofDocumentId: input.proofDocumentId ?? null,
       reason: input.reason ?? null,
       changedById: context.actorUserId ?? null,
-      changedByLabel: context.actorLabel ?? null,
+      changedByLabel: context.actorName ?? context.actorLabel ?? null,
     },
   });
 

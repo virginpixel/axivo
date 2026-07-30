@@ -32,6 +32,7 @@ export async function requireUser(): Promise<ActionContext> {
       actorUserId: user.userId,
       actorPersonId: user.personId,
       actorLabel: user.username,
+      actorName: user.displayName,
       companyId: user.companyId,
       ipAddress: getClientIp(requestHeaders),
       userAgent: requestHeaders.get("user-agent")?.slice(0, 512) ?? null,
