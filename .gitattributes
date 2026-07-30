@@ -1,0 +1,9 @@
+# Keep shell scripts and Docker/config assets LF-terminated regardless of the
+# committer's OS. A CRLF install.sh piped to `bash` on Linux fails on the stray
+# carriage returns, so this is load-bearing for the installer.
+*.sh            text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+Dockerfile      text eol=lf
+*.conf          text eol=lf
+proxy_params_axivo text eol=lf

@@ -41,6 +41,27 @@ deploy/              Nginx configuration, backup script
 docs/                Deployment, configuration, database, internal services
 ```
 
+## Install (self-host on a Linux VM)
+
+On a fresh Ubuntu VM, one command installs and starts Axivo from prebuilt
+images (no build toolchain required):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/virginpixel/axivo/main/install.sh | sudo bash
+```
+
+The installer asks for the hostname/IP to serve on and the first
+administrator's email, generates and **persists** all secrets (the encryption
+key is created once and never regenerated), pulls the images, and brings the
+stack up. It prints the initial admin credentials on first run.
+
+- Data lives in Docker volumes (`pgdata`, `storage`) and survives updates.
+- Re-running the installer preserves existing secrets and data.
+- Remote access over the internet (Cloudflare Tunnel) and HTTPS are configured
+  from the Settings page; a local-only install needs neither.
+
+Install directory: `/opt/axivo` (compose file + generated `.env`).
+
 ## Quick start (development)
 
 ```bash

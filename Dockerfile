@@ -23,9 +23,15 @@ RUN npx prisma generate && npm run build
 # -----------------------------------------------------------------------------
 FROM node:22-alpine AS web
 WORKDIR /app
+# Stamped by CI from the release tag; the app reads AXIVO_VERSION to report its
+# running version and to compare against the latest release when checking for
+# updates. Defaults to "dev" for local builds.
+ARG AXIVO_VERSION=dev
+LABEL org.opencontainers.image.source="https://github.com/virginpixel/axivo"
+LABEL org.opencontainers.image.version="${AXIVO_VERSION}"
 # HOSTNAME=0.0.0.0 is required: Docker sets HOSTNAME to the container id and
 # the Next.js standalone server would otherwise bind only to that interface.
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000 STORAGE_PATH=/var/lib/axivo/storage
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000 STORAGE_PATH=/var/lib/axivo/storage AXIVO_VERSION=${AXIVO_VERSION}
 RUN addgroup -S axivo && adduser -S axivo -G axivo
 COPY --from=builder --chown=axivo:axivo /app/.next/standalone ./
 COPY --from=builder --chown=axivo:axivo /app/.next/static ./.next/static
@@ -41,7 +47,10 @@ CMD ["node", "server.js"]
 # -----------------------------------------------------------------------------
 FROM node:22-alpine AS worker
 WORKDIR /app
-ENV NODE_ENV=production STORAGE_PATH=/var/lib/axivo/storage
+ARG AXIVO_VERSION=dev
+LABEL org.opencontainers.image.source="https://github.com/virginpixel/axivo"
+LABEL org.opencontainers.image.version="${AXIVO_VERSION}"
+ENV NODE_ENV=production STORAGE_PATH=/var/lib/axivo/storage AXIVO_VERSION=${AXIVO_VERSION}
 RUN addgroup -S axivo && adduser -S axivo -G axivo
 COPY --from=deps --chown=axivo:axivo /app/node_modules ./node_modules
 COPY --chown=axivo:axivo package.json tsconfig.json ./
