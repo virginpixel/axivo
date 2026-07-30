@@ -29,7 +29,16 @@ export const requestItemInputSchema = z
         message: "Select an asset category.",
       });
     }
-    if ((item.itemType === "ROLE_CHANGE" || item.itemType === "GENERAL") && !item.description) {
+    // A role change edits access the person already holds, so it names the
+    // application whose role or fields are changing rather than free text.
+    if (item.itemType === "ROLE_CHANGE" && !item.applicationId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["applicationId"],
+        message: "Select the access to change.",
+      });
+    }
+    if (item.itemType === "GENERAL" && !item.description) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["description"],

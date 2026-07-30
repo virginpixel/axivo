@@ -51,6 +51,24 @@ interface ItemDraft {
   fieldValues: Record<string, string | string[]>;
 }
 
+/** One application the requester already holds, for the role-change form. */
+interface AccessEntry {
+  assignmentId: string;
+  applicationId: string;
+  applicationName: string;
+  currentRoleId: string | null;
+  currentRoleName: string | null;
+  roles: { id: string; name: string }[];
+  fields: {
+    fieldKey: string;
+    label: string;
+    fieldType: string;
+    isRequired: boolean;
+    options: string[];
+  }[];
+  currentValues: Record<string, string | string[]>;
+}
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface ParticipantDraft {
@@ -125,6 +143,10 @@ export function PublicRequestForm({
   const requestedForDepartments = departments.filter((entry) => entry.companyId === requestedForCompanyId);
   const requestedForPositions = positions.filter((entry) => entry.companyId === requestedForCompanyId);
   const isCheckout = requestTypeKind === "ASSET_CHECKOUT";
+  const isRoleChange = requestTypeKind === "ROLE_CHANGE";
+  // Both checkout and role change are self-service: the requester is the person
+  // the request is about, so there is no separate "requested for".
+  const isSelfService = isCheckout || isRoleChange;
   const [myAssets, setMyAssets] = useState<
     {
       id: string;
@@ -138,6 +160,13 @@ export function PublicRequestForm({
   >([]);
   const [checkout, setCheckout] = useState({ assetId: "", leaveType: "", start: "", end: "" });
   const selectedAsset = myAssets.find((asset) => asset.id === checkout.assetId);
+  const [myAccess, setMyAccess] = useState<AccessEntry[]>([]);
+  const [roleChange, setRoleChange] = useState({
+    assignmentId: "",
+    roleId: "",
+    fieldValues: {} as Record<string, string | string[]>,
+  });
+  const selectedAccess = myAccess.find((entry) => entry.assignmentId === roleChange.assignmentId);
 
   // Look up what this employee holds as soon as they have named themselves.
   // Debounced, because the employee ID is typed a character at a time. Both the
@@ -165,6 +194,32 @@ export function PublicRequestForm({
       clearTimeout(timer);
     };
   }, [isCheckout, requesterCompanyId, requester.employeeId, requester.email]);
+
+  // The same lookup for the role-change form: as soon as the requester names
+  // themselves, load the application access they already hold so they can pick
+  // which one to change.
+  useEffect(() => {
+    const employeeId = requester.employeeId.trim();
+    const email = requester.email.trim();
+    if (!isRoleChange || !requesterCompanyId || (!employeeId && !email)) {
+      setMyAccess([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      const query = new URLSearchParams({ companyId: requesterCompanyId });
+      if (employeeId) query.set("employeeId", employeeId);
+      if (email) query.set("email", email);
+      fetch(`/api/public/my-access?${query.toString()}`, { signal: controller.signal })
+        .then((response) => response.json())
+        .then((data) => setMyAccess(data.access ?? []))
+        .catch(() => undefined);
+    }, 400);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [isRoleChange, requesterCompanyId, requester.employeeId, requester.email]);
 
   const [values, setValues] = useState<Record<string, string | string[]>>(() => {
     const initial: Record<string, string | string[]> = {};
@@ -216,7 +271,32 @@ export function PublicRequestForm({
         nextErrors.item_0_checkout_end_date = "The return date cannot be before the start date.";
       }
     }
-    const effectiveRequestedFor = isCheckout ? requester : requestedFor;
+    if (isRoleChange) {
+      if (!roleChange.assignmentId) {
+        nextErrors.item_0_role_change_access = "Select the access you want to change.";
+      } else if (selectedAccess) {
+        // Something must actually change: a new role, or a changed field value.
+        const roleChanged =
+          selectedAccess.roles.length > 0 &&
+          roleChange.roleId !== "" &&
+          roleChange.roleId !== (selectedAccess.currentRoleId ?? "");
+        const fieldsChanged =
+          JSON.stringify(roleChange.fieldValues) !== JSON.stringify(selectedAccess.currentValues);
+        if (!roleChanged && !fieldsChanged) {
+          nextErrors.item_0_role_change_access =
+            "Change the role or one of the fields before submitting.";
+        }
+        for (const field of selectedAccess.fields) {
+          const value = roleChange.fieldValues[field.fieldKey];
+          const empty =
+            value === undefined || value === "" || (Array.isArray(value) && value.length === 0);
+          if (field.isRequired && empty) {
+            nextErrors[`item_0_${field.fieldKey}`] = `${field.label} is required.`;
+          }
+        }
+      }
+    }
+    const effectiveRequestedFor = isSelfService ? requester : requestedFor;
     const checkParticipant = (prefix: string, participant: ParticipantDraft) => {
       if (!participant.name.trim()) nextErrors[`${prefix}Name`] = "Name is required.";
       if (!EMAIL_PATTERN.test(participant.email)) nextErrors[`${prefix}Email`] = "Enter a valid email address.";
@@ -239,7 +319,9 @@ export function PublicRequestForm({
         nextErrors[field.fieldKey] = `${field.label} must be a number.`;
       }
     }
-    items.forEach((item, index) => {
+    // Checkout and role change carry their own dedicated fields, validated
+    // above; the generic item rows below do not apply to them.
+    if (!isSelfService) items.forEach((item, index) => {
       const rowMode = allowsMixedItems ? (item.rowType ?? "APPLICATION") : itemMode;
       if (rowMode === "APPLICATION" && !item.applicationId) {
         nextErrors[`item-${index}`] = "Select an application.";
@@ -279,7 +361,7 @@ export function PublicRequestForm({
     event.preventDefault();
     if (!validateClient()) return;
     setLoading(true);
-    const effectiveRequestedFor = isCheckout ? requester : requestedFor;
+    const effectiveRequestedFor = isSelfService ? requester : requestedFor;
     try {
       const result = await submitPublicRequestAction({
         slug,
@@ -292,7 +374,7 @@ export function PublicRequestForm({
         requestedForEmail: effectiveRequestedFor.email.trim(),
         requestedForEmployeeId: effectiveRequestedFor.employeeId.trim(),
         requesterCompanyId,
-        requestedForCompanyId: isCheckout ? requesterCompanyId : requestedForCompanyId,
+        requestedForCompanyId: isSelfService ? requesterCompanyId : requestedForCompanyId,
         requestedForDepartmentId: effectiveRequestedFor.departmentId,
         requestedForPositionTitle: effectiveRequestedFor.positionTitle.trim(),
         fieldValues: values,
@@ -313,6 +395,19 @@ export function PublicRequestForm({
                   checkout_start_date: checkout.start,
                   checkout_end_date: checkout.end,
                 },
+              },
+            ]
+          : isRoleChange
+          ? [
+              {
+                itemType: "ROLE_CHANGE" as const,
+                applicationId: selectedAccess?.applicationId,
+                // The new role. Blank means "keep the current role" (a
+                // fields-only change), so it is only sent when actually chosen.
+                applicationRoleId: roleChange.roleId || undefined,
+                assetCategoryId: undefined,
+                description: undefined,
+                fieldValues: roleChange.fieldValues,
               },
             ]
           : items.map((item) => ({
@@ -375,7 +470,7 @@ export function PublicRequestForm({
       </div>
 
       <ParticipantCard
-        title={isCheckout ? "Your details" : "Requested by"}
+        title={isSelfService ? "Your details" : "Requested by"}
         prefix="requester"
         participant={requester}
         onChange={setRequester}
@@ -400,7 +495,7 @@ export function PublicRequestForm({
         }
       />
 
-      {isCheckout ? null : (
+      {isSelfService ? null : (
       <Card>
         <CardHeader>
           <CardTitle>Requested for</CardTitle>
@@ -527,6 +622,132 @@ export function PublicRequestForm({
               />
               <FieldError message={errors.item_0_checkout_end_date} />
             </div>
+          </CardContent>
+        </Card>
+      ) : isRoleChange ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Access to change</CardTitle>
+            <CardDescription>
+              Pick the application access you already hold, then set the new role or change the
+              request fields. Only access on record for you can be changed here.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label htmlFor="role-change-access" required>Application access</Label>
+              {myAccess.length === 0 ? (
+                <p className="rounded-md border border-dashed border-input px-3 py-2 text-sm text-muted-foreground">
+                  Enter your company and employee ID above and the access you hold will appear here.
+                </p>
+              ) : (
+                <Combobox
+                  id="role-change-access"
+                  value={roleChange.assignmentId}
+                  onChange={(value) => {
+                    const entry = myAccess.find((a) => a.assignmentId === value);
+                    setRoleChange({
+                      assignmentId: value,
+                      roleId: entry?.currentRoleId ?? "",
+                      fieldValues: entry ? { ...entry.currentValues } : {},
+                    });
+                    setErrors((current) => {
+                      const next = { ...current };
+                      delete next.item_0_role_change_access;
+                      return next;
+                    });
+                  }}
+                  options={myAccess.map((entry) => ({
+                    value: entry.assignmentId,
+                    label: entry.currentRoleName
+                      ? `${entry.applicationName} · ${entry.currentRoleName}`
+                      : entry.applicationName,
+                  }))}
+                  placeholder="Select the access to change"
+                />
+              )}
+              <FieldError message={errors.item_0_role_change_access} />
+            </div>
+
+            {selectedAccess ? (
+              <div className="space-y-4 rounded-md border bg-muted/30 p-3">
+                {selectedAccess.roles.length > 0 ? (
+                  <div>
+                    <Label htmlFor="role-change-role">New role</Label>
+                    <Combobox
+                      id="role-change-role"
+                      value={roleChange.roleId}
+                      onChange={(value) =>
+                        setRoleChange((current) => ({ ...current, roleId: value }))
+                      }
+                      options={selectedAccess.roles.map((role) => ({
+                        value: role.id,
+                        label: role.name,
+                      }))}
+                      placeholder="Select a role"
+                    />
+                    <HelperText>Currently {selectedAccess.currentRoleName ?? "no role"}.</HelperText>
+                  </div>
+                ) : null}
+
+                {selectedAccess.fields.map((field) => {
+                  const value = roleChange.fieldValues[field.fieldKey];
+                  const isMulti =
+                    field.fieldType === "MULTI_SELECT" || field.fieldType === "CHECKBOX";
+                  const setValue = (next: string | string[]) =>
+                    setRoleChange((current) => ({
+                      ...current,
+                      fieldValues: { ...current.fieldValues, [field.fieldKey]: next },
+                    }));
+                  return (
+                    <div key={field.fieldKey}>
+                      <Label htmlFor={`role-change-${field.fieldKey}`} required={field.isRequired}>
+                        {field.label}
+                      </Label>
+                      {isMulti ? (
+                        <div className="mt-1 grid gap-1.5 sm:grid-cols-2">
+                          {field.options.map((option) => {
+                            const selected = Array.isArray(value) ? value : [];
+                            return (
+                              <label key={option} className="flex items-center gap-2 text-sm">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 rounded border-input"
+                                  checked={selected.includes(option)}
+                                  onChange={(event) => {
+                                    const list = Array.isArray(value) ? value : [];
+                                    setValue(
+                                      event.target.checked
+                                        ? [...list, option]
+                                        : list.filter((entry) => entry !== option),
+                                    );
+                                  }}
+                                />
+                                {option}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ) : field.options.length > 0 ? (
+                        <Combobox
+                          id={`role-change-${field.fieldKey}`}
+                          value={(value as string) ?? ""}
+                          onChange={(next) => setValue(next)}
+                          options={field.options.map((option) => ({ value: option, label: option }))}
+                        />
+                      ) : (
+                        <Input
+                          id={`role-change-${field.fieldKey}`}
+                          value={Array.isArray(value) ? value.join(", ") : ((value as string) ?? "")}
+                          onChange={(event) => setValue(event.target.value)}
+                        />
+                      )}
+                      <FieldError message={errors[`item_0_${field.fieldKey}`]} />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       ) : (

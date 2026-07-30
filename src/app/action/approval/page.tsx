@@ -83,6 +83,17 @@ export default async function ApprovalActionPage({
   const alreadyDone = stepInstance.status !== "ACTIVE";
   const fieldData = (request.fieldData ?? {}) as Record<string, unknown>;
 
+  // The answers to the target's own request fields (which cost centres, which
+  // outlets, and so on) live on the item, not the request, so they must be read
+  // separately or the approver sees only the form-level questions. Labels come
+  // from the snapshot taken at submission.
+  const itemData = (item.itemData ?? {}) as Record<string, unknown>;
+  const itemLabels = (item.fieldLabelsSnapshot ?? {}) as Record<string, string>;
+  const itemDetails = Object.entries(itemData).filter(
+    ([, value]) =>
+      value !== null && value !== "" && !(Array.isArray(value) && value.length === 0),
+  );
+
   return (
     <ToastProvider>
       <ActionShell title="Approval required" subtitle={`Request ${request.requestNumber}`}>
@@ -103,6 +114,23 @@ export default async function ApprovalActionPage({
               {item.description ? <Detail label="Notes" value={item.description} /> : null}
               <Detail label="Approval step" value={stepInstance.stepName} />
             </dl>
+
+            {itemDetails.length > 0 ? (
+              <div className="rounded-md border bg-muted/40 p-3">
+                <h3 className="mb-2 label-caps text-muted-foreground">
+                  What was requested
+                </h3>
+                <dl className="grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+                  {itemDetails.map(([key, value]) => (
+                    <Detail
+                      key={key}
+                      label={itemLabels[key] ?? key.replace(/_/g, " ")}
+                      value={Array.isArray(value) ? value.join(", ") : String(value ?? "None")}
+                    />
+                  ))}
+                </dl>
+              </div>
+            ) : null}
 
             {Object.keys(fieldData).length > 0 ? (
               <div className="rounded-md border bg-muted/40 p-3">

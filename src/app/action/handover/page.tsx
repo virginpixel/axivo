@@ -71,10 +71,11 @@ export default async function HandoverActionPage({
 
           <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
             <h3 className="mb-1 text-sm font-semibold text-foreground">Terms of responsibility</h3>
-            I acknowledge receipt of the company assets listed above. I agree to use them for
-            business purposes, keep them in good condition, and return them upon request or at the
-            end of my employment. I will report loss, theft or damage to the IT department
-            immediately.
+            I hereby acknowledge that I have received the above mentioned asset/s. I understand that
+            this/these asset/s belong to Dream Islands Development 2 Pvt. Ltd and is/are under my
+            possession for carrying out my office work. I hereby assure that I will take care of the
+            assets of the company to the best possible extent. Also, I am bound to return the
+            specific asset/s when required by the company or at the termination of my employment.
           </div>
 
           {alreadyAcknowledged ? (

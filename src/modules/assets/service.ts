@@ -405,65 +405,39 @@ export async function returnAsset(context: AuditContext, assignmentId: string, n
 // ---------------------------------------------------------------------------
 
 /**
- * Generate a handover document covering one or more assignments and email a
- * secure acknowledgement link to the employee.
+ * Build and store the handover PDF for one handover, reflecting its current
+ * acknowledgement state. Passing an existing document id regenerates that same
+ * document as a new version rather than creating a second one: once the
+ * employee acknowledges, the single form on file is replaced by the signed
+ * version so no stale "Not yet acknowledged" copy is left behind.
  */
-export async function createHandoverForAssignments(
+async function generateHandoverDocument(
   context: AuditContext,
-  personId: string,
-  assignmentIds: string[],
-  send = true,
+  handoverId: string,
+  existingDocumentId?: string,
 ) {
-  const person = await db.person.findFirst({
-    where: { id: personId, deletedAt: null },
-    include: { company: true, department: true, position: true },
+  const handover = await db.handover.findFirstOrThrow({
+    where: { id: handoverId },
+    include: {
+      person: { include: { company: true, department: true, position: true } },
+      assets: { include: { assetAssignment: { include: { asset: true } } } },
+    },
   });
-  if (!person) throw new NotFoundError("Employee not found.");
-  const assignments = await db.assetAssignment.findMany({
-    where: { id: { in: assignmentIds }, personId, status: "ASSIGNED", deletedAt: null },
-    include: { asset: true },
-  });
-  if (assignments.length === 0) {
-    throw new BusinessRuleError("No eligible assignments for handover.");
-  }
-  // Active licenses are listed on the handover form for a complete record.
+  const person = handover.person;
+  const assignments = handover.assets.map((entry) => entry.assetAssignment);
   const licenseAssignments = await db.licenseAssignment.findMany({
-    where: { personId, status: { in: ["ACTIVE", "PENDING"] }, deletedAt: null },
+    where: { personId: person.id, status: { in: ["ACTIVE", "PENDING"] }, deletedAt: null },
     include: { license: { include: { application: true } } },
   });
 
-  const handover = await db.$transaction(async (tx) => {
-    const created = await tx.handover.create({
-      data: {
-        companyId: person.companyId,
-        personId,
-        status: "PENDING",
-        createdById: context.actorUserId ?? null,
-        assets: { create: assignments.map((a) => ({ assetAssignmentId: a.id })) },
-      },
-    });
-    await recordAudit(
-      { ...context, companyId: person.companyId },
-      {
-        module: MODULE,
-        eventType: "handover.generated",
-        action: `Generated asset handover for ${person.firstName} ${person.lastName} (${assignments.length} asset(s))`,
-        targetType: "handover",
-        targetId: created.id,
-      },
-      tx,
-    );
-    return created;
-  });
-
-  // Generate the handover PDF and link it.
-  const document = await createGeneratedPdf(context, {
+  return createGeneratedPdf(context, {
     companyId: person.companyId,
+    ...(existingDocumentId ? { existingDocumentId, changeSummary: "Acknowledged" } : {}),
     name: `Asset Handover - ${person.firstName} ${person.lastName} - ${new Date().toISOString().slice(0, 10)}`,
     categoryName: "Asset Handover",
     links: [
       { entityType: "handover", entityId: handover.id },
-      { entityType: "person", entityId: personId },
+      { entityType: "person", entityId: person.id },
       ...assignments.map((a) => ({ entityType: "asset", entityId: a.assetId })),
     ],
     definition: {
@@ -522,15 +496,66 @@ export async function createHandoverForAssignments(
           fields: [
             {
               label: "Acknowledged on",
-              value: handover.acknowledgedAt ? formatDateTimeWithZone(handover.acknowledgedAt) : "Not yet acknowledged",
+              value: handover.acknowledgedAt
+                ? formatDateTimeWithZone(handover.acknowledgedAt)
+                : "Not yet acknowledged",
             },
           ],
         },
       ],
-      footerNote: "Electronic acknowledgement is recorded with a timestamp and is legally binding within company policy.",
+      footerNote:
+        "Electronic acknowledgement is recorded with a timestamp and is legally binding within company policy.",
     },
   });
+}
 
+/**
+ * Generate a handover document covering one or more assignments and email a
+ * secure acknowledgement link to the employee.
+ */
+export async function createHandoverForAssignments(
+  context: AuditContext,
+  personId: string,
+  assignmentIds: string[],
+  send = true,
+) {
+  const person = await db.person.findFirst({
+    where: { id: personId, deletedAt: null },
+  });
+  if (!person) throw new NotFoundError("Employee not found.");
+  const assignments = await db.assetAssignment.findMany({
+    where: { id: { in: assignmentIds }, personId, status: "ASSIGNED", deletedAt: null },
+  });
+  if (assignments.length === 0) {
+    throw new BusinessRuleError("No eligible assignments for handover.");
+  }
+
+  const handover = await db.$transaction(async (tx) => {
+    const created = await tx.handover.create({
+      data: {
+        companyId: person.companyId,
+        personId,
+        status: "PENDING",
+        createdById: context.actorUserId ?? null,
+        assets: { create: assignments.map((a) => ({ assetAssignmentId: a.id })) },
+      },
+    });
+    await recordAudit(
+      { ...context, companyId: person.companyId },
+      {
+        module: MODULE,
+        eventType: "handover.generated",
+        action: `Generated asset handover for ${person.firstName} ${person.lastName} (${assignments.length} asset(s))`,
+        targetType: "handover",
+        targetId: created.id,
+      },
+      tx,
+    );
+    return created;
+  });
+
+  // Generate the handover PDF and link it.
+  const document = await generateHandoverDocument(context, handover.id);
   await db.handover.update({ where: { id: handover.id }, data: { documentId: document.id } });
 
   // When generated manually the form is previewed first, then sent explicitly
@@ -609,7 +634,7 @@ export async function acknowledgeHandover(context: AuditContext, handoverId: str
     throw new BusinessRuleError("This handover has already been acknowledged.");
   }
   const now = new Date();
-  return db.$transaction(async (tx) => {
+  await db.$transaction(async (tx) => {
     await tx.handover.update({
       where: { id: handoverId },
       data: { status: "ACKNOWLEDGED", acknowledgedAt: now },
@@ -630,6 +655,17 @@ export async function acknowledgeHandover(context: AuditContext, handoverId: str
       tx,
     );
   });
+
+  // Replace the stored form with its acknowledged version, so the document on
+  // file carries the signature timestamp instead of "Not yet acknowledged".
+  // Regenerating the same document (rather than adding a second one) means the
+  // pending copy does not linger in the employee's document list.
+  if (handover.documentId) {
+    await generateHandoverDocument(context, handoverId, handover.documentId);
+  } else {
+    const document = await generateHandoverDocument(context, handoverId);
+    await db.handover.update({ where: { id: handoverId }, data: { documentId: document.id } });
+  }
 }
 
 // ---------------------------------------------------------------------------

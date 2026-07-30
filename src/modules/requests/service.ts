@@ -114,7 +114,8 @@ export async function submitPublicRequest(
    * approval step, not who typed the request, and requiring a second person to
    * raise it would make the form unusable for its actual purpose.
    */
-  const isSelfServiceKind = form.requestType.kind === "ASSET_CHECKOUT";
+  const isSelfServiceKind =
+    form.requestType.kind === "ASSET_CHECKOUT" || form.requestType.kind === "ROLE_CHANGE";
   const sameEmployee =
     requesterCompany.id === requestedForCompany.id &&
     input.requesterEmployeeId.trim().toLowerCase() ===
@@ -201,6 +202,32 @@ export async function submitPublicRequest(
       targetName = category.name;
       if (category.workflowId) workflowId = category.workflowId;
       targetFields = await listActiveRequestFieldsFor([], [category.id]);
+    }
+
+    if (item.itemType === "ROLE_CHANGE") {
+      // A role change targets an application the person already holds. It is
+      // captured just like an application request so the approver sees which
+      // role and which request-field values are being asked for, and the new
+      // values are validated and stored for implementation to apply.
+      const application = await db.application.findFirst({
+        where: {
+          id: item.applicationId,
+          isActive: true,
+          deletedAt: null,
+          OR: [{ companyId: catalogueCompanyId }, { isShared: true }],
+        },
+      });
+      if (!application) throw new BusinessRuleError("A selected application is not available.");
+      targetName = application.name;
+      if (item.applicationRoleId) {
+        const role = await db.applicationRole.findFirst({
+          where: { id: item.applicationRoleId, applicationId: item.applicationId, isActive: true, deletedAt: null },
+        });
+        if (!role) throw new BusinessRuleError("A selected application role is not available.");
+        roleName = role.name;
+      }
+      if (application.workflowId) workflowId = application.workflowId;
+      targetFields = await listActiveRequestFieldsFor([application.id], []);
     }
 
     let itemData: Record<string, unknown> | null = null;

@@ -574,6 +574,16 @@ export async function applyApprovalAction(
         where: { id: params.stepInstanceId },
         data: { status: "REJECTED", completedAt: now },
       });
+      // A rejection ends the item, so nothing downstream will ever run. Mark
+      // the remaining steps (including IT implementation) as cancelled rather
+      // than leaving them "pending", which reads as still-awaiting-action.
+      await tx.workflowStepInstance.updateMany({
+        where: {
+          workflowInstanceId: stepInstance.workflowInstanceId,
+          status: { in: ["PENDING", "ACTIVE"] },
+        },
+        data: { status: "CANCELLED", completedAt: now },
+      });
       await tx.workflowInstance.update({
         where: { id: stepInstance.workflowInstanceId },
         data: { status: "REJECTED", completedAt: now },

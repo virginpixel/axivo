@@ -50,11 +50,11 @@ export default async function LoginPage() {
 
         <div className="relative max-w-md">
           <h2 className="font-display text-4xl font-semibold leading-[1.1] tracking-tight text-rail-foreground">
-            The record of who has what, and who approved it.
+            IT service management, end to end.
           </h2>
           <p className="mt-4 text-sm leading-relaxed text-rail-muted">
-            Access requests, assets, licences and clearances, each with the approval trail that
-            authorised it.
+            Requests, approvals, applications, licences and assets administered in one place, with
+            every action recorded for audit.
           </p>
         </div>
 
@@ -66,13 +66,13 @@ export default async function LoginPage() {
       {/* Paper panel: the actual task. */}
       <section className="flex flex-1 items-center justify-center px-5 py-12 sm:px-10">
         <div className="w-full max-w-sm">
-          <div className="mb-8">
+          <div className="mb-8 flex flex-col items-center text-center">
             {branding.logoStorageKey ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src="/api/branding/logo"
                 alt={systemName}
-                className="mb-6 max-h-14 w-auto max-w-[220px] object-contain object-left"
+                className="mb-6 max-h-14 w-auto max-w-[220px] object-contain"
               />
             ) : (
               <span className="mb-6 block h-6 w-[3px] rounded-full bg-primary" aria-hidden />
@@ -86,8 +86,7 @@ export default async function LoginPage() {
           <LoginForm />
 
           <p className="mt-8 text-xs leading-relaxed text-muted-foreground">
-            Access is restricted to authorised IT portal users. Everything you do here is recorded
-            in the audit log.
+            Access is restricted to authorised IT portal users.
           </p>
         </div>
       </section>
