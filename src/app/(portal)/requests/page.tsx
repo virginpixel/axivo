@@ -29,7 +29,7 @@ const REQUEST_STATUSES: RequestStatus[] = [
 export default async function RequestsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; company?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; company?: string; form?: string; page?: string }>;
 }) {
   const { user } = await requirePermission("requests.view");
   const params = await searchParams;
@@ -43,6 +43,7 @@ export default async function RequestsPage({
       ? { status: params.status as RequestStatus }
       : {}),
     ...(params.company && isGlobalAdmin ? { companyId: params.company } : {}),
+    ...(params.form ? { formId: params.form } : {}),
     ...(params.q
       ? {
           OR: [
@@ -56,7 +57,7 @@ export default async function RequestsPage({
       : {}),
   };
 
-  const [rows, total, companies] = await Promise.all([
+  const [rows, total, companies, forms] = await Promise.all([
     db.request.findMany({
       where,
       orderBy: { submittedAt: "desc" },
@@ -72,12 +73,22 @@ export default async function RequestsPage({
     isGlobalAdmin
       ? db.company.findMany({ where: { deletedAt: null }, orderBy: { name: "asc" } })
       : Promise.resolve([]),
+    // Forms to filter by: an all-company form (companyId null) is offered to
+    // everyone; otherwise a non-admin sees only their own company's forms.
+    db.form.findMany({
+      where: {
+        deletedAt: null,
+        ...(isGlobalAdmin ? {} : { OR: [{ companyId: user.companyId }, { companyId: null }] }),
+      },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
   ]);
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
   const query = (overrides: Record<string, string | number | undefined>) => {
     const search = new URLSearchParams();
-    const merged = { q: params.q, status: params.status, company: params.company, page: undefined, ...overrides };
+    const merged = { q: params.q, status: params.status, company: params.company, form: params.form, page: undefined, ...overrides };
     for (const [key, value] of Object.entries(merged)) {
       if (value !== undefined && value !== "") search.set(key, String(value));
     }
@@ -107,6 +118,16 @@ export default async function RequestsPage({
             {companies.map((company) => (
               <option key={company.id} value={company.id}>
                 {company.name}
+              </option>
+            ))}
+          </Select>
+        ) : null}
+        {forms.length > 0 ? (
+          <Select name="form" defaultValue={params.form ?? ""} className="w-full sm:w-52" aria-label="Filter by form">
+            <option value="">All forms</option>
+            {forms.map((form) => (
+              <option key={form.id} value={form.id}>
+                {form.name}
               </option>
             ))}
           </Select>

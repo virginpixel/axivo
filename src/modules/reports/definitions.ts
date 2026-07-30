@@ -473,6 +473,9 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
               person: { include: { company: true, department: true } },
             },
           },
+          // A change raised through a form has no separate proof document; the
+          // approved request itself is the evidence, so pull its id.
+          requestItem: { select: { requestId: true } },
         },
       });
 
@@ -502,10 +505,22 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           "Changed",
         ],
         // The filed approval, so an auditor can open the evidence from the row.
+        // An inline edit has a proof document; a change made through a form has
+        // the approved request itself, whose evidence PDF is rendered on demand.
         rowLinks: changes.map((change) =>
-          change.proofDocumentId ? `/api/documents/${change.proofDocumentId}/download` : null,
+          change.proofDocumentId
+            ? `/api/documents/${change.proofDocumentId}/download`
+            : change.requestItem
+              ? `/api/requests/${change.requestItem.requestId}/pdf`
+              : null,
         ),
-        rowIds: changes.map((change) => change.proofDocumentId),
+        rowIds: changes.map((change) =>
+          change.proofDocumentId
+            ? `doc:${change.proofDocumentId}`
+            : change.requestItem
+              ? `req:${change.requestItem.requestId}`
+              : null,
+        ),
         rows: changes.map((change) => [
           fullName(change.applicationAssignment.person),
           change.applicationAssignment.person.employeeId,
@@ -524,8 +539,15 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
     bundle: async (user, context, ids) => {
       const files = [];
       for (const id of ids) {
-        const file = await getDocumentFileForUser(user, context, id);
-        files.push({ fileName: file.version.fileName, data: file.content });
+        if (id.startsWith("req:")) {
+          const pdf = await buildRequestEvidencePdf(user, id.slice(4));
+          if (pdf) files.push({ fileName: pdf.fileName, data: pdf.data });
+        } else {
+          // Both a bare id (older links) and a "doc:" prefixed one are a document.
+          const documentId = id.startsWith("doc:") ? id.slice(4) : id;
+          const file = await getDocumentFileForUser(user, context, documentId);
+          files.push({ fileName: file.version.fileName, data: file.content });
+        }
       }
       return files;
     },
