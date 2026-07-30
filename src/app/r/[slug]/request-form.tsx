@@ -144,9 +144,11 @@ export function PublicRequestForm({
   const requestedForPositions = positions.filter((entry) => entry.companyId === requestedForCompanyId);
   const isCheckout = requestTypeKind === "ASSET_CHECKOUT";
   const isRoleChange = requestTypeKind === "ROLE_CHANGE";
-  // Both checkout and role change are self-service: the requester is the person
-  // the request is about, so there is no separate "requested for".
-  const isSelfService = isCheckout || isRoleChange;
+  // Checkout is self-service: the requester is the person the request is about,
+  // so there is no separate "requested for". A role change is raised for
+  // somebody else (segregation of duties), so it keeps both participants and
+  // loads the access of the requested-for employee.
+  const isSelfService = isCheckout;
   const [myAssets, setMyAssets] = useState<
     {
       id: string;
@@ -195,19 +197,19 @@ export function PublicRequestForm({
     };
   }, [isCheckout, requesterCompanyId, requester.employeeId, requester.email]);
 
-  // The same lookup for the role-change form: as soon as the requester names
-  // themselves, load the application access they already hold so they can pick
-  // which one to change.
+  // The same lookup for the role-change form, but keyed to the requested-for
+  // employee: a role change is raised for somebody else, so it is their
+  // existing access the requester picks from, not the requester's own.
   useEffect(() => {
-    const employeeId = requester.employeeId.trim();
-    const email = requester.email.trim();
-    if (!isRoleChange || !requesterCompanyId || (!employeeId && !email)) {
+    const employeeId = requestedFor.employeeId.trim();
+    const email = requestedFor.email.trim();
+    if (!isRoleChange || !requestedForCompanyId || (!employeeId && !email)) {
       setMyAccess([]);
       return;
     }
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      const query = new URLSearchParams({ companyId: requesterCompanyId });
+      const query = new URLSearchParams({ companyId: requestedForCompanyId });
       if (employeeId) query.set("employeeId", employeeId);
       if (email) query.set("email", email);
       fetch(`/api/public/my-access?${query.toString()}`, { signal: controller.signal })
@@ -219,7 +221,7 @@ export function PublicRequestForm({
       controller.abort();
       clearTimeout(timer);
     };
-  }, [isRoleChange, requesterCompanyId, requester.employeeId, requester.email]);
+  }, [isRoleChange, requestedForCompanyId, requestedFor.employeeId, requestedFor.email]);
 
   const [values, setValues] = useState<Record<string, string | string[]>>(() => {
     const initial: Record<string, string | string[]> = {};
@@ -321,7 +323,7 @@ export function PublicRequestForm({
     }
     // Checkout and role change carry their own dedicated fields, validated
     // above; the generic item rows below do not apply to them.
-    if (!isSelfService) items.forEach((item, index) => {
+    if (!isCheckout && !isRoleChange) items.forEach((item, index) => {
       const rowMode = allowsMixedItems ? (item.rowType ?? "APPLICATION") : itemMode;
       if (rowMode === "APPLICATION" && !item.applicationId) {
         nextErrors[`item-${index}`] = "Select an application.";
@@ -629,8 +631,9 @@ export function PublicRequestForm({
           <CardHeader>
             <CardTitle>Access to change</CardTitle>
             <CardDescription>
-              Pick the application access you already hold, then set the new role or change the
-              request fields. Only access on record for you can be changed here.
+              Pick the application access the employee already holds, then set the new role or
+              change the request fields. Only access on record for that employee can be changed
+              here.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -638,7 +641,8 @@ export function PublicRequestForm({
               <Label htmlFor="role-change-access" required>Application access</Label>
               {myAccess.length === 0 ? (
                 <p className="rounded-md border border-dashed border-input px-3 py-2 text-sm text-muted-foreground">
-                  Enter your company and employee ID above and the access you hold will appear here.
+                  Enter the employee&apos;s company and ID above and the access they hold will
+                  appear here.
                 </p>
               ) : (
                 <Combobox

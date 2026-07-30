@@ -114,8 +114,7 @@ export async function submitPublicRequest(
    * approval step, not who typed the request, and requiring a second person to
    * raise it would make the form unusable for its actual purpose.
    */
-  const isSelfServiceKind =
-    form.requestType.kind === "ASSET_CHECKOUT" || form.requestType.kind === "ROLE_CHANGE";
+  const isSelfServiceKind = form.requestType.kind === "ASSET_CHECKOUT";
   const sameEmployee =
     requesterCompany.id === requestedForCompany.id &&
     input.requesterEmployeeId.trim().toLowerCase() ===
