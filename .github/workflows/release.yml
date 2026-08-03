@@ -35,6 +35,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The Next.js production build is memory-hungry; add swap so it does not
+      # get OOM-killed on the standard runner.
+      - name: Add swap space
+        if: matrix.image == 'axivo-web'
+        run: |
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+
       # Derive the version from the tag (push) or the manual input.
       - name: Resolve version
         id: ver
