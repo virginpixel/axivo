@@ -14,5 +14,7 @@ docs
 README.md
 tests
 deploy
+# ...but the agent image is built from this one file in deploy/.
+!deploy/agent.mjs
 docker-compose.yml
 Dockerfile

@@ -2,8 +2,12 @@
 # that performs the one-click update. Runs privileged (Docker socket) but is
 # only reachable from the web container on the internal network and is secret
 # gated.
+# docker:27-cli already bundles the Compose v2 plugin; we only add Node.
 FROM docker:27-cli
-RUN apk add --no-cache nodejs docker-cli-compose
+RUN apk add --no-cache nodejs
 COPY deploy/agent.mjs /agent.mjs
 EXPOSE 8099
+# The base image's entrypoint wraps commands with `docker`; reset it so the
+# Node agent runs directly.
+ENTRYPOINT []
 CMD ["node", "/agent.mjs"]
