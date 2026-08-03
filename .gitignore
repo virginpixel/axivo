@@ -19,8 +19,10 @@ dist/
 # Prisma
 prisma/*.db
 
-# Storage (uploaded/generated files live outside web root)
-storage/
+# Storage (uploaded/generated files live outside web root).
+# Anchored to the repo root so it does NOT also ignore the source directory
+# src/shared/storage/ (an unanchored "storage/" matches it at any depth).
+/storage/
 
 # Logs
 logs/
