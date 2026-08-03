@@ -55,7 +55,7 @@ log "Installing Axivo ${VERSION}"
 # --- Fetch deploy assets (compose + nginx config) at the chosen ref -------
 mkdir -p "$INSTALL_DIR"
 RAW="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REF}"
-for f in "deploy/${COMPOSE}" "deploy/nginx.conf" "deploy/proxy_params_axivo"; do
+for f in "deploy/${COMPOSE}" "deploy/Caddyfile"; do
   log "Fetching ${f}"
   curl -fsSL "${RAW}/${f}" -o "${INSTALL_DIR}/$(basename "$f")" \
     || die "Could not download ${f} from ${REF}. Is the repo public and the ref valid?"

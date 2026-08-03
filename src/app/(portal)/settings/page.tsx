@@ -16,7 +16,7 @@ import {
   UploadSettingsForm,
   ForceLogoutButton,
 } from "./settings-forms";
-import { LogoUploadForm, TimezoneForm, AssetCategoryToggle, CatalogSection, GeneratedLogosForm, RequestFormLogosForm, PublicBaseUrlForm } from "./settings-catalogs";
+import { LogoUploadForm, TimezoneForm, AssetCategoryToggle, CatalogSection, GeneratedLogosForm, RequestFormLogosForm } from "./settings-catalogs";
 import {
   ManufacturerDialog, ManufacturerToggle,
   VendorDialog, VendorToggle,
@@ -535,7 +535,7 @@ async function GeneralTab({ canManage }: { canManage: boolean }) {
     getSetting<{ systemName: string; primaryColor: string; secondaryColor: string; logoStorageKey?: string }>(
       SETTING_KEYS.BRANDING,
     ),
-    getSetting<{ defaultTimezone?: string; publicBaseUrl?: string }>(SETTING_KEYS.GENERAL),
+    getSetting<{ defaultTimezone?: string }>(SETTING_KEYS.GENERAL),
     getSetting<{ enabled: boolean; message: string }>(SETTING_KEYS.MAINTENANCE_MODE),
     getSetting<number>(SETTING_KEYS.UPLOAD_MAX_MB),
     getSetting<string[]>(SETTING_KEYS.UPLOAD_ALLOWED_TYPES),
@@ -549,7 +549,6 @@ async function GeneralTab({ canManage }: { canManage: boolean }) {
   });
   const timezones: string[] = (Intl as unknown as { supportedValuesOf?: (key: string) => string[] })
     .supportedValuesOf?.("timeZone") ?? ["UTC"];
-  const appUrlEnv = process.env.APP_URL ?? "";
   return (
     <div className="grid gap-5 lg:grid-cols-2">
       <div className="space-y-5">
@@ -568,9 +567,6 @@ async function GeneralTab({ canManage }: { canManage: boolean }) {
       <div className="space-y-5">
         {canManage ? (
           <TimezoneForm current={general.defaultTimezone ?? "UTC"} timezones={timezones} />
-        ) : null}
-        {canManage ? (
-          <PublicBaseUrlForm current={general.publicBaseUrl ?? ""} envValue={appUrlEnv} />
         ) : null}
         <MaintenanceForm current={maintenance} readOnly={!canManage} />
         <UploadSettingsForm current={{ maxMb: uploadMaxMb, allowedTypes }} readOnly={!canManage} />

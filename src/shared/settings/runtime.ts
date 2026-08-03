@@ -14,10 +14,12 @@ let loadedAt = 0;
 let inflight: Promise<void> | null = null;
 
 async function load(): Promise<void> {
-  const general = await getSetting<{ defaultTimezone?: string; publicBaseUrl?: string }>(SETTING_KEYS.GENERAL);
+  const general = await getSetting<{ defaultTimezone?: string }>(SETTING_KEYS.GENERAL);
   setAppTimeZone(general.defaultTimezone?.trim() || "UTC");
-  // A configured public base URL wins over the deployment env var.
-  setAppBaseUrl(general.publicBaseUrl?.trim() || env().APP_URL);
+  // The base URL is fixed by the deployment (APP_URL, set at install and
+  // switched to the public hostname when the tunnel is enabled), not editable
+  // in-app: a wrong value here would break every emailed link.
+  setAppBaseUrl(env().APP_URL);
   loadedAt = Date.now();
 }
 

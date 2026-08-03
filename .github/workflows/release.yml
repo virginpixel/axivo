@@ -22,10 +22,15 @@ jobs:
     strategy:
       matrix:
         include:
-          - target: web
+          - dockerfile: Dockerfile
+            target: web
             image: axivo-web
-          - target: worker
+          - dockerfile: Dockerfile
+            target: worker
             image: axivo-worker
+          - dockerfile: Dockerfile.caddy
+            target: ""
+            image: axivo-caddy
     steps:
       - uses: actions/checkout@v4
 
@@ -53,6 +58,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ${{ matrix.dockerfile }}
           target: ${{ matrix.target }}
           push: true
           build-args: |

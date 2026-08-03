@@ -1,0 +1,38 @@
+# Axivo edge proxy - HTTPS variant (used once a domain + Cloudflare token are
+# configured). The in-app tunnel setup writes this as the live Caddyfile with
+# the two env vars populated, then reloads Caddy. It obtains a real Let's
+# Encrypt certificate via the Cloudflare DNS-01 challenge - no ports need to be
+# open to the internet - so the same hostname is trusted on the LAN (via a
+# local DNS override) and over the Cloudflare tunnel.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$AXIVO_DOMAIN} {
+	encode zstd gzip
+
+	tls {
+		dns cloudflare {$CLOUDFLARE_API_TOKEN}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Frame-Options SAMEORIGIN
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	request_body {
+		max_size 30MB
+	}
+
+	reverse_proxy web:3000
+}
+
+# Redirect plain HTTP to HTTPS on the LAN.
+:80 {
+	redir https://{$AXIVO_DOMAIN}{uri} permanent
+}

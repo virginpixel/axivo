@@ -1,0 +1,9 @@
+# Axivo edge proxy: Caddy with the Cloudflare DNS plugin baked in, so that when
+# a customer connects their domain we can obtain a real Let's Encrypt cert via
+# the DNS-01 challenge (no exposed ports) and serve trusted HTTPS on the LAN.
+# In the default install Caddy simply serves plain HTTP.
+FROM caddy:2-builder AS builder
+RUN xcaddy build --with github.com/caddy-dns/cloudflare
+
+FROM caddy:2-alpine
+COPY --from=builder /usr/bin/caddy /usr/bin/caddy

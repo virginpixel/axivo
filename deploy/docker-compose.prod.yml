@@ -15,8 +15,10 @@
 name: axivo
 
 services:
-  nginx:
-    image: nginx:1.27-alpine
+  # Edge proxy. Serves plain HTTP by default; the in-app tunnel setup swaps in
+  # Caddyfile.https and reloads to obtain a real cert via Cloudflare DNS-01.
+  caddy:
+    image: ghcr.io/virginpixel/axivo-caddy:${AXIVO_VERSION:-latest}
     restart: unless-stopped
     depends_on:
       web:
@@ -24,11 +26,15 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      # Populated only when HTTPS is enabled; ignored by the HTTP Caddyfile.
+      AXIVO_DOMAIN: ${AXIVO_DOMAIN:-}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
     volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./proxy_params_axivo:/etc/nginx/proxy_params_axivo:ro
-      # TLS (self-signed or Let's Encrypt) is layered on in a later phase.
-      # - ./certs:/etc/nginx/certs:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
     networks: [frontend]
 
   web:
@@ -122,6 +128,8 @@ volumes:
   pgdata:
   redisdata:
   storage:
+  caddydata:
+  caddyconfig:
 
 networks:
   frontend:

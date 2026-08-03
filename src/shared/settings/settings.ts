@@ -99,8 +99,6 @@ const DEFAULTS: Record<string, unknown> = {
     defaultCurrency: "USD",
     dateFormat: "yyyy-MM-dd",
     timeFormat: "HH:mm",
-    /** Overrides APP_URL for links in emails and public forms; empty uses env. */
-    publicBaseUrl: "",
   },
 };
 

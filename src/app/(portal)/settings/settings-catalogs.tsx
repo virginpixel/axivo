@@ -15,7 +15,7 @@ import {
 } from "@/modules/settings/actions";
 import { Trash2, Pencil } from "lucide-react";
 import { setAssetCategoryActiveAction } from "@/modules/assets/actions";
-import { setSettingTimezoneAction, setPublicBaseUrlAction } from "@/modules/settings/general-actions";
+import { setSettingTimezoneAction } from "@/modules/settings/general-actions";
 import { useAction } from "@/shared/ui/use-action";
 import type { ActionResult } from "@/shared/errors";
 import { Button } from "@/shared/ui/button";
@@ -273,47 +273,6 @@ export function AssetCategoryToggle({ id, isActive }: { id: string; isActive: bo
     >
       <Power className={`h-4 w-4 ${isActive ? "text-success" : "text-muted-foreground"}`} />
     </Button>
-  );
-}
-
-/** Public base URL used for links in emails and public request forms. */
-export function PublicBaseUrlForm({ current, envValue }: { current: string; envValue: string }) {
-  const { run, loading } = useAction();
-  const [value, setValue] = useState(current);
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Public base URL</CardTitle>
-        <CardDescription>
-          The address people reach Axivo on. Used for links in emails and for public request form links.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="max-w-md">
-          <Label htmlFor="public-base-url">Base URL</Label>
-          <Input
-            id="public-base-url"
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-            placeholder={envValue || "http://127.0.0.1:8080"}
-          />
-          <HelperText>
-            Include the protocol and port, for example http://127.0.0.1:8080. Leave as configured to keep using the
-            deployment default ({envValue || "not set"}).
-          </HelperText>
-        </div>
-        <div className="mt-4 flex justify-start">
-          <Button
-            size="sm"
-            loading={loading}
-            disabled={!value.trim() || value.trim() === current}
-            onClick={() => run(() => setPublicBaseUrlAction(value.trim()), { successMessage: "Public base URL saved." })}
-          >
-            Save base URL
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 

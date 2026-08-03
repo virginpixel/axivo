@@ -1,0 +1,34 @@
+# Axivo edge proxy - default (plain HTTP on the LAN).
+#
+# The self-host install serves HTTP by default. When a customer connects a
+# domain + Cloudflare token, the tunnel setup swaps this file for the HTTPS
+# variant (see Caddyfile.https.example) and reloads Caddy, which then obtains a
+# real Let's Encrypt certificate via DNS-01 and serves trusted HTTPS.
+#
+# Ports/headers/limits mirror the previous nginx edge. Rate limiting is left to
+# the application's own per-IP business limits on the public endpoints.
+
+:80 {
+	encode zstd gzip
+
+	# Security headers (the app also sets these; kept here so assets served
+	# straight through are covered). SAMEORIGIN allows first-party PDF previews.
+	header {
+		X-Frame-Options SAMEORIGIN
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	# Match the previous 30 MB upload ceiling.
+	request_body {
+		max_size 30MB
+	}
+
+	# Caddy preserves the client Host (with port, needed for Next.js Server
+	# Action origin checks) and sets X-Forwarded-For/Proto automatically. It
+	# also re-resolves the "web" upstream, so a rebuilt web container is picked
+	# up without restarting the proxy.
+	reverse_proxy web:3000
+}
