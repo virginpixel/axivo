@@ -4,7 +4,7 @@ import { cache } from "react";
 import { db } from "@/shared/db";
 import { randomToken, sha256 } from "@/shared/crypto/encryption";
 import { getSetting, SETTING_KEYS } from "@/shared/settings/settings";
-import { isProduction } from "@/shared/env";
+import { publicBaseUrl } from "@/shared/settings/runtime";
 import type { Permission } from "@/shared/auth/permissions";
 
 /**
@@ -67,10 +67,16 @@ export async function createSession(systemUserId: string): Promise<string> {
     },
   });
 
+  // Only mark the cookie Secure when the deployment is actually served over
+  // HTTPS. A self-host install defaults to plain HTTP on the LAN, where a
+  // Secure cookie would be dropped and sign-in would silently fail; once the
+  // site is fronted by HTTPS (e.g. the Cloudflare tunnel) the base URL becomes
+  // https and the cookie is hardened automatically.
+  const secure = (await publicBaseUrl()).startsWith("https");
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: isProduction(),
+    secure,
     sameSite: "lax",
     path: "/",
     maxAge: cookieMaxAge(absoluteHours),

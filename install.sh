@@ -79,14 +79,12 @@ ENCRYPTION_KEY="${ENCRYPTION_KEY:-$(gen)}"
 TOKEN_SIGNING_KEY="${TOKEN_SIGNING_KEY:-$(gen)}"
 
 # --- Prompt for host details (only on a fresh install) --------------------
+# No administrator is seeded: the first person to open the site creates the
+# organization and the founding admin through the setup screen.
 DEFAULT_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 if [ "$FRESH_INSTALL" -eq 1 ]; then
   read -rp "Hostname or IP to access Axivo at [${DEFAULT_IP}]: " AXIVO_HOST </dev/tty || true
   AXIVO_HOST="${AXIVO_HOST:-$DEFAULT_IP}"
-  read -rp "First administrator email [admin@example.com]: " SEED_ADMIN_EMAIL </dev/tty || true
-  SEED_ADMIN_EMAIL="${SEED_ADMIN_EMAIL:-admin@example.com}"
-  SEED_ADMIN_USERNAME="admin"
-  SEED_ADMIN_PASSWORD="$(openssl rand -base64 12)"
 else
   # Keep whatever the previous .env had.
   AXIVO_HOST="${AXIVO_HOST:-${APP_HOST:-$DEFAULT_IP}}"
@@ -116,15 +114,6 @@ TOKEN_SIGNING_KEY=${TOKEN_SIGNING_KEY}
 STORAGE_PATH=/var/lib/axivo/storage
 EOF
 
-if [ "$FRESH_INSTALL" -eq 1 ]; then
-  cat >> .env <<EOF
-
-SEED_ADMIN_USERNAME=${SEED_ADMIN_USERNAME}
-SEED_ADMIN_EMAIL=${SEED_ADMIN_EMAIL}
-SEED_ADMIN_PASSWORD=${SEED_ADMIN_PASSWORD}
-EOF
-fi
-
 # --- Pull and start -------------------------------------------------------
 log "Pulling images ..."
 docker compose -f "$COMPOSE" pull
@@ -134,7 +123,7 @@ docker compose -f "$COMPOSE" up -d
 echo
 log "Axivo is starting at: ${APP_URL}"
 if [ "$FRESH_INSTALL" -eq 1 ]; then
-  echo "    First sign-in:  ${SEED_ADMIN_USERNAME} / ${SEED_ADMIN_PASSWORD}"
-  echo "    (Change this password immediately after signing in.)"
+  echo "    Open that address in a browser to create your organization and the"
+  echo "    first administrator account."
 fi
 echo "    Install dir:    ${INSTALL_DIR}"

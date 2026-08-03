@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/shared/auth/session";
 import { getSetting, SETTING_KEYS } from "@/shared/settings/settings";
+import { isFirstRun } from "@/modules/setup/service";
 import { LoginForm } from "./login-form";
 
 export const metadata = { title: "Sign in" };
@@ -8,6 +9,9 @@ export const metadata = { title: "Sign in" };
 export default async function LoginPage() {
   const user = await getCurrentUser();
   if (user) redirect("/dashboard");
+  // A brand-new installation has no administrator yet: send the first visitor
+  // to the one-time setup screen instead of an unusable sign-in form.
+  if (await isFirstRun()) redirect("/setup");
   const branding = await getSetting<{ systemName?: string; logoStorageKey?: string }>(
     SETTING_KEYS.BRANDING,
   );

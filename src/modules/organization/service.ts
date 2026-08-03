@@ -1,6 +1,7 @@
 import { db } from "@/shared/db";
 import { recordAudit, diffRecords, type AuditContext } from "@/shared/audit/audit";
 import { BusinessRuleError, NotFoundError, ValidationError } from "@/shared/errors";
+import { provisionCompanyDefaults } from "./provisioning";
 import type {
   CompanyInput,
   DepartmentInput,
@@ -37,24 +38,10 @@ export async function createCompany(context: AuditContext, input: CompanyInput) 
     const company = await tx.company.create({
       data: { ...input, createdById: context.actorUserId ?? null },
     });
-    // Standard request types are provisioned automatically (Asset Request /
-    // Application Access) so forms can be built without extra setup.
-    await tx.requestType.createMany({
-      data: [
-        {
-          companyId: company.id,
-          name: "Application Access",
-          kind: "APPLICATION_ACCESS",
-          description: "Request access to business applications.",
-        },
-        {
-          companyId: company.id,
-          name: "Asset Request",
-          kind: "ASSET_REQUEST",
-          description: "Request company assets such as laptops and phones.",
-        },
-      ],
-    });
+    // Standard request types and document categories are provisioned
+    // automatically so forms can be built and documents filed without extra
+    // setup. Shared with the first-run setup so the two never drift.
+    await provisionCompanyDefaults(tx, company.id);
     await recordAudit(
       { ...context, companyId: company.id },
       {
