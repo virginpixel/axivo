@@ -77,6 +77,7 @@ POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(gen)}"
 SESSION_SECRET="${SESSION_SECRET:-$(gen)}"
 ENCRYPTION_KEY="${ENCRYPTION_KEY:-$(gen)}"
 TOKEN_SIGNING_KEY="${TOKEN_SIGNING_KEY:-$(gen)}"
+AGENT_SECRET="${AGENT_SECRET:-$(gen)}"
 
 # --- Prompt for host details (only on a fresh install) --------------------
 # No administrator is seeded: the first person to open the site creates the
@@ -112,6 +113,11 @@ ENCRYPTION_KEY=${ENCRYPTION_KEY}
 TOKEN_SIGNING_KEY=${TOKEN_SIGNING_KEY}
 
 STORAGE_PATH=/var/lib/axivo/storage
+
+# Update agent (one-click in-app updates). AXIVO_INSTALL_DIR must match where
+# this file lives so the agent can run docker compose against this project.
+AGENT_SECRET=${AGENT_SECRET}
+AXIVO_INSTALL_DIR=${INSTALL_DIR}
 EOF
 
 # --- Pull and start -------------------------------------------------------

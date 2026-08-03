@@ -45,6 +45,9 @@ services:
       DATABASE_URL: postgresql://axivo:${POSTGRES_PASSWORD}@postgres:5432/axivo?schema=public
       REDIS_URL: redis://redis:6379
       STORAGE_PATH: /var/lib/axivo/storage
+      # Reach the update agent over the internal network with the shared secret.
+      AGENT_URL: http://agent:8099
+      AGENT_SECRET: ${AGENT_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -123,6 +126,21 @@ services:
       timeout: 5s
       retries: 10
     networks: [backend]
+
+  # Privileged update helper. Reachable only from the web container on the
+  # internal network, secret-gated. Mounts the Docker socket and the install
+  # directory so it can run `docker compose` against this same project. Runs the
+  # database backup + pull + recreate on a one-click update.
+  agent:
+    image: ghcr.io/virginpixel/axivo-agent:${AXIVO_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      AGENT_SECRET: ${AGENT_SECRET:-}
+      AXIVO_INSTALL_DIR: /opt/axivo
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${AXIVO_INSTALL_DIR:-/opt/axivo}:/opt/axivo
+    networks: [frontend]
 
 volumes:
   pgdata:

@@ -1,0 +1,9 @@
+# Axivo host agent: the Docker CLI + Compose plugin plus a tiny Node service
+# that performs the one-click update. Runs privileged (Docker socket) but is
+# only reachable from the web container on the internal network and is secret
+# gated.
+FROM docker:27-cli
+RUN apk add --no-cache nodejs docker-cli-compose
+COPY deploy/agent.mjs /agent.mjs
+EXPOSE 8099
+CMD ["node", "/agent.mjs"]

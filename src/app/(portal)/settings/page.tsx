@@ -17,6 +17,7 @@ import {
   ForceLogoutButton,
 } from "./settings-forms";
 import { LogoUploadForm, TimezoneForm, AssetCategoryToggle, CatalogSection, GeneratedLogosForm, RequestFormLogosForm } from "./settings-catalogs";
+import { SoftwareUpdateForm } from "./software-update";
 import {
   ManufacturerDialog, ManufacturerToggle,
   VendorDialog, VendorToggle,
@@ -567,6 +568,12 @@ async function GeneralTab({ canManage }: { canManage: boolean }) {
       <div className="space-y-5">
         {canManage ? (
           <TimezoneForm current={general.defaultTimezone ?? "UTC"} timezones={timezones} />
+        ) : null}
+        {canManage ? (
+          <SoftwareUpdateForm
+            currentVersion={process.env.AXIVO_VERSION || "dev"}
+            updaterAvailable={!!process.env.AGENT_SECRET}
+          />
         ) : null}
         <MaintenanceForm current={maintenance} readOnly={!canManage} />
         <UploadSettingsForm current={{ maxMb: uploadMaxMb, allowedTypes }} readOnly={!canManage} />
