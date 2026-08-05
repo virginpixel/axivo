@@ -9,10 +9,11 @@ export const metadata = { title: "Submit a request" };
 /**
  * Public request portal, served at the site root (SDS Doc 22). Requesters are
  * the largest audience by far, so "/" is theirs; staff reach the portal through
- * /login. The landing page is a company chooser: pick a company (or the
- * everyone-forms) to see its request forms. Selection is carried in the "c"
- * query param so no route can collide with a form slug at /r/<slug>. Individual
- * forms stay at /r/<slug> so already-emailed links keep working.
+ * /login directly. When more than one company publishes forms the landing page
+ * is a company chooser (pick a company to see its forms); with a single company
+ * the forms are listed straight away. Selection rides in the "c" query param so
+ * it can never collide with a form slug at /r/<slug>, where the forms live so
+ * already-emailed links keep working.
  */
 export default async function PublicFormsIndexPage({
   searchParams,
@@ -32,7 +33,6 @@ export default async function PublicFormsIndexPage({
     getSetting<{ systemName?: string; logoStorageKey?: string }>(SETTING_KEYS.BRANDING),
   ]);
 
-  // Forms that belong to no company serve everybody; they get their own group.
   const allCompanyForms = forms.filter((form) => form.company === null);
   const byCompany = new Map<string, Group>();
   for (const form of forms) {
@@ -44,20 +44,25 @@ export default async function PublicFormsIndexPage({
     byCompany.set(form.company.id, entry);
   }
 
+  // The chooser only earns its place when more than one company has forms.
+  // Otherwise the forms are shown straight away, as they were before.
+  const showChooser = byCompany.size > 1;
+
   const groups: Group[] = [];
   if (allCompanyForms.length > 0) {
     groups.push({ id: "all", name: "Available to everyone", forms: allCompanyForms });
   }
   groups.push(...byCompany.values());
 
-  // With a single group there is nothing to choose, so skip straight to its
-  // forms. Otherwise the landing view is the chooser and "c" selects a group.
-  const singleGroup = groups.length === 1;
-  const activeGroup = singleGroup
-    ? groups[0]
-    : selected
-      ? (groups.find((group) => group.id === selected) ?? null)
-      : null;
+  const activeGroup =
+    showChooser && selected ? (groups.find((group) => group.id === selected) ?? null) : null;
+
+  const subtitle =
+    forms.length === 0
+      ? "No request forms are published yet."
+      : showChooser && !activeGroup
+        ? "Select your company to see its request forms."
+        : "Choose a form below.";
 
   return (
     <main className="min-h-screen bg-background py-10">
@@ -70,11 +75,7 @@ export default async function PublicFormsIndexPage({
           <p className="label-caps text-primary">{branding.systemName ?? "Axivo"}</p>
           <h1 className="mt-1.5 text-3xl font-semibold">Submit a request</h1>
           <p className="mx-auto mt-2 max-w-[52ch] text-sm leading-relaxed text-muted-foreground">
-            {forms.length === 0
-              ? "No request forms are published yet."
-              : activeGroup
-                ? "Choose a form below. No sign-in is required — you will receive updates by email."
-                : "Select your company to see its request forms. No sign-in is required."}
+            {subtitle}
           </p>
         </div>
 
@@ -82,16 +83,22 @@ export default async function PublicFormsIndexPage({
           <div className="rounded-lg border bg-card p-10 text-center text-sm text-muted-foreground">
             No request forms are published yet. Please contact your IT department.
           </div>
+        ) : !showChooser ? (
+          <ul className="space-y-2">
+            {forms.map((form) => (
+              <li key={form.id}>
+                <FormLink form={form} />
+              </li>
+            ))}
+          </ul>
         ) : activeGroup ? (
           <div className="space-y-4">
-            {!singleGroup ? (
-              <Link
-                href="/"
-                className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-              >
-                <ArrowLeft className="h-4 w-4" /> All companies
-              </Link>
-            ) : null}
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" /> All companies
+            </Link>
             <h2 className="text-lg font-semibold">{activeGroup.name}</h2>
             <ul className="space-y-2">
               {activeGroup.forms.map((form) => (
@@ -124,10 +131,6 @@ export default async function PublicFormsIndexPage({
             ))}
           </ul>
         )}
-
-        <p className="mt-8 text-center text-xs text-muted-foreground">
-          <Link href="/login" className="hover:underline">Staff sign in</Link>
-        </p>
       </div>
     </main>
   );
