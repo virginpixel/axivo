@@ -125,3 +125,19 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+ * iOS Safari zooms the page whenever a focused field's font is under 16px.
+ * The console uses a denser 14px on desktop, so on touch devices we bump every
+ * native text control to 16px - tapping a field no longer zooms, and this
+ * covers the admin console and the public request forms alike. Desktop keeps
+ * its 14px. (Font size, not a `maximum-scale` viewport lock, so pinch-zoom
+ * still works.)
+ */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
