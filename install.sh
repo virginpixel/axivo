@@ -52,14 +52,22 @@ else
 fi
 log "Installing Axivo ${VERSION}"
 
-# --- Fetch deploy assets (compose + nginx config) at the chosen ref -------
+# --- Fetch deploy assets (compose + proxy config) at the chosen ref -------
 mkdir -p "$INSTALL_DIR"
 RAW="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REF}"
-for f in "deploy/${COMPOSE}" "deploy/Caddyfile"; do
-  log "Fetching ${f}"
-  curl -fsSL "${RAW}/${f}" -o "${INSTALL_DIR}/$(basename "$f")" \
-    || die "Could not download ${f} from ${REF}. Is the repo public and the ref valid?"
-done
+log "Fetching deploy/${COMPOSE}"
+curl -fsSL "${RAW}/deploy/${COMPOSE}" -o "${INSTALL_DIR}/${COMPOSE}" \
+  || die "Could not download the compose file from ${REF}. Is the repo public and the ref valid?"
+# Two proxy configs: the HTTP default and the HTTPS (Cloudflare DNS-01) variant.
+# The in-app tunnel setup swaps the active "Caddyfile" between them via the agent.
+log "Fetching proxy configs"
+curl -fsSL "${RAW}/deploy/Caddyfile" -o "${INSTALL_DIR}/Caddyfile.http" \
+  || die "Could not download Caddyfile."
+curl -fsSL "${RAW}/deploy/Caddyfile.https.example" -o "${INSTALL_DIR}/Caddyfile.https" \
+  || die "Could not download Caddyfile.https.example."
+# Activate HTTP on a fresh install; leave an existing active config alone so a
+# re-run doesn't clobber an enabled tunnel.
+[ -f "${INSTALL_DIR}/Caddyfile" ] || cp "${INSTALL_DIR}/Caddyfile.http" "${INSTALL_DIR}/Caddyfile"
 
 cd "$INSTALL_DIR"
 

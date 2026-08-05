@@ -18,6 +18,8 @@ import {
 } from "./settings-forms";
 import { LogoUploadForm, TimezoneForm, AssetCategoryToggle, CatalogSection, GeneratedLogosForm, RequestFormLogosForm } from "./settings-catalogs";
 import { SoftwareUpdateForm } from "./software-update";
+import { TunnelAccessForm } from "./tunnel-access";
+import { getTunnelStatus } from "@/modules/tunnel/service";
 import {
   ManufacturerDialog, ManufacturerToggle,
   VendorDialog, VendorToggle,
@@ -532,7 +534,7 @@ async function LocationsTab({
 }
 
 async function GeneralTab({ canManage }: { canManage: boolean }) {
-  const [branding, general, maintenance, uploadMaxMb, allowedTypes, generatedLogos, requestFormLogos] = await Promise.all([
+  const [branding, general, maintenance, uploadMaxMb, allowedTypes, generatedLogos, requestFormLogos, tunnel] = await Promise.all([
     getSetting<{ systemName: string; primaryColor: string; secondaryColor: string; logoStorageKey?: string }>(
       SETTING_KEYS.BRANDING,
     ),
@@ -542,6 +544,7 @@ async function GeneralTab({ canManage }: { canManage: boolean }) {
     getSetting<string[]>(SETTING_KEYS.UPLOAD_ALLOWED_TYPES),
     getSetting<Record<string, unknown>>(SETTING_KEYS.GENERATED_LOGOS),
     getSetting<Record<string, unknown>>(SETTING_KEYS.REQUEST_FORM_LOGOS),
+    getTunnelStatus(),
   ]);
   const logoPresent = (set: Record<string, unknown>) => ({
     left: !!(set.left as { storageKey?: string } | null)?.storageKey,
@@ -575,6 +578,7 @@ async function GeneralTab({ canManage }: { canManage: boolean }) {
             updaterAvailable={!!process.env.AGENT_SECRET}
           />
         ) : null}
+        {canManage ? <TunnelAccessForm status={tunnel} /> : null}
         <MaintenanceForm current={maintenance} readOnly={!canManage} />
         <UploadSettingsForm current={{ maxMb: uploadMaxMb, allowedTypes }} readOnly={!canManage} />
       </div>

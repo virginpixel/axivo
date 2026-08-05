@@ -50,6 +50,8 @@ export const SETTING_KEYS = {
   // System
   MAINTENANCE_MODE: "system.maintenanceMode",
   GENERAL: "system.general",
+  /** Cloudflare Tunnel remote-access state (secrets live in .env, not here). */
+  TUNNEL: "system.tunnel",
 } as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[keyof typeof SETTING_KEYS];
@@ -83,6 +85,7 @@ const DEFAULTS: Record<string, unknown> = {
   [SETTING_KEYS.CONTRACT_REMINDER_DAYS]: [60, 30, 14, 7],
   [SETTING_KEYS.LICENSE_REMINDER_DAYS]: [60, 30, 14, 7],
   [SETTING_KEYS.MAINTENANCE_MODE]: { enabled: false, message: "" },
+  [SETTING_KEYS.TUNNEL]: { enabled: false, hostname: "" },
   [SETTING_KEYS.BRANDING]: {
     systemName: "Axivo",
     primaryColor: "#1d4ed8",

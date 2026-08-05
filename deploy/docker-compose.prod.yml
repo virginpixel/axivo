@@ -142,6 +142,17 @@ services:
       - ${AXIVO_INSTALL_DIR:-/opt/axivo}:/opt/axivo
     networks: [frontend]
 
+  # Cloudflare Tunnel connector for remote access. Only runs when the "tunnel"
+  # profile is active (the in-app tunnel setup starts it via the agent). It
+  # connects outbound to Cloudflare - no inbound ports - and forwards the public
+  # hostname to caddy per the tunnel's dashboard configuration.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    networks: [frontend]
+
 volumes:
   pgdata:
   redisdata:
