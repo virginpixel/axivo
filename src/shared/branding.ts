@@ -1,8 +1,13 @@
 /**
- * Runtime branding helpers (SDS Doc 03 Ch2/9): configured brand colors
- * propagate across the application by overriding the design-token CSS
- * variables - layout, spacing and typography are never affected.
+ * Runtime branding helpers (SDS Doc 03 Ch2/9). The brand colors are fixed
+ * product constants (no longer administrator-configurable): they propagate
+ * across the application by overriding the design-token CSS variables - layout,
+ * spacing and typography are never affected.
  */
+
+/** Fixed brand colors. Applied everywhere (app shell, emails, generated PDFs). */
+export const BRAND_PRIMARY = "#232323";
+export const BRAND_SECONDARY = "#121212";
 
 /** Convert a #rrggbb hex color to the "H S% L%" triple used by the tokens. */
 export function hexToHslTriple(hex: string): string | null {
@@ -40,11 +45,15 @@ export interface BrandingConfig {
   secondaryColor?: string;
 }
 
-/** CSS-variable overrides applied to the app shell for configured brand colors. */
-export function brandingStyle(branding: BrandingConfig): Record<string, string> {
+/**
+ * CSS-variable overrides applied to the app shell for the fixed brand colors.
+ * The argument is accepted for backwards compatibility but the colors are now
+ * product constants, so stored/legacy values never change the theme.
+ */
+export function brandingStyle(_branding?: BrandingConfig): Record<string, string> {
   const style: Record<string, string> = {};
-  const primary = branding.primaryColor ? hexToHslTriple(branding.primaryColor) : null;
-  const secondary = branding.secondaryColor ? hexToHslTriple(branding.secondaryColor) : null;
+  const primary = hexToHslTriple(BRAND_PRIMARY);
+  const secondary = hexToHslTriple(BRAND_SECONDARY);
   if (primary) {
     style["--primary"] = primary;
     style["--ring"] = primary;

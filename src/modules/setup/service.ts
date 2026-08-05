@@ -20,12 +20,6 @@ export async function isFirstRun(): Promise<boolean> {
   return (await db.systemUser.count()) === 0;
 }
 
-/** A company code (letters/numbers only) derived from the organization name. */
-function deriveCompanyCode(name: string): string {
-  const code = name.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 12);
-  return code || "ORG";
-}
-
 /**
  * Create the organization, the first System Administrator and their person
  * record. Refuses once any user exists, so it cannot be used to mint extra
@@ -57,20 +51,46 @@ export async function completeSetup(input: SetupInput): Promise<{ systemUserId: 
       throw new BusinessRuleError("Setup has already been completed.");
     }
 
-    let code = deriveCompanyCode(input.organizationName);
-    if (await tx.company.findFirst({ where: { code } })) {
-      code = `${code}1`.slice(0, 20);
-    }
-
     const company = await tx.company.create({
-      data: { name: input.organizationName.trim(), code, timezone: "UTC", currency: "USD" },
+      data: {
+        name: input.organizationName.trim(),
+        timezone: input.timezone,
+        currency: "USD",
+      },
     });
     await provisionCompanyDefaults(tx, company.id);
+
+    // The org-wide display timezone is a global setting (Settings → General),
+    // so seed it from the setup choice too; the company row keeps its own copy.
+    const generalValue = {
+      defaultTimezone: input.timezone,
+      defaultCurrency: "USD",
+      dateFormat: "yyyy-MM-dd",
+      timeFormat: "HH:mm",
+    };
+    const existingGeneral = await tx.systemSetting.findFirst({
+      where: { key: SETTING_KEYS.GENERAL, scope: "GLOBAL" },
+    });
+    if (existingGeneral) {
+      await tx.systemSetting.update({
+        where: { id: existingGeneral.id },
+        data: { value: generalValue },
+      });
+    } else {
+      await tx.systemSetting.create({
+        data: {
+          key: SETTING_KEYS.GENERAL,
+          category: "system",
+          scope: "GLOBAL",
+          value: generalValue,
+        },
+      });
+    }
 
     const person = await tx.person.create({
       data: {
         companyId: company.id,
-        employeeId: "ADMIN-001",
+        employeeId: input.employeeId.trim(),
         firstName: input.firstName.trim(),
         lastName: input.lastName.trim(),
         email: input.email.trim(),

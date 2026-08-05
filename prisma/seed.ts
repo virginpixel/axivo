@@ -317,11 +317,14 @@ async function main(): Promise<void> {
       );
     } else {
       console.log("[seed] Bootstrapping initial company and System Administrator...");
-      const company = await prisma.company.upsert({
-        where: { code: "DEFAULT" },
-        create: { name: "Default Company", code: "DEFAULT", description: "Initial company created at installation. Rename it in Organization settings." },
-        update: {},
-      });
+      const company =
+        (await prisma.company.findFirst({ where: { name: "Default Company" } })) ??
+        (await prisma.company.create({
+          data: {
+            name: "Default Company",
+            description: "Initial company created at installation. Rename it in Organization settings.",
+          },
+        }));
       for (const categoryName of DOCUMENT_CATEGORIES) {
         await prisma.documentCategory.upsert({
           where: { companyId_name: { companyId: company.id, name: categoryName } },

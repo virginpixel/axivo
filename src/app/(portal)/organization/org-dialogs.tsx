@@ -39,7 +39,6 @@ export function CompanyDialog({
   company?: {
     id: string;
     name: string;
-    code: string;
     description: string | null;
   };
 }) {
@@ -47,7 +46,6 @@ export function CompanyDialog({
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     name: company?.name ?? "",
-    code: company?.code ?? "",
     description: company?.description ?? "",
   });
 
@@ -55,7 +53,6 @@ export function CompanyDialog({
     // Timezone and currency are global settings (Settings → General), not per company.
     const payload = {
       name: form.name,
-      code: form.code,
       description: form.description || undefined,
     };
     await run(
@@ -86,11 +83,6 @@ export function CompanyDialog({
             <Label htmlFor="company-name" required>Name</Label>
             <Input id="company-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             <FieldError message={fieldErrors.name} />
-          </div>
-          <div>
-            <Label htmlFor="company-code" required>Code</Label>
-            <Input id="company-code" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
-            <FieldError message={fieldErrors.code} />
           </div>
           <div>
             <Label htmlFor="company-description">Description</Label>

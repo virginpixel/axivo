@@ -11,6 +11,8 @@ export const setupSchema = z
       /^[A-Za-z0-9._-]+$/,
       "Username may contain only letters, numbers, dots, hyphens and underscores.",
     ),
+    employeeId: requiredText("Employee ID", 50),
+    timezone: requiredText("Timezone", 60),
     email: emailSchema,
     // Complexity is checked against the password policy in the service.
     password: z.string().min(1, "Password is required.").max(200),

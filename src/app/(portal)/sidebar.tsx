@@ -69,9 +69,11 @@ const NAV_ITEMS: NavItem[] = [
 export function Sidebar({
   permissions,
   systemName,
+  version,
 }: {
   permissions: string[];
   systemName: string;
+  version: string;
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -163,6 +165,11 @@ export function Sidebar({
           </Link>
         </div>
         {nav}
+        <div className="border-t border-rail-border px-4 py-2.5">
+          <span className="text-micro uppercase tracking-[0.11em] text-rail-muted/70">
+            {systemName} {version}
+          </span>
+        </div>
       </aside>
     </>
   );

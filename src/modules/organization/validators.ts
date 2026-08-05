@@ -6,10 +6,6 @@ import { uuidSchema, requiredText, optionalText } from "@/shared/validation/comm
 export const companySchema = z
   .object({
     name: requiredText("Company name"),
-    code: requiredText("Company code", 20).regex(
-      /^[A-Za-z0-9_-]+$/,
-      "Company code may contain only letters, numbers, hyphens and underscores.",
-    ),
     description: optionalText(),
     timezone: requiredText("Timezone", 60).default("UTC"),
     currency: requiredText("Currency", 10).default("USD"),

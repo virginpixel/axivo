@@ -16,6 +16,8 @@ export default async function SetupPage() {
     SETTING_KEYS.BRANDING,
   );
   const systemName = branding.systemName || "Axivo";
+  const timezones: string[] = (Intl as unknown as { supportedValuesOf?: (key: string) => string[] })
+    .supportedValuesOf?.("timeZone") ?? ["UTC"];
 
   return (
     <main className="flex min-h-screen flex-col lg:flex-row">
@@ -67,7 +69,7 @@ export default async function SetupPage() {
             </p>
           </div>
 
-          <SetupForm />
+          <SetupForm timezones={timezones} />
         </div>
       </section>
     </main>

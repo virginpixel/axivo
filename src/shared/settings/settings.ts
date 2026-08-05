@@ -88,8 +88,8 @@ const DEFAULTS: Record<string, unknown> = {
   [SETTING_KEYS.TUNNEL]: { enabled: false, hostname: "" },
   [SETTING_KEYS.BRANDING]: {
     systemName: "Axivo",
-    primaryColor: "#1d4ed8",
-    secondaryColor: "#0f172a",
+    primaryColor: "#232323",
+    secondaryColor: "#121212",
     loginLogoDocumentId: null,
     emailLogoDocumentId: null,
     pdfLogoDocumentIds: [],

@@ -21,14 +21,26 @@
 		-Server
 	}
 
-	# Match the previous 30 MB upload ceiling.
-	request_body {
-		max_size 30MB
-	}
-
 	# Caddy preserves the client Host (with port, needed for Next.js Server
 	# Action origin checks) and sets X-Forwarded-For/Proto automatically. It
 	# also re-resolves the "web" upstream, so a rebuilt web container is picked
 	# up without restarting the proxy.
-	reverse_proxy web:3000
+
+	# Data restore uploads a full .axivo backup (every document), so it needs a
+	# far larger body ceiling than ordinary uploads.
+	@backup_restore path /api/backup/restore
+	handle @backup_restore {
+		request_body {
+			max_size 2GB
+		}
+		reverse_proxy web:3000
+	}
+
+	# Everything else keeps the 30 MB upload ceiling.
+	handle {
+		request_body {
+			max_size 30MB
+		}
+		reverse_proxy web:3000
+	}
 }

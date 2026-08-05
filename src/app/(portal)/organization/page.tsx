@@ -119,7 +119,6 @@ export default async function OrganizationPage({
               initialSort={{ key: "name", dir: "asc" }}
               columns={[
                 { key: "name", label: "Name" },
-                { key: "code", label: "Code" },
                 { key: "status", label: "Status" },
                 { key: "actions", label: "Actions", sortable: false, align: "right" },
               ]}
@@ -130,7 +129,6 @@ export default async function OrganizationPage({
                   key: company.id,
                   cells: {
                     name: { sortValue: company.name, node: company.name, className: "font-medium" },
-                    code: { sortValue: company.code, node: company.code },
                     status: {
                       sortValue: company.isActive ? 0 : 1,
                       node: <StatusBadge status={company.isActive ? "ACTIVE" : "CANCELLED"} />,
@@ -142,7 +140,6 @@ export default async function OrganizationPage({
                             company={{
                               id: company.id,
                               name: company.name,
-                              code: company.code,
                               description: company.description,
                             }}
                           />

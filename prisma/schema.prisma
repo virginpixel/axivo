@@ -326,7 +326,6 @@ enum CatalogKind {
 model Company {
   id          String    @id @default(uuid()) @map("id") @db.Uuid
   name        String    @map("name")
-  code        String    @unique @map("code")
   description String?   @map("description")
   timezone    String    @default("UTC") @map("timezone")
   currency    String    @default("USD") @map("currency")

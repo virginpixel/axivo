@@ -57,7 +57,7 @@ describe("end-to-end request lifecycle", () => {
 
     // --- Organization setup (Doc 06) ---
     const company = await orgService.createCompany(actor, {
-      name: "Test Resort", code: "TR1", description: undefined, timezone: "UTC", currency: "USD",
+      name: "Test Resort", description: undefined, timezone: "UTC", currency: "USD",
     });
     const department = await orgService.createDepartment(actor, {
       companyId: company.id, name: "Front Office", description: undefined, headPersonIds: [],
@@ -333,7 +333,7 @@ describe("end-to-end request lifecycle", () => {
 
   it("prevents license over-allocation atomically (Doc 10 Ch4)", async () => {
     const licensesService = await import("@/modules/licenses/service");
-    const company = await db.company.findFirstOrThrow({ where: { code: "TR1" } });
+    const company = await db.company.findFirstOrThrow({ where: { name: "Test Resort" } });
     const application = await db.application.findFirstOrThrow();
     const [personA, personB] = await db.person.findMany({ where: { companyId: company.id }, take: 2 });
 
@@ -361,7 +361,7 @@ describe("end-to-end request lifecycle", () => {
 
   it("enforces single active asset assignment and lifecycle rules (Doc 11)", async () => {
     const assetsService = await import("@/modules/assets/service");
-    const company = await db.company.findFirstOrThrow({ where: { code: "TR1" } });
+    const company = await db.company.findFirstOrThrow({ where: { name: "Test Resort" } });
     const [personA, personB] = await db.person.findMany({ where: { companyId: company.id }, take: 2 });
 
     const category = await assetsService.createAssetCategory(actor, {

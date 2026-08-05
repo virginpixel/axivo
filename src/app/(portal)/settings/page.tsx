@@ -10,7 +10,6 @@ import { formatDateTime, fullName, cn } from "@/shared/utils";
 import {
   SecuritySettingsForm,
   SmtpSettingsForm,
-  BrandingForm,
   NotificationSettingsForm,
   MaintenanceForm,
   UploadSettingsForm,
@@ -20,6 +19,7 @@ import { LogoUploadForm, TimezoneForm, AssetCategoryToggle, CatalogSection, Gene
 import { SoftwareUpdateForm } from "./software-update";
 import { TunnelAccessForm } from "./tunnel-access";
 import { getTunnelStatus } from "@/modules/tunnel/service";
+import { BackupRestore } from "./backup-restore";
 import {
   ManufacturerDialog, ManufacturerToggle,
   VendorDialog, VendorToggle,
@@ -102,7 +102,12 @@ export default async function SettingsPage({
           {tab === "security" ? <SecurityTab canManage={canSecurity} /> : null}
           {tab === "email" ? <EmailTab canManage={canManage} /> : null}
           {tab === "notifications" ? <NotificationsTab canManage={canManage} /> : null}
-          {tab === "health" ? <HealthTab /> : null}
+          {tab === "health" ? (
+            <HealthTab
+              canBackup={user.permissions.has("settings.backup.manage")}
+              canRestore={user.systemRoleKey === "SYSTEM_ADMINISTRATOR"}
+            />
+          ) : null}
           {tab === "sessions" ? <SessionsTab canManage={canSecurity} currentSessionId={user.sessionId} /> : null}
         </div>
       </div>
@@ -556,14 +561,6 @@ async function GeneralTab({ canManage }: { canManage: boolean }) {
   return (
     <div className="grid gap-5 lg:grid-cols-2">
       <div className="space-y-5">
-        <BrandingForm
-          current={{
-            systemName: branding.systemName ?? "Axivo",
-            primaryColor: branding.primaryColor ?? "#1d4ed8",
-            secondaryColor: branding.secondaryColor ?? "#0f172a",
-          }}
-          readOnly={!canManage}
-        />
         {canManage ? <LogoUploadForm hasLogo={!!branding.logoStorageKey} /> : null}
         {canManage ? <RequestFormLogosForm present={logoPresent(requestFormLogos)} /> : null}
         {canManage ? <GeneratedLogosForm present={logoPresent(generatedLogos)} /> : null}
@@ -666,7 +663,7 @@ async function NotificationsTab({ canManage }: { canManage: boolean }) {
   );
 }
 
-async function HealthTab() {
+async function HealthTab({ canBackup, canRestore }: { canBackup: boolean; canRestore: boolean }) {
   // Health checks (SDS Doc 02 Ch12): DB, Redis, worker heartbeat, queues, storage.
   let databaseOk = false;
   try {
@@ -715,10 +712,11 @@ async function HealthTab() {
           hint={`${storageDocs._count} stored file version(s)`}
         />
       </div>
-      <p className="mt-4 text-xs text-muted-foreground">
-        Backups: run scheduled database dumps and file-storage snapshots from the host (see
-        docs/deployment.md). Restores are performed by System Administrators only and are audited.
-      </p>
+      {canBackup ? (
+        <div className="mt-6 max-w-xl">
+          <BackupRestore canRestore={canRestore} />
+        </div>
+      ) : null}
     </div>
   );
 }

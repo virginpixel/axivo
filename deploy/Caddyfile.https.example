@@ -25,11 +25,23 @@
 		-Server
 	}
 
-	request_body {
-		max_size 30MB
+	# Data restore uploads a full .axivo backup (every document), so it needs a
+	# far larger body ceiling than ordinary uploads.
+	@backup_restore path /api/backup/restore
+	handle @backup_restore {
+		request_body {
+			max_size 2GB
+		}
+		reverse_proxy web:3000
 	}
 
-	reverse_proxy web:3000
+	# Everything else keeps the 30 MB upload ceiling.
+	handle {
+		request_body {
+			max_size 30MB
+		}
+		reverse_proxy web:3000
+	}
 }
 
 # Redirect plain HTTP to HTTPS on the LAN.

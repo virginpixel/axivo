@@ -147,9 +147,9 @@ export async function getEmailChrome(): Promise<EmailChrome> {
   try {
     const { getSetting, SETTING_KEYS } = await import("@/shared/settings/settings");
     const { publicBaseUrl } = await import("@/shared/settings/runtime");
+    const { BRAND_PRIMARY } = await import("@/shared/branding");
     const branding = await getSetting<{
       systemName?: string;
-      primaryColor?: string;
       logoStorageKey?: string;
     }>(SETTING_KEYS.BRANDING);
     const baseUrl = await publicBaseUrl();
@@ -158,10 +158,11 @@ export async function getEmailChrome(): Promise<EmailChrome> {
       // configured public base URL in front of it.
       logoUrl: branding.logoStorageKey ? `${baseUrl}/api/branding/logo` : null,
       systemName: branding.systemName || "Axivo",
-      primaryColor: branding.primaryColor || "#1d4ed8",
+      // Brand color is a fixed product constant.
+      primaryColor: BRAND_PRIMARY,
     };
   } catch {
-    return { logoUrl: null, systemName: "Axivo", primaryColor: "#1d4ed8" };
+    return { logoUrl: null, systemName: "Axivo", primaryColor: "#232323" };
   }
 }
 

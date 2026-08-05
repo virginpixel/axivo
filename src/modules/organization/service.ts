@@ -26,14 +26,6 @@ const MODULE = "organization";
 // ---------------------------------------------------------------------------
 
 export async function createCompany(context: AuditContext, input: CompanyInput) {
-  const duplicate = await db.company.findFirst({
-    where: { code: { equals: input.code, mode: "insensitive" } },
-  });
-  if (duplicate) {
-    throw new ValidationError("Please correct the highlighted fields.", {
-      code: "This company code is already in use.",
-    });
-  }
   return db.$transaction(async (tx) => {
     const company = await tx.company.create({
       data: { ...input, createdById: context.actorUserId ?? null },
@@ -61,14 +53,6 @@ export async function createCompany(context: AuditContext, input: CompanyInput) 
 export async function updateCompany(context: AuditContext, id: string, input: CompanyInput) {
   const existing = await db.company.findFirst({ where: { id, deletedAt: null } });
   if (!existing) throw new NotFoundError("Company not found.");
-  const duplicate = await db.company.findFirst({
-    where: { code: { equals: input.code, mode: "insensitive" }, id: { not: id } },
-  });
-  if (duplicate) {
-    throw new ValidationError("Please correct the highlighted fields.", {
-      code: "This company code is already in use.",
-    });
-  }
   return db.$transaction(async (tx) => {
     const company = await tx.company.update({
       where: { id },
@@ -86,7 +70,7 @@ export async function updateCompany(context: AuditContext, id: string, input: Co
         fieldChanges: diffRecords(
           existing as unknown as Record<string, unknown>,
           company as unknown as Record<string, unknown>,
-          ["name", "code", "description", "timezone", "currency"],
+          ["name", "description", "timezone", "currency"],
         ),
       },
       tx,

@@ -4,15 +4,17 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { completeSetupAction } from "@/modules/setup/actions";
 import { Button } from "@/shared/ui/button";
-import { Input, Label, FieldError } from "@/shared/ui/input";
+import { Input, Label, FieldError, Select } from "@/shared/ui/input";
 
-export function SetupForm() {
+export function SetupForm({ timezones }: { timezones: string[] }) {
   const router = useRouter();
   const [values, setValues] = useState({
     organizationName: "",
     firstName: "",
     lastName: "",
     username: "",
+    employeeId: "",
+    timezone: timezones.includes("UTC") ? "UTC" : (timezones[0] ?? "UTC"),
     email: "",
     password: "",
     confirmPassword: "",
@@ -21,8 +23,10 @@ export function SetupForm() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
-  const set = (key: keyof typeof values) => (event: React.ChangeEvent<HTMLInputElement>) =>
-    setValues((current) => ({ ...current, [key]: event.target.value }));
+  const set =
+    (key: keyof typeof values) =>
+    (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+      setValues((current) => ({ ...current, [key]: event.target.value }));
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -82,6 +86,23 @@ export function SetupForm() {
         <Label htmlFor="username" required>Username</Label>
         <Input id="username" autoComplete="username" value={values.username} onChange={set("username")} aria-invalid={!!fieldErrors.username} />
         <FieldError message={fieldErrors.username} />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <Label htmlFor="employeeId" required>Employee ID</Label>
+          <Input id="employeeId" value={values.employeeId} onChange={set("employeeId")} aria-invalid={!!fieldErrors.employeeId} />
+          <FieldError message={fieldErrors.employeeId} />
+        </div>
+        <div>
+          <Label htmlFor="timezone" required>Timezone</Label>
+          <Select id="timezone" value={values.timezone} onChange={set("timezone")} aria-invalid={!!fieldErrors.timezone}>
+            {timezones.map((tz) => (
+              <option key={tz} value={tz}>{tz}</option>
+            ))}
+          </Select>
+          <FieldError message={fieldErrors.timezone} />
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">

@@ -157,13 +157,9 @@ async function loadGeneratedLogos(): Promise<{ left?: Buffer; center?: Buffer; r
 
 /** The configured brand colour, so generated documents match the portal. */
 async function loadBrandPrimaryColor(): Promise<string | null> {
-  try {
-    const { getSetting, SETTING_KEYS } = await import("@/shared/settings/settings");
-    const branding = await getSetting<{ primaryColor?: string }>(SETTING_KEYS.BRANDING);
-    return branding.primaryColor ?? null;
-  } catch {
-    return null;
-  }
+  // The brand color is a fixed product constant (Settings no longer exposes it).
+  const { BRAND_PRIMARY } = await import("@/shared/branding");
+  return BRAND_PRIMARY;
 }
 
 export async function createGeneratedPdf(

@@ -42,6 +42,7 @@ export default async function PortalLayout({ children }: { children: React.React
         <Sidebar
           permissions={Array.from(user.permissions)}
           systemName={branding.systemName || "Axivo"}
+          version={process.env.AXIVO_VERSION || "dev"}
         />
         <div className="flex min-w-0 flex-1 flex-col">
           <Header
