@@ -502,8 +502,8 @@ export function PublicRequestForm({
         <CardHeader>
           <CardTitle>Requested for</CardTitle>
           <CardDescription>
-            The person who will receive this access or equipment. This cannot be you: requests are
-            raised on someone else&apos;s behalf so that every approval trail involves two people.
+            The person who will receive this access or equipment. This cannot be the same as the
+            requester.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -969,9 +969,6 @@ export function PublicRequestForm({
             <Plus className="h-4 w-4" /> Add another item
           </Button>
           )}
-          <p className="text-xs text-muted-foreground">
-            Each item is approved and implemented independently.
-          </p>
         </CardContent>
       </Card>
       )}

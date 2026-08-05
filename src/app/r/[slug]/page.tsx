@@ -175,7 +175,7 @@ export default async function PublicFormPage({ params }: { params: Promise<{ slu
             fixedAssetCategoryId={form.assetCategoryId}
           />
           <p className="mt-6 text-center text-xs text-muted-foreground">
-            Powered by Axivo · Your submission is routed automatically for approval.
+            Your submission will be routed automatically for approval.
           </p>
         </div>
       </main>
