@@ -74,6 +74,41 @@ export async function getUpdateStatus(): Promise<UpdateStatus> {
   }
 }
 
+export interface UpdateProgress {
+  /** The version the running web container reports (changes once it restarts). */
+  currentVersion: string;
+  /** Whether the agent's update task is still running. */
+  running: boolean;
+  /** The agent task log so far (used to derive the current step). */
+  log: string;
+}
+
+/**
+ * Read the in-flight update's progress from the host agent. The web container
+ * itself is recreated near the end of an update, so while it is down this call
+ * fails from the browser - the client treats that as the "restarting" phase and
+ * keeps polling until the app answers again on the new version.
+ */
+export async function getUpdateProgress(): Promise<UpdateProgress> {
+  const currentVersion = process.env.AXIVO_VERSION || "dev";
+  const secret = process.env.AGENT_SECRET;
+  const url = process.env.AGENT_URL || "http://agent:8099";
+  if (!secret) return { currentVersion, running: false, log: "" };
+  let res: Response;
+  try {
+    res = await fetch(`${url}/status`, {
+      headers: { "x-agent-secret": secret },
+      cache: "no-store",
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch {
+    throw new BusinessRuleError("Could not reach the update agent.");
+  }
+  if (!res.ok) throw new BusinessRuleError("Could not read the update status.");
+  const data = (await res.json()) as { running?: boolean; log?: string };
+  return { currentVersion, running: !!data.running, log: data.log ?? "" };
+}
+
 /**
  * Ask the host agent to update to a version. Returns once the update has been
  * accepted (it then runs in the background and the app restarts on the new
