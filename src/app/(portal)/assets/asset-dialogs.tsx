@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Plus, UserPlus, Undo2, Wrench, Trash2, ClipboardCheck } from "lucide-react";
+import { Pencil, Plus, Copy, UserPlus, Undo2, Wrench, Trash2, ClipboardCheck } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
   createAssetAction,
@@ -179,6 +179,7 @@ export function AssetDialog({
   catalogs,
   people = [],
   asset,
+  cloneFrom,
   triggerIcon,
 }: {
   companies: Company[];
@@ -187,24 +188,29 @@ export function AssetDialog({
   catalogs: AssetCatalogs;
   people?: { id: string; name: string; companyId: string }[];
   asset?: AssetFormRecord;
+  cloneFrom?: AssetFormRecord;
   triggerIcon?: boolean;
 }) {
   const { run, loading, fieldErrors } = useAction();
   const createHandler = useCreateHandler();
   const [open, setOpen] = useState(false);
   const [assignPersonId, setAssignPersonId] = useState("");
+  // Clone reuses the shared fields (company/category/manufacturer/model/vendor/
+  // location/warranty/notes) but leaves the per-unit ones (name, serial, tag,
+  // model fields) blank so each new record gets its own.
+  const base = asset ?? cloneFrom;
   const [form, setForm] = useState({
-    companyId: asset?.companyId ?? companies[0]?.id ?? "",
-    categoryId: asset?.categoryId ?? "",
+    companyId: base?.companyId ?? companies[0]?.id ?? "",
+    categoryId: base?.categoryId ?? "",
     name: asset?.name ?? "",
     assetTag: asset?.assetTag ?? "",
     serialNumber: asset?.serialNumber ?? "",
-    manufacturer: asset?.manufacturer ?? "",
-    model: asset?.model ?? "",
-    locationId: asset?.locationId ?? "",
-    supplier: asset?.supplier ?? "",
-    warrantyExpiry: asset?.warrantyExpiry ?? "",
-    notes: asset?.notes ?? "",
+    manufacturer: base?.manufacturer ?? "",
+    model: base?.model ?? "",
+    locationId: base?.locationId ?? "",
+    supplier: base?.supplier ?? "",
+    warrantyExpiry: base?.warrantyExpiry ?? "",
+    notes: base?.notes ?? "",
   });
   const [customFields, setCustomFields] = useState<Record<string, string>>(asset?.customFields ?? {});
   const companyLocations = locations.filter((location) => location.companyId === form.companyId);
@@ -214,7 +220,7 @@ export function AssetDialog({
   const selectedModel = catalogs.models.find((model) => model.name === form.model);
   const modelFields = selectedModel?.fields ?? [];
 
-  async function submit() {
+  async function submit(addAnother = false) {
     const payload = {
       companyId: form.companyId,
       categoryId: form.categoryId,
@@ -240,7 +246,13 @@ export function AssetDialog({
           await assignAssetAction({ assetId: data.id, personId: assignPersonId });
         }
         setAssignPersonId("");
-        setOpen(false);
+        if (addAnother) {
+          // Keep the shared fields; clear the per-unit ones for the next unit.
+          setForm((current) => ({ ...current, name: "", assetTag: "", serialNumber: "" }));
+          setCustomFields({});
+        } else {
+          setOpen(false);
+        }
       },
     });
   }
@@ -248,9 +260,17 @@ export function AssetDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        {asset || triggerIcon ? (
-          <Button variant="ghost" size="icon" aria-label={asset ? `Edit ${asset.name}` : "New asset"}>
-            {asset ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+        {asset ? (
+          <Button variant="ghost" size="icon" aria-label={`Edit ${asset.name}`}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+        ) : cloneFrom ? (
+          <Button variant="ghost" size="icon" aria-label={`Clone ${cloneFrom.name}`} title="Clone">
+            <Copy className="h-4 w-4" />
+          </Button>
+        ) : triggerIcon ? (
+          <Button variant="ghost" size="icon" aria-label="New asset">
+            <Plus className="h-4 w-4" />
           </Button>
         ) : (
           <Button size="sm">
@@ -258,7 +278,10 @@ export function AssetDialog({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent title={asset ? `Edit asset: ${asset.name}` : "New asset"} wide>
+      <DialogContent
+        title={asset ? `Edit asset: ${asset.name}` : cloneFrom ? `New asset (cloned from ${cloneFrom.name})` : "New asset"}
+        wide
+      >
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <Label htmlFor="asset-company" required>Company</Label>
@@ -343,7 +366,7 @@ export function AssetDialog({
               createNoun="location"
             />
           </div>
-          {!asset ? (
+          {!asset && !cloneFrom ? (
             <div className="sm:col-span-2">
               <Label htmlFor="asset-assign">Assign to (optional)</Label>
               <PersonPicker
@@ -390,7 +413,17 @@ export function AssetDialog({
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={submit} loading={loading} disabled={!form.categoryId || !form.name.trim()}>
+          {cloneFrom ? (
+            <Button
+              variant="outline"
+              onClick={() => submit(true)}
+              loading={loading}
+              disabled={!form.categoryId || !form.name.trim()}
+            >
+              Create &amp; add another
+            </Button>
+          ) : null}
+          <Button onClick={() => submit(false)} loading={loading} disabled={!form.categoryId || !form.name.trim()}>
             {asset ? "Save changes" : "Create asset"}
           </Button>
         </div>
@@ -431,7 +464,10 @@ export function AssetRowActions({
   return (
     <div className="flex justify-end gap-1">
       {permissions.canManage ? (
-        <AssetDialog companies={companies} categories={categories} locations={locations} catalogs={catalogs} asset={asset} />
+        <>
+          <AssetDialog companies={companies} categories={categories} locations={locations} catalogs={catalogs} asset={asset} />
+          <AssetDialog companies={companies} categories={categories} locations={locations} catalogs={catalogs} cloneFrom={asset} />
+        </>
       ) : null}
 
       {permissions.canAssign && asset.status === "AVAILABLE" ? (
