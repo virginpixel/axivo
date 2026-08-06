@@ -137,8 +137,9 @@ export function TunnelAccessForm({ status }: { status: TunnelStatus }) {
                   >
                     Zero Trust → Networks → Tunnels
                   </a>
-                  , create a tunnel, add a public hostname (e.g. axivo.yourcompany.com) routing to{" "}
-                  <span className="font-mono">http://caddy:80</span>, and copy the connector token.
+                  , create a tunnel, add a public hostname (e.g. axivo.yourcompany.com) whose service
+                  is <span className="font-mono">HTTP</span> →{" "}
+                  <span className="font-mono">web:3000</span>, and copy the connector token.
                 </li>
                 <li>
                   Create an{" "}
