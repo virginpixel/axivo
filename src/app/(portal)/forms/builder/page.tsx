@@ -25,11 +25,12 @@ export default async function FormBuilderPage({
       select: { id: true, name: true },
     }),
     db.requestType.findMany({
-      // The two standard request types are provisioned per company automatically.
+      // The public-facing request types, provisioned per company automatically.
+      // (Handover/clearance/general are internal and not built as public forms.)
       where: {
         deletedAt: null,
         isActive: true,
-        kind: { in: ["APPLICATION_ACCESS", "ASSET_REQUEST"] },
+        kind: { in: ["APPLICATION_ACCESS", "ASSET_REQUEST", "ASSET_CHECKOUT", "ROLE_CHANGE"] },
         ...companyScope,
       },
       orderBy: { name: "asc" },
