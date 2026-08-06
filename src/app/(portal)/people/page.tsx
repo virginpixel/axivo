@@ -104,6 +104,16 @@ export default async function PeoplePage({
               ))}
             </Select>
           ) : null}
+          <Select name="department" defaultValue={params.department ?? ""} className="w-full sm:w-48" aria-label="Filter by department">
+            <option value="">All departments</option>
+            {departments.map((department) => (
+              <option key={department.id} value={department.id}>
+                {isGlobalAdmin
+                  ? `${department.name} — ${companies.find((c) => c.id === department.companyId)?.name ?? ""}`
+                  : department.name}
+              </option>
+            ))}
+          </Select>
           <Select name="status" defaultValue={params.status ?? ""} className="w-full sm:w-44" aria-label="Filter by employment status">
             <option value="">All statuses</option>
             {["ACTIVE", "ON_LEAVE", "SUSPENDED", "RESIGNED", "TERMINATED"].map((status) => (

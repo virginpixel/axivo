@@ -162,7 +162,7 @@ export async function getEmailChrome(): Promise<EmailChrome> {
       primaryColor: BRAND_PRIMARY,
     };
   } catch {
-    return { logoUrl: null, systemName: "Axivo", primaryColor: "#232323" };
+    return { logoUrl: null, systemName: "Axivo", primaryColor: "#24424c" };
   }
 }
 

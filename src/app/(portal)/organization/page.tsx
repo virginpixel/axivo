@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requirePermission } from "@/shared/auth/guard";
 import { db } from "@/shared/db";
 import { LiveSearch } from "@/shared/ui/live-search";
+import { Select } from "@/shared/ui/input";
 import { PageHeader } from "@/shared/ui/page";
 import { EmptyState } from "@/shared/ui/table";
 import { SortableTable } from "@/shared/ui/sortable-table";
@@ -35,7 +36,7 @@ type TabKey = (typeof TABS)[number]["key"];
 export default async function OrganizationPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; q?: string; showInactive?: string }>;
+  searchParams: Promise<{ tab?: string; q?: string; showInactive?: string; company?: string }>;
 }) {
   const { user } = await requirePermission("organization.view");
   const params = await searchParams;
@@ -54,6 +55,9 @@ export default async function OrganizationPage({
   });
   const companyIds = companies.map((company) => company.id);
   const companyOptions = companies.map((company) => ({ id: company.id, name: company.name }));
+  // Optional company filter for the departments/positions tabs.
+  const selectedCompanyId = params.company && companyIds.includes(params.company) ? params.company : "";
+  const scopedCompanyIds = selectedCompanyId ? [selectedCompanyId] : companyIds;
   const nameFilter = q ? { name: { contains: q, mode: "insensitive" as const } } : {};
   const activeFilter = showInactive ? {} : { isActive: true };
 
@@ -97,6 +101,14 @@ export default async function OrganizationPage({
         <form method="get" className="flex flex-wrap items-center gap-2">
           <input type="hidden" name="tab" value={tab} />
           <input type="hidden" name="q" value={q} />
+          {isGlobalAdmin && (tab === "departments" || tab === "positions") ? (
+            <Select name="company" defaultValue={selectedCompanyId} className="w-full sm:w-48" aria-label="Filter by company">
+              <option value="">All companies</option>
+              {companyOptions.map((company) => (
+                <option key={company.id} value={company.id}>{company.name}</option>
+              ))}
+            </Select>
+          ) : null}
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" name="showInactive" value="1" defaultChecked={showInactive} className="h-4 w-4" />
             Show inactive
@@ -157,7 +169,7 @@ export default async function OrganizationPage({
       {tab === "departments" ? (
         <DepartmentsSection
           companies={companyOptions}
-          companyIds={companyIds}
+          companyIds={scopedCompanyIds}
           peopleByCompany={peopleByCompany}
           nameFilter={nameFilter}
           activeFilter={activeFilter}
@@ -168,7 +180,7 @@ export default async function OrganizationPage({
       {tab === "positions" ? (
         <PositionsSection
           companies={companyOptions}
-          companyIds={companyIds}
+          companyIds={scopedCompanyIds}
           nameFilter={nameFilter}
           activeFilter={activeFilter}
           canManage={canManage}

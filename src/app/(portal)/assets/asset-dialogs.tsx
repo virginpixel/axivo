@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Plus, Copy, UserPlus, Undo2, Wrench, Trash2, ClipboardCheck } from "lucide-react";
+import { ActionMenu, ActionMenuItem } from "@/shared/ui/dropdown";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
   createAssetAction,
@@ -181,6 +182,9 @@ export function AssetDialog({
   asset,
   cloneFrom,
   triggerIcon,
+  open: controlledOpen,
+  onOpenChange,
+  hideTrigger,
 }: {
   companies: Company[];
   categories: Category[];
@@ -190,10 +194,15 @@ export function AssetDialog({
   asset?: AssetFormRecord;
   cloneFrom?: AssetFormRecord;
   triggerIcon?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
 }) {
   const { run, loading, fieldErrors } = useAction();
   const createHandler = useCreateHandler();
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = onOpenChange ?? setUncontrolledOpen;
   const [assignPersonId, setAssignPersonId] = useState("");
   // Clone reuses the shared fields (company/category/manufacturer/model/vendor/
   // location/warranty/notes) but leaves the per-unit ones (name, serial, tag,
@@ -259,25 +268,27 @@ export function AssetDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {asset ? (
-          <Button variant="ghost" size="icon" aria-label={`Edit ${asset.name}`}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-        ) : cloneFrom ? (
-          <Button variant="ghost" size="icon" aria-label={`Clone ${cloneFrom.name}`} title="Clone">
-            <Copy className="h-4 w-4" />
-          </Button>
-        ) : triggerIcon ? (
-          <Button variant="ghost" size="icon" aria-label="New asset">
-            <Plus className="h-4 w-4" />
-          </Button>
-        ) : (
-          <Button size="sm">
-            <Plus className="h-4 w-4" /> New asset
-          </Button>
-        )}
-      </DialogTrigger>
+      {hideTrigger ? null : (
+        <DialogTrigger asChild>
+          {asset ? (
+            <Button variant="ghost" size="icon" aria-label={`Edit ${asset.name}`}>
+              <Pencil className="h-4 w-4" />
+            </Button>
+          ) : cloneFrom ? (
+            <Button variant="ghost" size="icon" aria-label={`Clone ${cloneFrom.name}`} title="Clone">
+              <Copy className="h-4 w-4" />
+            </Button>
+          ) : triggerIcon ? (
+            <Button variant="ghost" size="icon" aria-label="New asset">
+              <Plus className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button size="sm">
+              <Plus className="h-4 w-4" /> New asset
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent
         title={asset ? `Edit asset: ${asset.name}` : cloneFrom ? `New asset (cloned from ${cloneFrom.name})` : "New asset"}
         wide
@@ -455,6 +466,8 @@ export function AssetRowActions({
 }) {
   const router = useRouter();
   const { run, loading } = useAction();
+  const [editOpen, setEditOpen] = useState(false);
+  const [cloneOpen, setCloneOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -462,21 +475,66 @@ export function AssetRowActions({
   const [maintForm, setMaintForm] = useState({ maintenanceType: "Repair", description: "", serviceProvider: "" });
 
   return (
-    <div className="flex justify-end gap-1">
+    <>
+      <ActionMenu label={`Actions for ${asset.name}`}>
+        {permissions.canManage ? (
+          <ActionMenuItem icon={<Pencil className="h-4 w-4" />} onClick={() => setEditOpen(true)}>Edit</ActionMenuItem>
+        ) : null}
+        {permissions.canManage ? (
+          <ActionMenuItem icon={<Copy className="h-4 w-4" />} onClick={() => setCloneOpen(true)}>Clone</ActionMenuItem>
+        ) : null}
+        {permissions.canAssign && asset.status === "AVAILABLE" ? (
+          <ActionMenuItem icon={<UserPlus className="h-4 w-4" />} onClick={() => setAssignOpen(true)}>Assign</ActionMenuItem>
+        ) : null}
+        {permissions.canAssign && activeAssignmentId ? (
+          <ActionMenuItem
+            icon={<Undo2 className="h-4 w-4" />}
+            onClick={() => run(() => returnAssetAction(activeAssignmentId), { successMessage: "Asset returned." })}
+          >
+            Return
+          </ActionMenuItem>
+        ) : null}
+        {permissions.canMaintain && asset.status === "UNDER_REPAIR" && activeMaintenanceId ? (
+          <ActionMenuItem
+            icon={<Wrench className="h-4 w-4" />}
+            onClick={() =>
+              run(() => setMaintenanceStatusAction(activeMaintenanceId, "COMPLETED"), {
+                successMessage: "Maintenance completed; previous status restored.",
+              })
+            }
+          >
+            Complete maintenance
+          </ActionMenuItem>
+        ) : null}
+        {permissions.canMaintain &&
+        asset.status !== "DISCARDED" &&
+        asset.status !== "ASSIGNED" &&
+        asset.status !== "UNDER_REPAIR" ? (
+          <ActionMenuItem icon={<Wrench className="h-4 w-4" />} onClick={() => setMaintenanceOpen(true)}>Schedule maintenance</ActionMenuItem>
+        ) : null}
+        {permissions.canManage &&
+        (asset.status === "UNDER_REPAIR" || asset.status === "OUT_OF_ORDER" || asset.status === "RESERVED") ? (
+          <ActionMenuItem
+            icon={<Undo2 className="h-4 w-4" />}
+            onClick={() => run(() => setAssetStatusAction(asset.id, "AVAILABLE"), { successMessage: "Asset marked Available." })}
+          >
+            Mark available
+          </ActionMenuItem>
+        ) : null}
+        {permissions.canManage && asset.status !== "ASSIGNED" ? (
+          <ActionMenuItem icon={<Trash2 className="h-4 w-4" />} tone="destructive" onClick={() => setDeleteOpen(true)}>Delete</ActionMenuItem>
+        ) : null}
+      </ActionMenu>
+
       {permissions.canManage ? (
         <>
-          <AssetDialog companies={companies} categories={categories} locations={locations} catalogs={catalogs} asset={asset} />
-          <AssetDialog companies={companies} categories={categories} locations={locations} catalogs={catalogs} cloneFrom={asset} />
+          <AssetDialog companies={companies} categories={categories} locations={locations} catalogs={catalogs} asset={asset} open={editOpen} onOpenChange={setEditOpen} hideTrigger />
+          <AssetDialog companies={companies} categories={categories} locations={locations} catalogs={catalogs} cloneFrom={asset} open={cloneOpen} onOpenChange={setCloneOpen} hideTrigger />
         </>
       ) : null}
 
       {permissions.canAssign && asset.status === "AVAILABLE" ? (
         <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
-          <DialogTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Assign asset" title="Assign">
-              <UserPlus className="h-4 w-4 text-primary" />
-            </Button>
-          </DialogTrigger>
           <DialogContent title={`Assign ${asset.name}`} description="A handover acknowledgement email is sent automatically when the category requires it.">
             <Label htmlFor={`assign-person-${asset.id}`} required>Employee</Label>
             <Combobox
@@ -504,42 +562,11 @@ export function AssetRowActions({
         </Dialog>
       ) : null}
 
-      {permissions.canAssign && activeAssignmentId ? (
-        <Button
-          variant="ghost" size="icon" loading={loading} aria-label="Return asset" title="Return"
-          onClick={() => run(() => returnAssetAction(activeAssignmentId), { successMessage: "Asset returned." })}
-        >
-          <Undo2 className="h-4 w-4" />
-        </Button>
-      ) : null}
-
-      {permissions.canMaintain && asset.status === "UNDER_REPAIR" && activeMaintenanceId ? (
-        <Button
-          variant="ghost"
-          size="icon"
-          loading={loading}
-          aria-label="Complete maintenance"
-          title="Complete maintenance"
-          onClick={() =>
-            run(() => setMaintenanceStatusAction(activeMaintenanceId, "COMPLETED"), {
-              successMessage: "Maintenance completed; previous status restored.",
-            })
-          }
-        >
-          <Wrench className="h-4 w-4 text-success" />
-        </Button>
-      ) : null}
-
       {permissions.canMaintain &&
       asset.status !== "DISCARDED" &&
       asset.status !== "ASSIGNED" &&
       asset.status !== "UNDER_REPAIR" ? (
         <Dialog open={maintenanceOpen} onOpenChange={setMaintenanceOpen}>
-          <DialogTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Schedule maintenance" title="Maintenance">
-              <Wrench className="h-4 w-4 text-warning" />
-            </Button>
-          </DialogTrigger>
           <DialogContent title={`Maintenance for ${asset.name}`}>
             <div className="space-y-3">
               <div>
@@ -589,22 +616,8 @@ export function AssetRowActions({
         </Dialog>
       ) : null}
 
-      {permissions.canManage && (asset.status === "UNDER_REPAIR" || asset.status === "OUT_OF_ORDER" || asset.status === "RESERVED") ? (
-        <Button
-          variant="ghost" size="icon" loading={loading} aria-label="Mark available" title="Mark available"
-          onClick={() => run(() => setAssetStatusAction(asset.id, "AVAILABLE"), { successMessage: "Asset marked Available." })}
-        >
-          <Undo2 className="h-4 w-4 text-success" />
-        </Button>
-      ) : null}
-
       {permissions.canManage && asset.status !== "ASSIGNED" ? (
         <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-          <DialogTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Delete asset" title="Delete">
-              <Trash2 className="h-4 w-4 text-destructive" />
-            </Button>
-          </DialogTrigger>
           <DialogContent
             title={`Delete ${asset.name}`}
             description="This removes the asset record entirely. To retire an asset while keeping its history, set its status to Discarded instead."
@@ -630,7 +643,7 @@ export function AssetRowActions({
           </DialogContent>
         </Dialog>
       ) : null}
-    </div>
+    </>
   );
 }
 

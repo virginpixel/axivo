@@ -54,12 +54,8 @@ export default async function LoginPage() {
         </div>
 
         <div className="relative max-w-md">
-          {/* The full-colour lockup is made for light grounds, so it sits on a
-              clean card to read against the ink panel. */}
-          <div className="mb-8 inline-block rounded-2xl bg-white p-3">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/axivo-logo.png" alt="Axivo" className="h-44 w-auto" />
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/axivo-logo.png" alt="Axivo" className="mb-8 h-44 w-auto" />
           <h2 className="font-display text-4xl font-semibold leading-[1.1] tracking-tight text-rail-foreground">
             IT service management, end to end.
           </h2>
