@@ -46,13 +46,20 @@ export default async function LoginPage() {
           }}
         />
         <div className="relative flex items-center gap-2.5">
-          <span className="h-5 w-[3px] rounded-full bg-primary" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/axivo-icon.png" alt="" className="h-7 w-auto" />
           <span className="font-display text-lg font-semibold tracking-tight text-rail-foreground">
             {systemName}
           </span>
         </div>
 
         <div className="relative max-w-md">
+          {/* The full-colour lockup is made for light grounds, so it sits on a
+              clean card to read against the ink panel. */}
+          <div className="mb-8 inline-block rounded-2xl bg-white p-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/axivo-logo.png" alt="Axivo" className="h-44 w-auto" />
+          </div>
           <h2 className="font-display text-4xl font-semibold leading-[1.1] tracking-tight text-rail-foreground">
             IT service management, end to end.
           </h2>

@@ -182,7 +182,8 @@ export function Sidebar({
 function Wordmark({ systemName }: { systemName: string }) {
   return (
     <span className="flex items-center gap-2">
-      <span className="h-4 w-[3px] rounded-full bg-primary" aria-hidden />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/axivo-icon.png" alt="" className="h-6 w-auto shrink-0" />
       <span className="font-display text-lg font-semibold tracking-tight text-rail-foreground">
         {systemName}
       </span>

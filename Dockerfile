@@ -37,6 +37,8 @@ ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000 STO
 RUN addgroup -S axivo && adduser -S axivo -G axivo
 COPY --from=builder --chown=axivo:axivo /app/.next/standalone ./
 COPY --from=builder --chown=axivo:axivo /app/.next/static ./.next/static
+# Static assets (logo/icon) - standalone output does not include public/ itself.
+COPY --from=builder --chown=axivo:axivo /app/public ./public
 # Pre-create the storage path owned by axivo so the named volume Docker
 # initializes from it inherits that ownership (uploads run as the axivo user).
 RUN mkdir -p /var/lib/axivo/storage && chown -R axivo:axivo /var/lib/axivo
