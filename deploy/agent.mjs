@@ -17,6 +17,8 @@ const PORT = Number(process.env.AGENT_PORT || 8099);
 const DIR = process.env.AXIVO_INSTALL_DIR || "/opt/axivo";
 const ENV_FILE = `${DIR}/.env`;
 const COMPOSE = `docker compose -f ${DIR}/docker-compose.prod.yml --env-file ${ENV_FILE}`;
+const REPO = process.env.AXIVO_REPO || "virginpixel/axivo";
+const AGENT_IMAGE = process.env.AXIVO_AGENT_IMAGE || `ghcr.io/${REPO}-agent`;
 
 let running = false;
 let log = [];
@@ -69,19 +71,50 @@ function runTask(script) {
 }
 
 function runUpdate(version) {
+  // Fetch deploy files at the target tag (a new version may add services, e.g.
+  // the cloudflared tunnel, or change the proxy config). "latest" -> main.
+  const ref = /^v?\d+\.\d+\.\d+$/.test(version) ? version : "main";
+  const raw = `https://raw.githubusercontent.com/${REPO}/${ref}/deploy`;
   runTask(`
 set -e
 mkdir -p "${DIR}/backups"
 echo "==> Backing up the database"
 ${COMPOSE} exec -T postgres pg_dump -U axivo axivo | gzip > "${DIR}/backups/pre-update-$(date +%Y%m%d-%H%M%S).sql.gz"
+
+echo "==> Refreshing deploy files (${ref})"
+# Best-effort: a transient fetch failure must not abort the image update. The
+# agent image ships busybox wget (no curl).
+fetch() { wget -qO "$2.new" "$1" && mv "$2.new" "$2" && echo "    updated $2" || echo "    kept existing $2"; }
+fetch "${raw}/docker-compose.prod.yml" "${DIR}/docker-compose.prod.yml"
+fetch "${raw}/Caddyfile"               "${DIR}/Caddyfile.http"
+fetch "${raw}/Caddyfile.https.example" "${DIR}/Caddyfile.https"
+
 echo "==> Pinning version ${version}"
 sed -i "s/^AXIVO_VERSION=.*/AXIVO_VERSION=${version}/" "${ENV_FILE}"
 echo "==> Pulling images"
 ${COMPOSE} pull
+
 echo "==> Recreating services (migrations run automatically)"
-${COMPOSE} up -d web worker caddy
+if grep -q '^TUNNEL_ENABLED=1' "${ENV_FILE}"; then
+  [ -f "${DIR}/Caddyfile.https" ] && cp "${DIR}/Caddyfile.https" "${DIR}/Caddyfile"
+  ${COMPOSE} --profile tunnel up -d web worker caddy cloudflared
+else
+  [ -f "${DIR}/Caddyfile.http" ] && cp "${DIR}/Caddyfile.http" "${DIR}/Caddyfile"
+  ${COMPOSE} up -d web worker caddy
+fi
+
 echo "==> Pruning old backups (keep last 10)"
 ls -1t "${DIR}/backups"/pre-update-*.sql.gz 2>/dev/null | tail -n +11 | xargs -r rm -f
+
+echo "==> Self-updating the agent"
+# The agent can't recreate its own container from within (it would be killed
+# mid-command), so hand the recreate to a detached sibling that survives it.
+docker run -d --rm --entrypoint sh \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "${DIR}:${DIR}" \
+  "${AGENT_IMAGE}:${version}" \
+  -c "sleep 3; ${COMPOSE} up -d agent" || echo "    (agent self-update could not be scheduled)"
+
 echo "==> Update to ${version} complete"
 `);
 }
