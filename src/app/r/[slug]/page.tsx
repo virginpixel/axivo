@@ -159,7 +159,7 @@ export default async function PublicFormPage({ params }: { params: Promise<{ slu
               name: application.name,
               companyId: application.companyId,
               isShared: application.isShared,
-              roles: application.roles.map((role) => ({ id: role.id, name: role.name })),
+              roles: application.roles.map((role) => ({ id: role.id, name: role.name, description: role.description })),
             }))}
             assetCategories={assetCategories.map((category) => ({
               id: category.id,

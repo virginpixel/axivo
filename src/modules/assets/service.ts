@@ -895,7 +895,7 @@ export async function completeClearance(
       { entityType: "person", entityId: clearance.personId },
     ],
     definition: {
-      title: "Asset Clearance Form",
+      title: "Clearance Form",
       branding: { systemName: "Axivo", companyName: clearance.person.company.name },
       sections: [
         {

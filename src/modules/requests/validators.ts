@@ -72,6 +72,24 @@ export const publicSubmissionSchema = z
   })
   .strict();
 
+/** Editable participant details on a correction: a typo in a name, email or
+ * employee ID is exactly the kind of thing an approver sends a request back
+ * for, so the whole form (not just the item fields) has to be correctable. */
+const correctionParticipantSchema = z
+  .object({
+    requesterName: z.string().trim().min(1, "Name is required.").max(200),
+    requesterEmail: z.string().trim().email("Enter a valid email.").max(200),
+    requesterEmployeeId: optionalText(50),
+    requesterDepartment: optionalText(200),
+    requesterPosition: optionalText(200),
+    requestedForName: z.string().trim().min(1, "Name is required.").max(200),
+    requestedForEmail: z.string().trim().email("Enter a valid email.").max(200),
+    requestedForEmployeeId: optionalText(50),
+    requestedForDepartment: optionalText(200),
+    requestedForPosition: optionalText(200),
+  })
+  .strict();
+
 export const correctionSubmissionSchema = z
   .object({
     /** Answers to the form's own questions. */
@@ -84,6 +102,8 @@ export const correctionSubmissionSchema = z
     itemFieldValues: z.record(z.unknown()).default({}),
     itemDescription: optionalText(1000),
     comments: optionalText(2000),
+    /** Corrected requester / requested-for details (whole-form edit). */
+    participant: correctionParticipantSchema.optional(),
   })
   .strict();
 

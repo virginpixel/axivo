@@ -474,12 +474,28 @@ export async function submitCorrection(
         },
       });
     }
-    if (cleanedValues) {
-      // Corrections update the request's field data; the original snapshot is
-      // preserved in the correction record (Doc 09 Ch4).
+    if (cleanedValues || input.participant) {
+      // Corrections update the request's field data and participant details;
+      // the original snapshot is preserved in the correction record (Doc 09 Ch4).
       await tx.request.update({
         where: { id: item.requestId },
-        data: { fieldData: cleanedValues as Prisma.InputJsonValue },
+        data: {
+          ...(cleanedValues ? { fieldData: cleanedValues as Prisma.InputJsonValue } : {}),
+          ...(input.participant
+            ? {
+                requesterName: input.participant.requesterName,
+                requesterEmail: input.participant.requesterEmail,
+                requesterEmployeeId: input.participant.requesterEmployeeId ?? null,
+                requesterDepartment: input.participant.requesterDepartment ?? null,
+                requesterPosition: input.participant.requesterPosition ?? null,
+                requestedForName: input.participant.requestedForName,
+                requestedForEmail: input.participant.requestedForEmail,
+                requestedForEmployeeId: input.participant.requestedForEmployeeId ?? null,
+                requestedForDepartment: input.participant.requestedForDepartment ?? null,
+                requestedForPosition: input.participant.requestedForPosition ?? null,
+              }
+            : {}),
+        },
       });
     }
     await recordAudit(
@@ -496,8 +512,9 @@ export async function submitCorrection(
     );
   });
 
-  // Resume the item's workflow at the step that requested the correction.
-  await engine.resumeAfterCorrection(context, requestItemId);
+  // A correction may edit the whole form (names, department, item), so restart
+  // approvals from step 1 rather than resuming at the objecting step.
+  await engine.restartAfterCorrection(context, requestItemId);
   await engine.rollupRequestStatus(context, item.requestId);
 }
 

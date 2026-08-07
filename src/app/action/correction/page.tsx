@@ -90,6 +90,24 @@ export default async function CorrectionActionPage({
             options: (field.options as string[] | null) ?? [],
           }))}
           currentItemValues={(item.itemData ?? {}) as Record<string, string | string[]>}
+          participant={{
+            requesterName: item.request.requesterName,
+            requesterEmail: item.request.requesterEmail,
+            requesterEmployeeId: item.request.requesterEmployeeId ?? "",
+            requesterDepartment: item.request.requesterDepartment ?? "",
+            requesterPosition: item.request.requesterPosition ?? "",
+            requestedForName: item.request.requestedForName,
+            requestedForEmail: item.request.requestedForEmail,
+            requestedForEmployeeId: item.request.requestedForEmployeeId ?? "",
+            requestedForDepartment: item.request.requestedForDepartment ?? "",
+            requestedForPosition: item.request.requestedForPosition ?? "",
+          }}
+          // Self-service forms (a role change / checkout raised for oneself)
+          // store the same person on both sides, so show a single section.
+          showRequestedFor={
+            item.request.requesterEmail !== item.request.requestedForEmail ||
+            item.request.requesterName !== item.request.requestedForName
+          }
         />
       </ActionShell>
     </ToastProvider>

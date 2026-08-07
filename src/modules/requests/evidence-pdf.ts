@@ -1,7 +1,41 @@
 import { db } from "@/shared/db";
+import { storage } from "@/shared/storage/storage";
+import { getSetting, SETTING_KEYS } from "@/shared/settings/settings";
+import { BRAND_PRIMARY } from "@/shared/branding";
 import { renderPdf, type PdfSection } from "@/shared/pdf/pdf";
 import { formatDate, formatDateTime } from "@/shared/utils";
 import type { AuthenticatedUser } from "@/shared/auth/session";
+
+/** Read the configured request-form logos from storage, so the evidence PDF
+ * carries the same header as the public request forms (Doc 03 Ch9). */
+async function loadRequestFormLogos(): Promise<{ left?: Buffer; center?: Buffer; right?: Buffer } | null> {
+  try {
+    const config = await getSetting<Record<string, { storageKey: string } | null>>(SETTING_KEYS.REQUEST_FORM_LOGOS);
+    const positions = ["left", "center", "right"] as const;
+    const result: { left?: Buffer; center?: Buffer; right?: Buffer } = {};
+    let any = false;
+    for (const position of positions) {
+      const key = config[position]?.storageKey;
+      if (!key) continue;
+      try {
+        result[position] = await storage.read(key);
+        any = true;
+      } catch {
+        /* ignore missing file */
+      }
+    }
+    return any ? result : null;
+  } catch {
+    return null;
+  }
+}
+
+const cell = (value: unknown): string =>
+  Array.isArray(value)
+    ? value.join(", ")
+    : value === null || value === undefined || value === ""
+      ? "—"
+      : String(value);
 
 /**
  * Per-request evidence PDF (SDS Doc 09 Ch9, Doc 16): the submitted form, its
@@ -41,18 +75,9 @@ export async function buildRequestEvidencePdf(
   if (!request) return null;
   if (request.companyId !== user.companyId && user.systemRoleKey !== "SYSTEM_ADMINISTRATOR") return null;
 
+  const formName = request.form?.name ?? request.items[0]?.formNameSnapshot ?? "Request";
+
   const sections: PdfSection[] = [
-    {
-      heading: "Request",
-      fields: [
-        { label: "Request number", value: request.requestNumber },
-        // The form may since have been renamed or deleted; the snapshot holds.
-        { label: "Form", value: request.form?.name ?? request.items[0]?.formNameSnapshot ?? "Removed" },
-        { label: "Status", value: request.status.replace(/_/g, " ") },
-        { label: "Submitted", value: formatDateTime(request.submittedAt) },
-        { label: "Completed", value: request.completedAt ? formatDateTime(request.completedAt) : "Not yet" },
-      ],
-    },
     {
       heading: "Requested by",
       fields: [
@@ -79,66 +104,116 @@ export async function buildRequestEvidencePdf(
   const formValues = (request.fieldData ?? {}) as Record<string, unknown>;
   const formFields = request.formVersion?.fields ?? [];
   if (formFields.length > 0) {
-    sections.push({
-      heading: "Form responses",
-      fields: formFields.map((field) => {
-        const value = formValues[field.fieldKey];
-        return {
-          label: field.label,
-          value: Array.isArray(value) ? value.join(", ") : value === undefined || value === "" ? "None" : String(value),
-        };
-      }),
-    });
-  }
-
-  for (const [index, item] of request.items.entries()) {
-    const target =
-      item.application?.name ?? item.assetCategory?.name ?? item.targetNameSnapshot ?? item.description ?? "Item";
-    const role = item.applicationRole?.name ?? item.roleNameSnapshot;
-    const labels = (item.fieldLabelsSnapshot as Record<string, string> | null) ?? {};
-    const answers = (item.itemData as Record<string, unknown> | null) ?? {};
-
-    sections.push({
-      heading: `Item ${index + 1}: ${target}`,
-      fields: [
-        { label: "Type", value: item.itemType.replace(/_/g, " ") },
-        ...(role ? [{ label: "Access role", value: role }] : []),
-        { label: "Status", value: item.status.replace(/_/g, " ") },
-        ...Object.entries(answers).map(([key, value]) => ({
-          label: labels[key] ?? key.replace(/_/g, " "),
-          value: Array.isArray(value) ? value.join(", ") : value === null || value === "" ? "None" : String(value),
-        })),
-        ...(item.implementedAt ? [{ label: "Implemented", value: formatDateTime(item.implementedAt) }] : []),
-        ...(item.implementedByLabel ? [{ label: "Implemented by", value: item.implementedByLabel }] : []),
-      ],
-    });
-
-    const steps = item.workflowInstances.flatMap((instance) => instance.stepInstances);
-    if (steps.length > 0) {
-      sections.push({
-        table: {
-          headers: ["Step", "Status", "Decision by", "Decision", "Date", "Comments"],
-          rows: steps.flatMap((step) =>
-            step.actions.length > 0
-              ? step.actions.map((action) => [
-                  step.stepName,
-                  step.status,
-                  `${action.person.firstName} ${action.person.lastName}`,
-                  action.action.replace(/_/g, " "),
-                  formatDate(action.createdAt),
-                  action.comments ?? "",
-                ])
-              : [[step.stepName, step.status, "", "", "", ""]],
-          ),
-        },
-      });
+    const answered = formFields
+      .map((field) => ({ label: field.label, value: cell(formValues[field.fieldKey]) }))
+      .filter((entry) => entry.value !== "—");
+    if (answered.length > 0) {
+      sections.push({ heading: "Form responses", fields: answered });
     }
   }
 
+  // Group items by kind: applications/role-changes into one table, asset
+  // requests/checkouts into another. Each is shown only when it has items.
+  const isAppItem = (type: string) => type === "APPLICATION_ACCESS" || type === "ROLE_CHANGE";
+  const appItems = request.items.filter((item) => isAppItem(item.itemType));
+  const assetItems = request.items.filter((item) => !isAppItem(item.itemType));
+
+  if (appItems.length > 0) {
+    sections.push({
+      heading: "Applications requested",
+      table: {
+        headers: ["Application", "Access role", "Status"],
+        rows: appItems.map((item) => [
+          item.application?.name ?? item.targetNameSnapshot ?? item.description ?? "—",
+          item.applicationRole?.name ?? item.roleNameSnapshot ?? "—",
+          item.status.replace(/_/g, " "),
+        ]),
+      },
+    });
+  }
+
+  if (assetItems.length > 0) {
+    sections.push({
+      heading: "Assets requested",
+      table: {
+        headers: ["Asset", "Category", "Status"],
+        rows: assetItems.map((item) => [
+          item.targetNameSnapshot ?? item.assetCategory?.name ?? item.description ?? "—",
+          item.assetCategory?.name ?? "—",
+          item.status.replace(/_/g, " "),
+        ]),
+      },
+    });
+  }
+
+  // Per-item answers to item-level custom fields, kept compact and only when present.
+  for (const item of request.items) {
+    const labels = (item.fieldLabelsSnapshot as Record<string, string> | null) ?? {};
+    const answers = (item.itemData as Record<string, unknown> | null) ?? {};
+    const target =
+      item.application?.name ?? item.assetCategory?.name ?? item.targetNameSnapshot ?? item.description ?? "Item";
+    const detailFields = [
+      ...Object.entries(answers)
+        .map(([key, value]) => ({ label: labels[key] ?? key.replace(/_/g, " "), value: cell(value) }))
+        .filter((entry) => entry.value !== "—"),
+      ...(item.implementedAt ? [{ label: "Implemented", value: formatDateTime(item.implementedAt) }] : []),
+      ...(item.implementedByLabel ? [{ label: "Implemented by", value: item.implementedByLabel }] : []),
+    ];
+    if (detailFields.length > 0) {
+      sections.push({ heading: `Details — ${target}`, fields: detailFields });
+    }
+  }
+
+  // Consolidated approval history across every item, with an Item column so a
+  // single table tells the whole approval story.
+  const historyRows: string[][] = [];
+  for (const item of request.items) {
+    const target =
+      item.application?.name ?? item.assetCategory?.name ?? item.targetNameSnapshot ?? item.description ?? "Item";
+    const steps = item.workflowInstances.flatMap((instance) => instance.stepInstances);
+    for (const step of steps) {
+      if (step.actions.length > 0) {
+        for (const action of step.actions) {
+          historyRows.push([
+            target,
+            step.stepName,
+            `${action.person.firstName} ${action.person.lastName}`,
+            action.action.replace(/_/g, " "),
+            formatDate(action.createdAt),
+            action.comments ?? "",
+          ]);
+        }
+      } else {
+        historyRows.push([target, step.stepName, "—", step.status.replace(/_/g, " "), "—", ""]);
+      }
+    }
+  }
+  if (historyRows.length > 0) {
+    sections.push({
+      heading: "Approval history",
+      table: {
+        headers: ["Item", "Step", "Decision by", "Decision", "Date", "Comments"],
+        rows: historyRows,
+      },
+    });
+  }
+
+  const logos = await loadRequestFormLogos();
+
   const pdf = await renderPdf({
-    title: `Request ${request.requestNumber}`,
-    subtitle: `${request.company.name} · ${request.requestedForName}`,
-    branding: { systemName: "Axivo", companyName: request.company.name },
+    title: formName,
+    subtitle: request.company.name,
+    meta: [
+      { label: "Request number", value: request.requestNumber },
+      { label: "Submitted", value: formatDate(request.submittedAt) },
+      { label: "Status", value: request.status.replace(/_/g, " ") },
+    ],
+    branding: {
+      systemName: "Axivo",
+      companyName: request.company.name,
+      primaryColor: BRAND_PRIMARY,
+      ...(logos ? { logos } : {}),
+    },
     sections,
     footerNote: "Approval evidence generated from the Axivo audit trail.",
   });

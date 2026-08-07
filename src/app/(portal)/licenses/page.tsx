@@ -60,8 +60,8 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
       where: { deletedAt: null, ...companyScope },
       orderBy: { contractNumber: "asc" }, select: { id: true, contractNumber: true, name: true, companyId: true },
     }),
-    db.catalogItem.findMany({
-      where: { deletedAt: null, isActive: true, kind: "VENDOR" },
+    db.vendor.findMany({
+      where: { deletedAt: null, isActive: true },
       orderBy: { name: "asc" }, select: { name: true },
     }),
   ]);

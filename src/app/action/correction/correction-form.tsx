@@ -16,6 +16,19 @@ interface CorrectionField {
   options: string[];
 }
 
+export interface CorrectionParticipant {
+  requesterName: string;
+  requesterEmail: string;
+  requesterEmployeeId: string;
+  requesterDepartment: string;
+  requesterPosition: string;
+  requestedForName: string;
+  requestedForEmail: string;
+  requestedForEmployeeId: string;
+  requestedForDepartment: string;
+  requestedForPosition: string;
+}
+
 export function CorrectionForm({
   token,
   itemDescription,
@@ -24,6 +37,8 @@ export function CorrectionForm({
   itemFields,
   currentItemValues,
   itemLabel,
+  participant: initialParticipant,
+  showRequestedFor,
 }: {
   token: string;
   itemDescription: string | null;
@@ -33,25 +48,56 @@ export function CorrectionForm({
   itemFields: CorrectionField[];
   currentItemValues: Record<string, string | string[]>;
   itemLabel: string;
+  /** Current requester / requested-for details, editable to fix typos. */
+  participant: CorrectionParticipant;
+  /** Self-service forms have no separate "requested for". */
+  showRequestedFor: boolean;
 }) {
   const { toast } = useToast();
   const [values, setValues] = useState<Record<string, string | string[]>>(currentValues);
   const [itemValues, setItemValues] = useState<Record<string, string | string[]>>(currentItemValues);
+  const [participant, setParticipant] = useState<CorrectionParticipant>(initialParticipant);
   const [description, setDescription] = useState(itemDescription ?? "");
   const [comments, setComments] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
 
+  const setField = (key: keyof CorrectionParticipant) => (value: string) =>
+    setParticipant((current) => ({ ...current, [key]: value }));
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setLoading(true);
     try {
+      // Self-service: requested-for mirrors the requester (no separate section).
+      const participantPayload = showRequestedFor
+        ? participant
+        : {
+            ...participant,
+            requestedForName: participant.requesterName,
+            requestedForEmail: participant.requesterEmail,
+            requestedForEmployeeId: participant.requesterEmployeeId,
+            requestedForDepartment: participant.requesterDepartment,
+            requestedForPosition: participant.requesterPosition,
+          };
       const result = await submitCorrectionAction(token, {
         fieldValues: values,
         itemFieldValues: itemValues,
         itemDescription: description || undefined,
         comments: comments || undefined,
+        participant: {
+          requesterName: participantPayload.requesterName,
+          requesterEmail: participantPayload.requesterEmail,
+          requesterEmployeeId: participantPayload.requesterEmployeeId || undefined,
+          requesterDepartment: participantPayload.requesterDepartment || undefined,
+          requesterPosition: participantPayload.requesterPosition || undefined,
+          requestedForName: participantPayload.requestedForName,
+          requestedForEmail: participantPayload.requestedForEmail,
+          requestedForEmployeeId: participantPayload.requestedForEmployeeId || undefined,
+          requestedForDepartment: participantPayload.requestedForDepartment || undefined,
+          requestedForPosition: participantPayload.requestedForPosition || undefined,
+        },
       });
       if (result.ok) {
         setDone(true);
@@ -83,6 +129,27 @@ export function CorrectionForm({
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>{showRequestedFor ? "Requester" : "Your details"}</CardTitle>
+          <CardDescription>Correct any details that were entered wrong, such as a misspelled name.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <ParticipantInputs prefix="requester" participant={participant} setField={setField} errors={errors} />
+        </CardContent>
+      </Card>
+
+      {showRequestedFor ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Requested for</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <ParticipantInputs prefix="requestedFor" participant={participant} setField={setField} errors={errors} />
+          </CardContent>
+        </Card>
+      ) : null}
+
       {fields.length > 0 ? (
         <Card>
           <CardHeader>
@@ -144,6 +211,68 @@ export function CorrectionForm({
         Resubmit corrected item
       </Button>
     </form>
+  );
+}
+
+/** The five editable text fields for one participant (requester / requested-for). */
+function ParticipantInputs({
+  prefix,
+  participant,
+  setField,
+  errors,
+}: {
+  prefix: "requester" | "requestedFor";
+  participant: CorrectionParticipant;
+  setField: (key: keyof CorrectionParticipant) => (value: string) => void;
+  errors: Record<string, string>;
+}) {
+  const key = (suffix: string) => `${prefix}${suffix}` as keyof CorrectionParticipant;
+  return (
+    <>
+      <div>
+        <Label htmlFor={`${prefix}-name`} required>Full name</Label>
+        <Input
+          id={`${prefix}-name`}
+          value={participant[key("Name")]}
+          onChange={(event) => setField(key("Name"))(event.target.value)}
+        />
+        <FieldError message={errors[`${prefix}Name`]} />
+      </div>
+      <div>
+        <Label htmlFor={`${prefix}-email`} required>Email</Label>
+        <Input
+          id={`${prefix}-email`}
+          type="email"
+          value={participant[key("Email")]}
+          onChange={(event) => setField(key("Email"))(event.target.value)}
+        />
+        <FieldError message={errors[`${prefix}Email`]} />
+      </div>
+      <div>
+        <Label htmlFor={`${prefix}-employee`}>Employee ID</Label>
+        <Input
+          id={`${prefix}-employee`}
+          value={participant[key("EmployeeId")]}
+          onChange={(event) => setField(key("EmployeeId"))(event.target.value)}
+        />
+      </div>
+      <div>
+        <Label htmlFor={`${prefix}-department`}>Department</Label>
+        <Input
+          id={`${prefix}-department`}
+          value={participant[key("Department")]}
+          onChange={(event) => setField(key("Department"))(event.target.value)}
+        />
+      </div>
+      <div>
+        <Label htmlFor={`${prefix}-position`}>Position</Label>
+        <Input
+          id={`${prefix}-position`}
+          value={participant[key("Position")]}
+          onChange={(event) => setField(key("Position"))(event.target.value)}
+        />
+      </div>
+    </>
   );
 }
 

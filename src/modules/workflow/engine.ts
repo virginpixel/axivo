@@ -753,6 +753,47 @@ export async function resumeAfterCorrection(context: AuditContext, requestItemId
 }
 
 /**
+ * Restart an item's approvals from the very first step after a correction.
+ * Unlike {@link resumeAfterCorrection}, which picks up at the step that raised
+ * the objection, this rewinds every step to PENDING so a whole-form edit (a
+ * changed name, department or item) is re-reviewed from scratch, and any changed
+ * routing (e.g. a corrected department) re-resolves its approvers.
+ */
+export async function restartAfterCorrection(context: AuditContext, requestItemId: string): Promise<void> {
+  const instance = await db.workflowInstance.findFirst({
+    where: { requestItemId, status: "CORRECTION_REQUESTED" },
+    orderBy: { startedAt: "desc" },
+    include: { stepInstances: { orderBy: { stepOrder: "asc" } } },
+  });
+  if (!instance) throw new BusinessRuleError("No workflow is awaiting correction for this item.");
+  const firstStep = instance.stepInstances[0];
+  if (!firstStep) throw new BusinessRuleError("This workflow has no steps.");
+
+  await db.$transaction(async (tx) => {
+    for (const stepInstance of instance.stepInstances) {
+      // Clear acted flags so approvers act again on the corrected data.
+      await tx.approvalAssignment.updateMany({
+        where: { workflowStepInstanceId: stepInstance.id },
+        data: { actedAt: null },
+      });
+      await tx.workflowStepInstance.update({
+        where: { id: stepInstance.id },
+        data: { status: "PENDING", activatedAt: null, completedAt: null },
+      });
+    }
+    await tx.workflowInstance.update({
+      where: { id: instance.id },
+      data: { status: "IN_PROGRESS", currentStepOrder: firstStep.stepOrder },
+    });
+    await tx.requestItem.update({
+      where: { id: requestItemId },
+      data: { status: "PENDING_APPROVAL" },
+    });
+  });
+  await activateStep(context, instance.id, firstStep.stepOrder);
+}
+
+/**
  * Complete the IT Implementation step for an item (called by the Requests
  * module once IT records credentials/assets). Ends the workflow instance.
  */

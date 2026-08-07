@@ -27,6 +27,8 @@ export interface PdfSection {
 export interface PdfDefinition {
   title: string;
   subtitle?: string;
+  /** Small label/value chips shown in a band under the title (e.g. number, date, status). */
+  meta?: { label: string; value: string }[];
   branding: PdfBranding;
   sections: PdfSection[];
   footerNote?: string;
@@ -40,14 +42,27 @@ export async function renderPdf(definition: PdfDefinition): Promise<Buffer> {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    const primary = definition.branding.primaryColor ?? "#1d4ed8";
+    const primary = definition.branding.primaryColor ?? "#24424c";
+    const ink = "#1a1a1a";
+    const muted = "#6b7280";
+    const hair = "#e5e7eb";
+    const LEFT = 50;
+    const RIGHT = 545;
+    const WIDTH = RIGHT - LEFT;
 
-    // Optional logo band (left / center / right).
+    const ensureSpace = (needed: number) => {
+      if (doc.y + needed > doc.page.height - 60) {
+        doc.addPage();
+        doc.y = 50;
+      }
+    };
+
+    // Optional logo band (left / center / right), sitting above the title.
     const logos = definition.branding.logos;
     if (logos && (logos.left || logos.center || logos.right)) {
       const bandY = doc.y;
-      const h = 44;
-      const w = 120;
+      const h = 46;
+      const w = 150;
       const place = (buffer: Buffer | undefined, x: number, align: "left" | "center" | "right") => {
         if (!buffer) return;
         try {
@@ -56,62 +71,101 @@ export async function renderPdf(definition: PdfDefinition): Promise<Buffer> {
           /* ignore invalid image bytes */
         }
       };
-      place(logos.left, 50, "left");
+      place(logos.left, LEFT, "left");
       place(logos.center, (595 - w) / 2, "center");
-      place(logos.right, 545 - w, "right");
-      doc.y = bandY + h + 6;
+      place(logos.right, RIGHT - w, "right");
+      doc.y = bandY + h + 12;
     }
 
-    // Header: the document is the form, so its own title leads. The product
-    // name and the company used to sit above it, which made every printed form
-    // announce the software before saying what it was; the company now appears
-    // where it belongs, among the employee's details.
-    doc.fillColor("#111111").fontSize(18).font("Helvetica-Bold").text(definition.title, {
+    // Title block: the document is the form, so its own title leads.
+    doc.fillColor(ink).font("Helvetica-Bold").fontSize(20).text(definition.title, LEFT, doc.y, {
+      width: WIDTH,
       align: "center",
     });
     if (definition.subtitle) {
-      doc.moveDown(0.2);
-      doc.fillColor("#555555").fontSize(10).font("Helvetica").text(definition.subtitle, {
+      doc.moveDown(0.3);
+      doc.fillColor(muted).fontSize(10.5).font("Helvetica").text(definition.subtitle, LEFT, doc.y, {
+        width: WIDTH,
         align: "center",
       });
     }
-    doc.moveDown(0.5);
-    doc
-      .moveTo(50, doc.y)
-      .lineTo(545, doc.y)
-      .strokeColor(primary)
-      .lineWidth(1.5)
-      .stroke();
-    doc.moveDown(1);
+    doc.moveDown(0.8);
+    doc.moveTo(LEFT, doc.y).lineTo(RIGHT, doc.y).strokeColor(primary).lineWidth(2).stroke();
+    doc.moveDown(0.9);
+
+    // Meta band: a row of label/value chips (request no, submitted, status …).
+    if (definition.meta && definition.meta.length > 0) {
+      const cellW = WIDTH / definition.meta.length;
+      const y = doc.y;
+      definition.meta.forEach((chip, index) => {
+        const x = LEFT + index * cellW;
+        doc
+          .fillColor(muted)
+          .font("Helvetica-Bold")
+          .fontSize(7.5)
+          .text(chip.label.toUpperCase(), x, y, { width: cellW - 8, characterSpacing: 0.6 });
+        doc
+          .fillColor(ink)
+          .font("Helvetica-Bold")
+          .fontSize(11)
+          .text(chip.value, x, y + 11, { width: cellW - 8, lineBreak: false, ellipsis: true });
+      });
+      doc.y = y + 30;
+      doc.moveTo(LEFT, doc.y).lineTo(RIGHT, doc.y).strokeColor(hair).lineWidth(1).stroke();
+      doc.moveDown(1);
+    } else {
+      doc.moveDown(0.3);
+    }
 
     for (const section of definition.sections) {
       if (section.heading) {
+        ensureSpace(52);
         doc.moveDown(0.5);
-        doc.fillColor(primary).fontSize(12).font("Helvetica-Bold").text(section.heading);
-        doc.moveDown(0.3);
+        doc
+          .fillColor(primary)
+          .font("Helvetica-Bold")
+          .fontSize(10.5)
+          .text(section.heading.toUpperCase(), LEFT, doc.y, { characterSpacing: 0.8 });
+        doc.moveDown(0.35);
+        doc.moveTo(LEFT, doc.y).lineTo(RIGHT, doc.y).strokeColor(hair).lineWidth(1).stroke();
+        doc.moveDown(0.65);
       }
       if (section.paragraphs) {
         for (const paragraph of section.paragraphs) {
-          doc.fillColor("#222222").fontSize(10).font("Helvetica").text(paragraph, { lineGap: 2 });
-          doc.moveDown(0.3);
+          doc.fillColor("#333333").fontSize(10).font("Helvetica").text(paragraph, LEFT, doc.y, {
+            width: WIDTH,
+            lineGap: 2,
+          });
+          doc.moveDown(0.45);
         }
       }
       if (section.fields) {
         for (const field of section.fields) {
+          ensureSpace(24);
           const y = doc.y;
-          doc.fillColor("#666666").fontSize(9).font("Helvetica-Bold").text(field.label, 50, y, { width: 160 });
-          doc.fillColor("#111111").fontSize(10).font("Helvetica").text(field.value || "None", 220, y, { width: 320 });
-          doc.moveDown(0.4);
+          doc.fillColor(muted).fontSize(9).font("Helvetica-Bold").text(field.label, LEFT, y, { width: 150 });
+          doc
+            .fillColor(ink)
+            .fontSize(10)
+            .font("Helvetica")
+            .text(field.value || "—", LEFT + 165, y, { width: WIDTH - 165 });
+          doc.moveDown(0.6);
         }
+        doc.moveDown(0.5);
       }
       if (section.table) {
         renderTable(doc, section.table, primary);
+        doc.moveDown(0.6);
       }
     }
 
     if (definition.footerNote) {
-      doc.moveDown(1.5);
-      doc.fillColor("#777777").fontSize(8).font("Helvetica-Oblique").text(definition.footerNote);
+      doc.moveDown(1);
+      doc
+        .fillColor("#9ca3af")
+        .fontSize(8)
+        .font("Helvetica-Oblique")
+        .text(definition.footerNote, LEFT, doc.y, { width: WIDTH });
     }
 
     // Page numbers + generation timestamp. The footer sits below the normal text
@@ -147,39 +201,45 @@ function renderTable(
   const startX = 50;
   const usableWidth = 495;
   const columnWidth = usableWidth / table.headers.length;
-  const rowHeight = 20;
+  const rowHeight = 22;
+  const pad = 6;
 
-  const drawRow = (cells: string[], y: number, isHeader: boolean) => {
-    if (isHeader) {
-      doc.rect(startX, y, usableWidth, rowHeight).fill(primary);
-    }
+  const drawCells = (cells: string[], y: number, isHeader: boolean) => {
     cells.forEach((cell, index) => {
       doc
-        .fillColor(isHeader ? "#ffffff" : "#222222")
+        .fillColor(isHeader ? "#ffffff" : "#1a1a1a")
         .fontSize(9)
         .font(isHeader ? "Helvetica-Bold" : "Helvetica")
-        .text(cell, startX + index * columnWidth + 4, y + 5, {
-          width: columnWidth - 8,
+        .text(cell ?? "", startX + index * columnWidth + pad, y + 6, {
+          width: columnWidth - pad * 2,
           height: rowHeight,
           ellipsis: true,
         });
     });
   };
 
-  let y = doc.y;
-  drawRow(table.headers, y, true);
+  const topY = doc.y;
+  let y = topY;
+  doc.rect(startX, y, usableWidth, rowHeight).fill(primary);
+  drawCells(table.headers, y, true);
   y += rowHeight;
-  for (const row of table.rows) {
+  table.rows.forEach((row, index) => {
     if (y > 760) {
       doc.addPage();
       y = 50;
-      drawRow(table.headers, y, true);
+      doc.rect(startX, y, usableWidth, rowHeight).fill(primary);
+      drawCells(table.headers, y, true);
       y += rowHeight;
     }
-    doc.rect(startX, y, usableWidth, rowHeight).strokeColor("#dddddd").lineWidth(0.5).stroke();
-    drawRow(row, y, false);
+    if (index % 2 === 1) {
+      doc.rect(startX, y, usableWidth, rowHeight).fill("#f6f7f9");
+    }
+    drawCells(row, y, false);
+    doc.moveTo(startX, y + rowHeight).lineTo(startX + usableWidth, y + rowHeight).strokeColor("#e5e7eb").lineWidth(0.5).stroke();
     y += rowHeight;
-  }
-  doc.y = y + 10;
+  });
+  // Outer border around the whole table.
+  doc.rect(startX, topY, usableWidth, y - topY).strokeColor("#e5e7eb").lineWidth(0.75).stroke();
+  doc.y = y + 8;
   doc.x = startX;
 }

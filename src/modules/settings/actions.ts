@@ -7,7 +7,7 @@ import { requirePermission } from "@/shared/auth/guard";
 import { recordAudit } from "@/shared/audit/audit";
 import { ok, toActionError, BusinessRuleError, type ActionResult } from "@/shared/errors";
 import { parseInput as parse } from "@/shared/validation/common";
-import { setSetting, saveSmtpConfig, SETTING_KEYS } from "@/shared/settings/settings";
+import { getSetting, setSetting, saveSmtpConfig, SETTING_KEYS } from "@/shared/settings/settings";
 import { revokeTokensForTarget } from "@/shared/tokens/secure-tokens";
 
 /** System administration actions (SDS Doc 17). All require settings permissions. */
@@ -113,9 +113,12 @@ export async function saveBrandingAction(raw: unknown): Promise<ActionResult<und
   try {
     const { audit } = await requirePermission("settings.manage");
     const input = parse(brandingSchema, raw);
+    // Merge over the existing branding so saving name/colours never drops the
+    // uploaded logo reference (logoStorageKey/logoMimeType live in this setting too).
+    const existing = await getSetting<Record<string, unknown>>(SETTING_KEYS.BRANDING);
     await setSetting(audit, {
       key: SETTING_KEYS.BRANDING,
-      value: input as never,
+      value: { ...existing, ...input } as never,
       category: "branding",
       description: "Global branding",
     });
@@ -369,7 +372,6 @@ export async function uploadBrandingLogoAction(formData: FormData): Promise<Acti
       throw new BusinessRuleError("Logo must be 2 MB or smaller.");
     }
     const { storage } = await import("@/shared/storage/storage");
-    const { getSetting } = await import("@/shared/settings/settings");
     const stored = await storage.save(Buffer.from(await file.arrayBuffer()), extension, "branding");
     const branding = await getSetting<Record<string, unknown>>(SETTING_KEYS.BRANDING);
     await setSetting(audit, {

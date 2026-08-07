@@ -36,7 +36,7 @@ interface PublicApplication {
   /** Null on a shared application, which every company may request. */
   companyId: string | null;
   isShared: boolean;
-  roles: { id: string; name: string }[];
+  roles: { id: string; name: string; description?: string | null }[];
 }
 
 interface ItemDraft {
@@ -850,6 +850,12 @@ export function PublicRequestForm({
                             )
                           }
                         />
+                        {(() => {
+                          const description = availableApplications
+                            .find((application) => application.id === item.applicationId)
+                            ?.roles.find((role) => role.id === item.applicationRoleId)?.description;
+                          return description ? <HelperText>{description}</HelperText> : null;
+                        })()}
                       </div>
                     </>
                   ) : (allowsMixedItems ? item.rowType === "ASSET" : itemMode === "ASSET") ? (

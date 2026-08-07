@@ -31,7 +31,7 @@ function escapeHtmlAttribute(value: string): string {
  */
 export function wrapEmail(subject: string, bodyHtml: string, chrome: EmailChrome): string {
   const header = chrome.logoUrl
-    ? `<img src="${escapeHtmlAttribute(chrome.logoUrl)}" alt="${escapeHtmlAttribute(chrome.systemName)}" style="max-height:56px;max-width:220px;display:inline-block;" />`
+    ? `<img src="${escapeHtmlAttribute(chrome.logoUrl)}" alt="${escapeHtmlAttribute(chrome.systemName)}" style="max-height:36px;max-width:150px;height:auto;width:auto;display:inline-block;" />`
     : `<span style="font-size:18px;font-weight:bold;color:${escapeHtmlAttribute(chrome.primaryColor)};">${escapeHtmlText(chrome.systemName)}</span>`;
 
   return `<!DOCTYPE html>

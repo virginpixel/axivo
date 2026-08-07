@@ -148,7 +148,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
             >
               <FileDown className="h-4 w-4" /> Download PDF
             </a>
-            {canAdmin && !["COMPLETED", "CANCELLED"].includes(request.status) ? (
+            {canAdmin && !["COMPLETED", "CANCELLED", "REJECTED"].includes(request.status) ? (
               <RequestAdminActions requestId={request.id} />
             ) : null}
           </div>

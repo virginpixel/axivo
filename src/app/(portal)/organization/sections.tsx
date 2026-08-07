@@ -20,7 +20,11 @@ export async function AssignmentManager({
       include: { approvalRole: true, person: true, company: true },
       orderBy: [{ company: { name: "asc" } }, { approvalRole: { name: "asc" } }],
     }),
-    db.approvalRole.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { name: "asc" } }),
+    // Department Head is assigned per department (Departments tab), never here.
+    db.approvalRole.findMany({
+      where: { deletedAt: null, isActive: true, key: { not: "DEPARTMENT_HEAD" } },
+      orderBy: { name: "asc" },
+    }),
     db.person.findMany({
       where: { deletedAt: null, isActive: true, companyId: { in: companyIds } },
       orderBy: [{ lastName: "asc" }],
