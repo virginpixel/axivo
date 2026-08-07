@@ -5,6 +5,7 @@ import { PageHeader, Pagination } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge, Badge } from "@/shared/ui/badge";
 import { Card, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Select } from "@/shared/ui/input";
 import { fullName } from "@/shared/utils";
 import { LiveSearch } from "@/shared/ui/live-search";
 import {
@@ -21,11 +22,13 @@ export const dynamic = "force-dynamic";
 export default async function ApplicationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string; apage?: string }>;
+  searchParams: Promise<{ q?: string; aq?: string; company?: string; page?: string; apage?: string }>;
 }) {
   const { user } = await requirePermission("applications.view");
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
+  // Assignments have their own search box, independent of the applications one.
+  const aq = params.aq?.trim() ?? "";
   const page = Math.max(1, Number(params.page) || 1);
   const pageSize = 25;
   // Assignments paginate independently of the application cards above them.
@@ -35,21 +38,24 @@ export default async function ApplicationsPage({
   const canManage = user.permissions.has("applications.manage");
   const canAssign = user.permissions.has("applications.assignments.manage");
   const companyScope = isGlobalAdmin ? {} : { companyId: user.companyId };
+  const companyFilter = isGlobalAdmin && params.company ? { companyId: params.company } : {};
 
   const applicationWhere = {
     deletedAt: null,
     ...companyScope,
+    ...companyFilter,
     ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {}),
   };
   const assignmentWhere = {
     deletedAt: null,
-    application: { deletedAt: null, ...companyScope },
-    ...(q
+    application: { deletedAt: null, ...companyScope, ...companyFilter },
+    ...(aq
       ? {
           OR: [
-            { application: { name: { contains: q, mode: "insensitive" as const } } },
-            { username: { contains: q, mode: "insensitive" as const } },
-            { person: { lastName: { contains: q, mode: "insensitive" as const } } },
+            { application: { name: { contains: aq, mode: "insensitive" as const } } },
+            { username: { contains: aq, mode: "insensitive" as const } },
+            { person: { lastName: { contains: aq, mode: "insensitive" as const } } },
+            { person: { firstName: { contains: aq, mode: "insensitive" as const } } },
           ],
         }
       : {}),
@@ -110,8 +116,21 @@ export default async function ApplicationsPage({
         actions={canManage ? <ApplicationDialog companies={companies} workflows={workflows} /> : undefined}
       />
 
-      <div className="mb-4">
-        <LiveSearch placeholder="Search applications, users, usernames" />
+      <div className="mb-4 flex flex-wrap items-end gap-2">
+        <LiveSearch paramName="q" pageParam="page" placeholder="Search applications" className="w-full sm:w-64" />
+        {isGlobalAdmin ? (
+          <form method="get" className="flex flex-wrap items-end gap-2">
+            {q ? <input type="hidden" name="q" value={q} /> : null}
+            {aq ? <input type="hidden" name="aq" value={aq} /> : null}
+            <Select name="company" defaultValue={params.company ?? ""} className="w-full sm:w-44" aria-label="Filter by company">
+              <option value="">All companies</option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>{company.name}</option>
+              ))}
+            </Select>
+            <button type="submit" className="h-9 rounded-md border border-input bg-card px-3.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">Filter</button>
+          </form>
+        ) : null}
       </div>
 
       {applications.length === 0 ? (
@@ -171,14 +190,24 @@ export default async function ApplicationsPage({
         buildHref={(next) => {
           const search = new URLSearchParams();
           if (q) search.set("q", q);
+          if (aq) search.set("aq", aq);
+          if (params.company) search.set("company", params.company);
+          if (assignmentPage > 1) search.set("apage", String(assignmentPage));
           search.set("page", String(next));
           return `/applications?${search.toString()}`;
         }}
       />
 
       <section aria-label="Assignments" className="mt-8">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-semibold">Recent assignments</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <LiveSearch
+              paramName="aq"
+              pageParam="apage"
+              placeholder="Search assignments by user or username"
+              className="w-full sm:w-72"
+            />
           {canAssign ? (
             <AssignmentDialog
               applications={applications.map((application) => ({
@@ -193,6 +222,7 @@ export default async function ApplicationsPage({
               allPeople={people.map((person) => ({ id: person.id, name: fullName(person) }))}
             />
           ) : null}
+          </div>
         </div>
         {assignments.length === 0 ? (
           <EmptyState title="No assignments" description="Application assignments appear here, including those created by request implementations." />
@@ -229,6 +259,8 @@ export default async function ApplicationsPage({
           buildHref={(next) => {
             const search = new URLSearchParams();
             if (q) search.set("q", q);
+            if (aq) search.set("aq", aq);
+            if (params.company) search.set("company", params.company);
             if (page > 1) search.set("page", String(page));
             search.set("apage", String(next));
             return `/applications?${search.toString()}`;

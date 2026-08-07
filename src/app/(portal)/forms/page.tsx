@@ -6,17 +6,26 @@ import { PageHeader, Pagination } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge, Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
+import { Select } from "@/shared/ui/input";
 import { Plus } from "lucide-react";
 import { FormRowActions, CopyLinkButton } from "./form-actions-ui";
 
 export const metadata = { title: "Forms" };
 export const dynamic = "force-dynamic";
 
+/** The request-type kinds a public form can carry, with friendly labels. */
+const FORM_REQUEST_KINDS: { value: string; label: string }[] = [
+  { value: "APPLICATION_ACCESS", label: "Application access" },
+  { value: "ASSET_REQUEST", label: "Asset request" },
+  { value: "ASSET_CHECKOUT", label: "Asset checkout" },
+  { value: "ROLE_CHANGE", label: "Role change" },
+];
+
 /** Forms list (SDS Doc 22): draft/published/archived with public links. */
 export default async function FormsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; company?: string; kind?: string }>;
 }) {
   const params = await searchParams;
   const page = Math.max(1, Number(params.page) || 1);
@@ -25,10 +34,18 @@ export default async function FormsPage({
   const isGlobalAdmin = user.systemRoleKey === "SYSTEM_ADMINISTRATOR";
   const canManage = user.permissions.has("forms.manage");
   const companyScope = isGlobalAdmin ? {} : { companyId: user.companyId };
+  // A specific company also surfaces all-company forms (companyId null), which serve everyone.
+  const companyFilter =
+    isGlobalAdmin && params.company ? { OR: [{ companyId: params.company }, { companyId: null }] } : {};
+  const kindFilter =
+    params.kind && FORM_REQUEST_KINDS.some((entry) => entry.value === params.kind)
+      ? { requestType: { kind: params.kind as never } }
+      : {};
+  const formWhere = { deletedAt: null, ...companyScope, ...companyFilter, ...kindFilter };
 
-  const [forms, formTotal] = await Promise.all([
+  const [forms, formTotal, companies] = await Promise.all([
     db.form.findMany({
-      where: { deletedAt: null, ...companyScope },
+      where: formWhere,
       skip: (page - 1) * pageSize,
       take: pageSize,
       orderBy: [{ company: { name: "asc" } }, { name: "asc" }],
@@ -40,7 +57,10 @@ export default async function FormsPage({
         _count: { select: { requests: true } },
       },
     }),
-    db.form.count({ where: { deletedAt: null, ...companyScope } }),
+    db.form.count({ where: formWhere }),
+    isGlobalAdmin
+      ? db.company.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } })
+      : Promise.resolve([]),
   ]);
 
   const baseUrl = await publicBaseUrl();
@@ -60,6 +80,26 @@ export default async function FormsPage({
           ) : undefined
         }
       />
+
+      {isGlobalAdmin || FORM_REQUEST_KINDS.length > 0 ? (
+        <form method="get" className="mb-4 flex flex-wrap items-end gap-2">
+          {isGlobalAdmin ? (
+            <Select name="company" defaultValue={params.company ?? ""} className="w-full sm:w-44" aria-label="Filter by company">
+              <option value="">All companies</option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>{company.name}</option>
+              ))}
+            </Select>
+          ) : null}
+          <Select name="kind" defaultValue={params.kind ?? ""} className="w-full sm:w-48" aria-label="Filter by request type">
+            <option value="">All request types</option>
+            {FORM_REQUEST_KINDS.map((entry) => (
+              <option key={entry.value} value={entry.value}>{entry.label}</option>
+            ))}
+          </Select>
+          <button type="submit" className="h-9 rounded-md border border-input bg-card px-3.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">Filter</button>
+        </form>
+      ) : null}
 
       {forms.length === 0 ? (
         <EmptyState
@@ -113,6 +153,8 @@ export default async function FormsPage({
         total={formTotal}
         buildHref={(next) => {
           const search = new URLSearchParams();
+          if (params.company) search.set("company", params.company);
+          if (params.kind) search.set("kind", params.kind);
           search.set("page", String(next));
           return `/forms?${search.toString()}`;
         }}

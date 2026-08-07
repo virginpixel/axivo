@@ -339,7 +339,7 @@ describe("end-to-end request lifecycle", () => {
 
     const license = await licensesService.createLicense(actor, {
       companyId: company.id, applicationId: application.id, name: "Single Seat License",
-      licenseType: "PERPETUAL", vendor: undefined, licenseKey: undefined, contractId: undefined, notes: undefined,
+      licenseType: "PERPETUAL", isShared: false, licenseKey: undefined, contractId: undefined, notes: undefined,
     });
     await licensesService.recordPurchase(actor, {
       licenseId: license.id, purchaseType: "NEW_PURCHASE", quantity: 1,

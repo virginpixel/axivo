@@ -10,7 +10,8 @@ export const licenseSchema = z
     applicationId: uuidSchema.optional().or(z.literal("").transform(() => undefined)),
     name: requiredText("License name"),
     licenseType: z.enum(["SUBSCRIPTION", "PERPETUAL"]),
-    vendor: optionalText(200),
+    /** Shareable across companies (seats assignable to any company's people). */
+    isShared: z.boolean().default(false),
     licenseKey: optionalText(500),
     contractId: uuidSchema.optional().or(z.literal("").transform(() => undefined)),
     notes: optionalText(),

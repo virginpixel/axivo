@@ -88,6 +88,8 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
   for (const person of people) {
     (peopleByCompany[person.companyId] ??= []).push({ id: person.id, name: fullName(person) });
   }
+  // Shared licenses can be assigned to anyone, so they draw from the full list.
+  const allPeople = people.map((person) => ({ id: person.id, name: fullName(person) }));
 
   return (
     <div>
@@ -96,7 +98,7 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
         description="Software licenses, purchases, renewals and seat availability."
         actions={
           canManage ? (
-            <LicenseDialog companies={companies} applications={applications} contracts={contracts} vendors={vendors} />
+            <LicenseDialog companies={companies} applications={applications} contracts={contracts} />
           ) : undefined
         }
       />
@@ -140,13 +142,13 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
                     </Link>
                     <p className="text-xs text-muted-foreground">
                       {license.application ? `${license.application.name} · ` : ""}
-                      {license.company.name} · {license.licenseType.toLowerCase()}
+                      {license.isShared ? "All companies" : license.company.name} · {license.licenseType.toLowerCase()}
                       {license.contract
                         ? ` · contract ${license.contract.contractNumber ?? license.contract.name}`
                         : ""}
                     </p>
                   </TD>
-                  <TD className="text-muted-foreground">{license.vendor ?? "None"}</TD>
+                  <TD className="text-muted-foreground">{license.purchases[0]?.supplier ?? "None"}</TD>
                   <TD className="text-right tabular-nums">{stats.purchased}</TD>
                   <TD className="text-right tabular-nums">{stats.assigned}</TD>
                   <TD>
@@ -168,25 +170,24 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
                         {canAssign ? (
                           <LicenseAssignDialog
                             licenseId={license.id}
-                            people={peopleByCompany[license.companyId] ?? []}
+                            people={license.isShared ? allPeople : peopleByCompany[license.companyId] ?? []}
                             available={stats.available}
                           />
                         ) : null}
                         {canManage ? (
                           <>
-                            <PurchaseDialog licenseId={license.id} licenseType={license.licenseType} />
+                            <PurchaseDialog licenseId={license.id} licenseType={license.licenseType} vendors={vendors} />
                             <LicenseDialog
                               companies={companies}
                               applications={applications}
                               contracts={contracts}
-                              vendors={vendors}
                               license={{
                                 id: license.id,
                                 companyId: license.companyId,
                                 applicationId: license.applicationId,
                                 name: license.name,
                                 licenseType: license.licenseType,
-                                vendor: license.vendor,
+                                isShared: license.isShared,
                                 licenseKey: license.licenseKey,
                                 contractId: license.contractId,
                                 notes: license.notes,

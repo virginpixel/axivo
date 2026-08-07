@@ -280,7 +280,9 @@ export async function assignLicense(
     }
     if (!person) throw new NotFoundError("Employee not found.");
     if (!person.isActive) throw new BusinessRuleError("Only active employees may receive licenses.");
-    if (person.companyId !== license.companyId) {
+    // A shared license can be assigned to any company's people; a company-scoped
+    // one stays within its owning company.
+    if (!license.isShared && person.companyId !== license.companyId) {
       throw new BusinessRuleError("The employee and license must belong to the same company.");
     }
 

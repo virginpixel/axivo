@@ -19,20 +19,18 @@ export function LicenseDialog({
   companies,
   applications,
   contracts,
-  vendors = [],
   license,
 }: {
   companies: { id: string; name: string }[];
   applications: { id: string; name: string; companyId: string }[];
   contracts: { id: string; contractNumber: string | null; name: string; companyId: string }[];
-  vendors?: string[];
   license?: {
     id: string;
     companyId: string;
     applicationId: string | null;
     name: string;
     licenseType: string;
-    vendor: string | null;
+    isShared: boolean;
     licenseKey: string | null;
     contractId: string | null;
     notes: string | null;
@@ -45,7 +43,7 @@ export function LicenseDialog({
     applicationId: license?.applicationId ?? "",
     name: license?.name ?? "",
     licenseType: license?.licenseType ?? "SUBSCRIPTION",
-    vendor: license?.vendor ?? "",
+    isShared: license?.isShared ?? false,
     licenseKey: license?.licenseKey ?? "",
     contractId: license?.contractId ?? "",
     notes: license?.notes ?? "",
@@ -60,7 +58,7 @@ export function LicenseDialog({
       applicationId: form.applicationId || undefined,
       name: form.name,
       licenseType: form.licenseType,
-      vendor: form.vendor || undefined,
+      isShared: form.isShared,
       licenseKey: form.licenseKey || undefined,
       contractId: form.contractId || undefined,
       notes: form.notes || undefined,
@@ -120,16 +118,22 @@ export function LicenseDialog({
               </Select>
             </div>
             <div>
-              <Label htmlFor="lic-vendor">Vendor</Label>
-              <Combobox
-                id="lic-vendor" value={form.vendor}
-                placeholder={vendors.length ? "Select vendor…" : "Add vendors in Settings → Catalogs"}
-                emptyLabel="None"
-                options={vendors.map((vendor) => ({ value: vendor, label: vendor }))}
-                onChange={(value) => setForm({ ...form, vendor: value })}
-              />
+              <Label htmlFor="lic-shared">Availability</Label>
+              <label htmlFor="lic-shared" className="flex h-9 items-center gap-2 text-sm">
+                <input
+                  id="lic-shared"
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-input"
+                  checked={form.isShared}
+                  onChange={(e) => setForm({ ...form, isShared: e.target.checked })}
+                />
+                Available to all companies
+              </label>
             </div>
           </div>
+          {form.isShared ? (
+            <HelperText>Seats can be assigned to employees of any company.</HelperText>
+          ) : null}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label htmlFor="lic-key">License key</Label>
@@ -165,7 +169,15 @@ export function LicenseDialog({
   );
 }
 
-export function PurchaseDialog({ licenseId, licenseType }: { licenseId: string; licenseType: string }) {
+export function PurchaseDialog({
+  licenseId,
+  licenseType,
+  vendors = [],
+}: {
+  licenseId: string;
+  licenseType: string;
+  vendors?: string[];
+}) {
   const { run, loading, fieldErrors } = useAction();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
@@ -228,7 +240,13 @@ export function PurchaseDialog({ licenseId, licenseType }: { licenseId: string; 
             ) : null}
             <div>
               <Label htmlFor="pur-supplier">Vendor</Label>
-              <Input id="pur-supplier" value={form.supplier} onChange={(e) => setForm({ ...form, supplier: e.target.value })} />
+              <Combobox
+                id="pur-supplier" value={form.supplier}
+                placeholder={vendors.length ? "Select vendor…" : "Add vendors in Settings → Catalogs"}
+                emptyLabel="None"
+                options={vendors.map((vendor) => ({ value: vendor, label: vendor }))}
+                onChange={(value) => setForm({ ...form, supplier: value })}
+              />
             </div>
             <div>
               <Label htmlFor="pur-reference">Purchase reference</Label>

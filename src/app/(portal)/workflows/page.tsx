@@ -4,6 +4,7 @@ import { PageHeader, Pagination } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge } from "@/shared/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Select } from "@/shared/ui/input";
 import { fullName, formatDate } from "@/shared/utils";
 import {
   WorkflowDialog,
@@ -20,7 +21,7 @@ export const dynamic = "force-dynamic";
 export default async function WorkflowsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; company?: string }>;
 }) {
   const params = await searchParams;
   const page = Math.max(1, Number(params.page) || 1);
@@ -29,10 +30,12 @@ export default async function WorkflowsPage({
   const isGlobalAdmin = user.systemRoleKey === "SYSTEM_ADMINISTRATOR";
   const canManage = user.permissions.has("workflows.manage");
   const companyScope = isGlobalAdmin ? {} : { companyId: user.companyId };
+  const companyFilter = isGlobalAdmin && params.company ? { companyId: params.company } : {};
+  const workflowWhere = { deletedAt: null, ...companyScope, ...companyFilter };
 
   const [workflows, workflowTotal, approvalRoles, companies, delegations, people] = await Promise.all([
     db.workflow.findMany({
-      where: { deletedAt: null, ...companyScope },
+      where: workflowWhere,
       skip: (page - 1) * pageSize,
       take: pageSize,
       orderBy: [{ company: { name: "asc" } }, { name: "asc" }],
@@ -45,7 +48,7 @@ export default async function WorkflowsPage({
         forms: { where: { deletedAt: null }, select: { id: true, name: true, status: true } },
       },
     }),
-    db.workflow.count({ where: { deletedAt: null, ...companyScope } }),
+    db.workflow.count({ where: workflowWhere }),
     db.approvalRole.findMany({
       where: { deletedAt: null, isActive: true },
       orderBy: { name: "asc" },
@@ -81,6 +84,18 @@ export default async function WorkflowsPage({
         description="Configurable approval chains. Editing an active workflow creates a new version; running instances continue on their original version."
         actions={canManage ? <WorkflowDialog companies={companies} approvalRoles={approvalRoles} /> : undefined}
       />
+
+      {isGlobalAdmin ? (
+        <form method="get" className="mb-4 flex flex-wrap items-end gap-2">
+          <Select name="company" defaultValue={params.company ?? ""} className="w-full sm:w-44" aria-label="Filter by company">
+            <option value="">All companies</option>
+            {companies.map((company) => (
+              <option key={company.id} value={company.id}>{company.name}</option>
+            ))}
+          </Select>
+          <button type="submit" className="h-9 rounded-md border border-input bg-card px-3.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">Filter</button>
+        </form>
+      ) : null}
 
       {workflows.length === 0 ? (
         <EmptyState
@@ -224,6 +239,7 @@ export default async function WorkflowsPage({
         total={workflowTotal}
         buildHref={(next) => {
           const search = new URLSearchParams();
+          if (params.company) search.set("company", params.company);
           search.set("page", String(next));
           return `/workflows?${search.toString()}`;
         }}

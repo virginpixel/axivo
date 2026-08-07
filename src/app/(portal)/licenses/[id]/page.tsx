@@ -44,7 +44,7 @@ export default async function LicenseDetailPage({
     },
   });
   if (!license) notFound();
-  if (license.companyId !== user.companyId && user.systemRoleKey !== "SYSTEM_ADMINISTRATOR") notFound();
+  if (!license.isShared && license.companyId !== user.companyId && user.systemRoleKey !== "SYSTEM_ADMINISTRATOR") notFound();
 
   const availability = await getLicenseAvailability(license.id);
   const coverage = getLicenseCoverage(license.purchases);
@@ -68,10 +68,18 @@ export default async function LicenseDetailPage({
 
   const people = canAssign
     ? await db.person.findMany({
-        where: { companyId: license.companyId, deletedAt: null, isActive: true },
+        // Shared licenses can be assigned to anyone; company-scoped ones stay put.
+        where: { ...(license.isShared ? {} : { companyId: license.companyId }), deletedAt: null, isActive: true },
         orderBy: { lastName: "asc" },
         select: { id: true, firstName: true, lastName: true },
       })
+    : [];
+  const vendorNames = canManage
+    ? (await db.vendor.findMany({
+        where: { deletedAt: null, isActive: true },
+        orderBy: { name: "asc" },
+        select: { name: true },
+      })).map((vendor) => vendor.name)
     : [];
 
   return (
@@ -81,9 +89,9 @@ export default async function LicenseDetailPage({
         breadcrumbs={[{ label: "Licenses", href: "/licenses" }, { label: license.name }]}
         description={[
           license.application?.name ?? undefined,
-          license.company.name,
+          license.isShared ? "All companies" : license.company.name,
           license.licenseType.toLowerCase(),
-          license.vendor ?? undefined,
+          license.purchases[0]?.supplier ?? undefined,
         ]
           .filter(Boolean)
           .join(" · ")}
@@ -103,7 +111,7 @@ export default async function LicenseDetailPage({
                 {coverage.state === "expired" ? "Expired" : "Covered until"} {formatDate(coverage.expiresAt)}
               </Badge>
             ) : null}
-            {canManage ? <PurchaseDialog licenseId={license.id} licenseType={license.licenseType} /> : null}
+            {canManage ? <PurchaseDialog licenseId={license.id} licenseType={license.licenseType} vendors={vendorNames} /> : null}
             {canAssign ? (
               <LicenseAssignDialog
                 licenseId={license.id}

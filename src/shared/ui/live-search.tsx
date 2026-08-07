@@ -10,10 +10,13 @@ import { Search } from "lucide-react";
  */
 export function LiveSearch({
   paramName = "q",
+  pageParam = "page",
   placeholder = "Search...",
   className,
 }: {
   paramName?: string;
+  /** Pagination param to reset when the query changes (a page may host more than one list). */
+  pageParam?: string;
   placeholder?: string;
   className?: string;
 }) {
@@ -35,7 +38,7 @@ export function LiveSearch({
       if (trimmed) params.set(paramName, trimmed);
       else params.delete(paramName);
       // Reset pagination when the query changes.
-      params.delete("page");
+      params.delete(pageParam);
       const query = params.toString();
       router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
     }, 300);
