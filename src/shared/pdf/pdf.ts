@@ -201,45 +201,63 @@ function renderTable(
   const startX = 50;
   const usableWidth = 495;
   const columnWidth = usableWidth / table.headers.length;
-  const rowHeight = 22;
-  const pad = 6;
+  const padX = 6;
+  const padY = 5;
+  const cellWidth = columnWidth - padX * 2;
+  const pageBottom = doc.page.height - 50;
 
-  const drawCells = (cells: string[], y: number, isHeader: boolean) => {
+  // Row height grows to the tallest wrapped cell, so long values (an item
+  // name, a step title, a comment) wrap onto extra lines instead of clipping.
+  const rowHeightFor = (cells: string[], isHeader: boolean): number => {
+    doc.font(isHeader ? "Helvetica-Bold" : "Helvetica").fontSize(9);
+    let tallest = 0;
+    for (const cell of cells) {
+      const height = doc.heightOfString(cell ?? "", { width: cellWidth });
+      if (height > tallest) tallest = height;
+    }
+    return tallest + padY * 2;
+  };
+
+  const drawCells = (cells: string[], y: number, height: number, isHeader: boolean) => {
+    if (isHeader) doc.rect(startX, y, usableWidth, height).fill(primary);
     cells.forEach((cell, index) => {
       doc
         .fillColor(isHeader ? "#ffffff" : "#1a1a1a")
         .fontSize(9)
         .font(isHeader ? "Helvetica-Bold" : "Helvetica")
-        .text(cell ?? "", startX + index * columnWidth + pad, y + 6, {
-          width: columnWidth - pad * 2,
-          height: rowHeight,
-          ellipsis: true,
+        .text(cell ?? "", startX + index * columnWidth + padX, y + padY, {
+          width: cellWidth,
         });
     });
   };
 
-  const topY = doc.y;
-  let y = topY;
-  doc.rect(startX, y, usableWidth, rowHeight).fill(primary);
-  drawCells(table.headers, y, true);
-  y += rowHeight;
+  const headerHeight = rowHeightFor(table.headers, true);
+  let sectionTop = doc.y;
+  let y = sectionTop;
+  drawCells(table.headers, y, headerHeight, true);
+  y += headerHeight;
+
   table.rows.forEach((row, index) => {
-    if (y > 760) {
+    const rowHeight = rowHeightFor(row, false);
+    if (y + rowHeight > pageBottom) {
+      // Close the border for the part of the table on this page, then repeat
+      // the header at the top of the next.
+      doc.rect(startX, sectionTop, usableWidth, y - sectionTop).strokeColor("#e5e7eb").lineWidth(0.75).stroke();
       doc.addPage();
       y = 50;
-      doc.rect(startX, y, usableWidth, rowHeight).fill(primary);
-      drawCells(table.headers, y, true);
-      y += rowHeight;
+      sectionTop = y;
+      drawCells(table.headers, y, headerHeight, true);
+      y += headerHeight;
     }
     if (index % 2 === 1) {
       doc.rect(startX, y, usableWidth, rowHeight).fill("#f6f7f9");
     }
-    drawCells(row, y, false);
+    drawCells(row, y, rowHeight, false);
     doc.moveTo(startX, y + rowHeight).lineTo(startX + usableWidth, y + rowHeight).strokeColor("#e5e7eb").lineWidth(0.5).stroke();
     y += rowHeight;
   });
-  // Outer border around the whole table.
-  doc.rect(startX, topY, usableWidth, y - topY).strokeColor("#e5e7eb").lineWidth(0.75).stroke();
+  // Outer border around the whole table (current page section).
+  doc.rect(startX, sectionTop, usableWidth, y - sectionTop).strokeColor("#e5e7eb").lineWidth(0.75).stroke();
   doc.y = y + 8;
   doc.x = startX;
 }
