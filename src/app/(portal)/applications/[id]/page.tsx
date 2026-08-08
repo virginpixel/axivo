@@ -12,6 +12,7 @@ import {
   ApplicationDeleteButton,
   AppRoleDialog,
   RoleToggle,
+  RoleDeleteButton,
   CredentialFieldDialog,
   CredentialFieldToggle,
   AssignmentRowActions,
@@ -115,6 +116,7 @@ export default async function ApplicationDetailPage({ params }: { params: Promis
                       <span className="flex items-center gap-1">
                         <AppRoleDialog applicationId={application.id} role={{ id: role.id, name: role.name, description: role.description }} />
                         <RoleToggle id={role.id} isActive={role.isActive} />
+                        <RoleDeleteButton id={role.id} name={role.name} />
                       </span>
                     ) : null}
                   </li>

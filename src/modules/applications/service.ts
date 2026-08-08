@@ -308,6 +308,43 @@ export async function setCredentialFieldActive(context: AuditContext, id: string
  * the application and role names, so history stays readable; active assignments
  * still block, since those represent access somebody currently holds.
  */
+/** Requests snapshot the role name (roleNameSnapshot), so history survives the delete. */
+export async function deleteApplicationRole(context: AuditContext, id: string) {
+  const role = await db.applicationRole.findFirst({
+    where: { id, deletedAt: null },
+    include: {
+      application: { select: { companyId: true } },
+      _count: {
+        select: { assignments: { where: { status: { in: ["ACTIVE", "PENDING", "SUSPENDED"] }, deletedAt: null } } },
+      },
+    },
+  });
+  if (!role) throw new NotFoundError("Role not found.");
+  if (role._count.assignments > 0) {
+    throw new BusinessRuleError(
+      `This role has ${role._count.assignments} active assignment(s). Change or remove them before deleting it.`,
+    );
+  }
+  return db.$transaction(async (tx) => {
+    await tx.applicationRole.update({
+      where: { id },
+      data: { deletedAt: new Date(), isActive: false, updatedById: context.actorUserId ?? null },
+    });
+    await recordAudit(
+      { ...context, companyId: role.application.companyId },
+      {
+        module: MODULE,
+        eventType: "application_role.deleted",
+        action: `Deleted application role "${role.name}"`,
+        targetType: "application_role",
+        targetId: id,
+        targetLabel: role.name,
+      },
+      tx,
+    );
+  });
+}
+
 export async function deleteApplication(context: AuditContext, id: string) {
   const application = await db.application.findFirst({
     where: { id, deletedAt: null },

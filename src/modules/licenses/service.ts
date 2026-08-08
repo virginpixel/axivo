@@ -180,6 +180,41 @@ export async function updateLicense(context: AuditContext, id: string, input: Li
   });
 }
 
+export async function deleteLicense(context: AuditContext, id: string) {
+  const license = await db.license.findFirst({
+    where: { id, deletedAt: null },
+    include: {
+      _count: {
+        select: { assignments: { where: { status: { in: ["ACTIVE", "PENDING", "SUSPENDED"] }, deletedAt: null } } },
+      },
+    },
+  });
+  if (!license) throw new NotFoundError("License not found.");
+  if (license._count.assignments > 0) {
+    throw new BusinessRuleError(
+      `"${license.name}" still has ${license._count.assignments} active assignment(s). Remove them before deleting it.`,
+    );
+  }
+  return db.$transaction(async (tx) => {
+    await tx.license.update({
+      where: { id },
+      data: { deletedAt: new Date(), isActive: false, deletedById: context.actorUserId ?? null },
+    });
+    await recordAudit(
+      { ...context, companyId: license.companyId },
+      {
+        module: MODULE,
+        eventType: "license.deleted",
+        action: `Deleted license "${license.name}"`,
+        targetType: "license",
+        targetId: id,
+        targetLabel: license.name,
+      },
+      tx,
+    );
+  });
+}
+
 export async function setLicenseStatus(context: AuditContext, id: string, status: LicenseStatus) {
   const existing = await db.license.findFirst({ where: { id, deletedAt: null } });
   if (!existing) throw new NotFoundError("License not found.");

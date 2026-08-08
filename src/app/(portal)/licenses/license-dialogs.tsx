@@ -8,6 +8,7 @@ import {
   recordPurchaseAction,
   assignLicenseAction,
   removeLicenseAssignmentAction,
+  deleteLicenseAction,
 } from "@/modules/licenses/actions";
 import { useAction } from "@/shared/ui/use-action";
 import { Button } from "@/shared/ui/button";
@@ -341,6 +342,42 @@ export function LicenseAssignDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Availability history is kept via snapshots elsewhere; deleting a license is
+ * blocked while it still has active assignments. */
+export function LicenseDeleteButton({ id, name }: { id: string; name: string }) {
+  const { run, loading } = useAction();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button variant="ghost" size="icon" aria-label={`Delete ${name}`} title="Delete license" onClick={() => setOpen(true)}>
+        <Trash2 className="h-4 w-4 text-destructive" />
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent
+          title={`Delete ${name}`}
+          description="This removes the license and its purchase records from the list. Licenses with active assignments cannot be deleted."
+        >
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              loading={loading}
+              onClick={() =>
+                run(() => deleteLicenseAction(id), {
+                  successMessage: "License deleted.",
+                  onSuccess: () => setOpen(false),
+                })
+              }
+            >
+              Delete license
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

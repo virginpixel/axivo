@@ -11,6 +11,7 @@ import { LiveSearch } from "@/shared/ui/live-search";
 import {
   ApplicationDialog,
   ApplicationToggle,
+  ApplicationDeleteButton,
   AssignmentDialog,
   AssignmentRowActions,
 } from "./application-dialogs";
@@ -174,6 +175,7 @@ export default async function ApplicationsPage({
                           }}
                         />
                         <ApplicationToggle id={application.id} isActive={application.isActive} />
+                        <ApplicationDeleteButton id={application.id} name={application.name} />
                       </>
                     ) : null}
                   </div>

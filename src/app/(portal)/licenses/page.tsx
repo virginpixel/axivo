@@ -8,7 +8,7 @@ import { StatusBadge, Badge } from "@/shared/ui/badge";
 import { UtilizationBar } from "@/shared/ui/utilization-bar";
 import { formatDate, fullName } from "@/shared/utils";
 import { LiveSearch } from "@/shared/ui/live-search";
-import { LicenseDialog, PurchaseDialog, LicenseAssignDialog } from "./license-dialogs";
+import { LicenseDialog, PurchaseDialog, LicenseAssignDialog, LicenseDeleteButton } from "./license-dialogs";
 
 export const metadata = { title: "Licenses" };
 export const dynamic = "force-dynamic";
@@ -193,6 +193,7 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
                                 notes: license.notes,
                               }}
                             />
+                            <LicenseDeleteButton id={license.id} name={license.name} />
                           </>
                         ) : null}
                       </div>

@@ -11,6 +11,7 @@ import {
   createApplicationRoleAction,
   updateApplicationRoleAction,
   setApplicationRoleActiveAction,
+  deleteApplicationRoleAction,
   saveCredentialFieldAction,
   setCredentialFieldActiveAction,
   createAssignmentAction,
@@ -301,6 +302,47 @@ export function RoleToggle({ id, isActive }: { id: string; isActive: boolean }) 
     >
       <Power className={`h-3 w-3 ${isActive ? "text-success" : ""}`} />
     </button>
+  );
+}
+
+/** Requests snapshot the role name, so history survives the delete. */
+export function RoleDeleteButton({ id, name }: { id: string; name: string }) {
+  const { run, loading } = useAction();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={`Delete ${name}`}
+        title="Delete role"
+        className="text-muted-foreground hover:text-destructive"
+        onClick={() => setOpen(true)}
+      >
+        <Trash2 className="h-3 w-3" />
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent
+          title={`Delete ${name}`}
+          description="Existing requests keep their own record of this role, so their history stays readable. Roles with active assignments cannot be deleted."
+        >
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              loading={loading}
+              onClick={() =>
+                run(() => deleteApplicationRoleAction(id), {
+                  successMessage: "Role deleted.",
+                  onSuccess: () => setOpen(false),
+                })
+              }
+            >
+              Delete role
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

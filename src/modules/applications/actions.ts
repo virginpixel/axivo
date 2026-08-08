@@ -83,6 +83,17 @@ export async function setApplicationRoleActiveAction(id: string, isActive: boole
   }
 }
 
+export async function deleteApplicationRoleAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("applications.manage");
+    await service.deleteApplicationRole(audit, id);
+    revalidatePath("/applications");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
 export async function saveCredentialFieldAction(raw: unknown, fieldId?: string): Promise<ActionResult<{ id: string }>> {
   try {
     const { audit } = await requirePermission("applications.manage");

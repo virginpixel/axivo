@@ -45,6 +45,17 @@ export async function setLicenseStatusAction(id: string, status: unknown): Promi
   }
 }
 
+export async function deleteLicenseAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("licenses.manage");
+    await service.deleteLicense(audit, id);
+    revalidatePath("/licenses");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
 export async function recordPurchaseAction(raw: unknown): Promise<ActionResult<{ id: string }>> {
   try {
     const { audit } = await requirePermission("licenses.manage");
