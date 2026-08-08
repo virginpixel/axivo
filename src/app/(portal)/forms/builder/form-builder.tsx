@@ -96,10 +96,14 @@ export function FormBuilder({
   );
   const [fields, setFields] = useState<FieldDraft[]>(existing?.fields ?? []);
 
-  const companyRequestTypes = useMemo(
-    () => (allCompanies ? requestTypes : requestTypes.filter((entry) => entry.companyId === companyId)),
-    [requestTypes, companyId, allCompanies],
-  );
+  const companyRequestTypes = useMemo(() => {
+    if (!allCompanies) return requestTypes.filter((entry) => entry.companyId === companyId);
+    // Request types are provisioned per company, so an all-company form would
+    // otherwise list one duplicate per company. Only the kind matters here, so
+    // collapse to one option per kind.
+    const seen = new Set<string>();
+    return requestTypes.filter((entry) => (seen.has(entry.kind) ? false : (seen.add(entry.kind), true)));
+  }, [requestTypes, companyId, allCompanies]);
   const companyWorkflows = useMemo(
     () => (allCompanies ? workflows : workflows.filter((entry) => entry.companyId === companyId)),
     [workflows, companyId, allCompanies],

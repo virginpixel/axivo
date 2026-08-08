@@ -439,7 +439,15 @@ export async function duplicateForm(context: AuditContext, id: string) {
 /** Load the live published form for the public request page. */
 export async function getPublicForm(slug: string) {
   return db.form.findFirst({
-    where: { slug, status: "PUBLISHED", isActive: true, deletedAt: null, company: { isActive: true } },
+    // An all-company form has no company (companyId null); a company-bound one
+    // must belong to an active company.
+    where: {
+      slug,
+      status: "PUBLISHED",
+      isActive: true,
+      deletedAt: null,
+      OR: [{ companyId: null }, { company: { isActive: true } }],
+    },
     include: {
       company: { select: { id: true, name: true } },
       requestType: true,

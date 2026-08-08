@@ -21,10 +21,21 @@ export default async function PublicFormsIndexPage({
   searchParams: Promise<{ c?: string }>;
 }) {
   const { c: selected } = await searchParams;
-  const [forms, branding] = await Promise.all([
+  const [companies, forms, branding] = await Promise.all([
+    db.company.findMany({
+      where: { isActive: true, deletedAt: null },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
     db.form.findMany({
-      where: { status: "PUBLISHED", isActive: true, deletedAt: null, company: { isActive: true } },
-      orderBy: [{ company: { name: "asc" } }, { name: "asc" }],
+      // Include all-company forms (companyId null) alongside company-bound ones.
+      where: {
+        status: "PUBLISHED",
+        isActive: true,
+        deletedAt: null,
+        OR: [{ companyId: null }, { company: { isActive: true } }],
+      },
+      orderBy: { name: "asc" },
       include: {
         company: { select: { id: true, name: true } },
         requestType: { select: { name: true, kind: true } },
@@ -33,26 +44,19 @@ export default async function PublicFormsIndexPage({
     getSetting<{ systemName?: string; logoStorageKey?: string }>(SETTING_KEYS.BRANDING),
   ]);
 
+  // An all-company form belongs under every company, so a requester finds it
+  // whichever property they pick. Each group is that company's own forms plus
+  // the shared ones, sorted together by name.
   const allCompanyForms = forms.filter((form) => form.company === null);
-  const byCompany = new Map<string, Group>();
-  for (const form of forms) {
-    if (!form.company) continue;
-    const entry =
-      byCompany.get(form.company.id) ??
-      ({ id: form.company.id, name: form.company.name, forms: [] } as Group);
-    entry.forms.push(form);
-    byCompany.set(form.company.id, entry);
+  const groups: Group[] = [];
+  for (const company of companies) {
+    const own = forms.filter((form) => form.company?.id === company.id);
+    const groupForms = [...own, ...allCompanyForms].sort((a, b) => a.name.localeCompare(b.name));
+    if (groupForms.length > 0) groups.push({ id: company.id, name: company.name, forms: groupForms });
   }
 
   // The chooser only earns its place when more than one company has forms.
-  // Otherwise the forms are shown straight away, as they were before.
-  const showChooser = byCompany.size > 1;
-
-  const groups: Group[] = [];
-  if (allCompanyForms.length > 0) {
-    groups.push({ id: "all", name: "Available to everyone", forms: allCompanyForms });
-  }
-  groups.push(...byCompany.values());
+  const showChooser = groups.length > 1;
 
   const activeGroup =
     showChooser && selected ? (groups.find((group) => group.id === selected) ?? null) : null;
