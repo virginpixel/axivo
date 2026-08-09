@@ -133,7 +133,9 @@ export async function removeAssetImageAction(assetId: string): Promise<ActionRes
 export async function assignAssetAction(raw: unknown): Promise<ActionResult<{ id: string }>> {
   try {
     const { audit } = await requirePermission("assets.assignments.manage");
-    const result = await service.assignAsset(audit, parse(assetAssignmentSchema, raw));
+    // Manual assignment does not auto-generate/email the handover: assign as many
+    // assets as needed, then use "Generate handover form" to send one email.
+    const result = await service.assignAsset(audit, parse(assetAssignmentSchema, raw), { skipHandover: true });
     revalidatePath("/assets", "layout");
     revalidatePath("/people", "layout");
     return ok({ id: result.assignment.id });
