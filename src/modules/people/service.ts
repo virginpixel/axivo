@@ -274,6 +274,25 @@ export async function transferCompany(context: AuditContext, input: TransferComp
     );
   }
 
+  // Guard: application access the target company cannot offer must be resolved
+  // first. Shared applications (available to all companies) move with the person;
+  // a company-specific application belonging to another company does not.
+  const blockingAccess = await db.applicationAssignment.findMany({
+    where: {
+      personId: person.id,
+      status: { in: ["ACTIVE", "PENDING", "SUSPENDED"] },
+      deletedAt: null,
+      application: { isShared: false, companyId: { not: input.newCompanyId }, deletedAt: null },
+    },
+    include: { application: { select: { name: true } } },
+  });
+  if (blockingAccess.length > 0) {
+    const names = [...new Set(blockingAccess.map((assignment) => assignment.application.name))].join(", ");
+    throw new BusinessRuleError(
+      `This employee holds application access ${company.name} cannot offer: ${names}. Change or disable that access before transferring.`,
+    );
+  }
+
   const verifyInCompany = async (
     label: string,
     id: string | undefined,

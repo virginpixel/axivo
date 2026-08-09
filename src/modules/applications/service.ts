@@ -328,7 +328,13 @@ export async function deleteApplicationRole(context: AuditContext, id: string) {
   return db.$transaction(async (tx) => {
     await tx.applicationRole.update({
       where: { id },
-      data: { deletedAt: new Date(), isActive: false, updatedById: context.actorUserId ?? null },
+      // Free the [applicationId, name] unique slot so the name can be re-created.
+      data: {
+        deletedAt: new Date(),
+        isActive: false,
+        updatedById: context.actorUserId ?? null,
+        name: `${role.name} (deleted ${id.slice(0, 8)})`,
+      },
     });
     await recordAudit(
       { ...context, companyId: role.application.companyId },
@@ -369,7 +375,13 @@ export async function deleteApplication(context: AuditContext, id: string) {
   return db.$transaction(async (tx) => {
     await tx.application.update({
       where: { id },
-      data: { deletedAt: new Date(), isActive: false, deletedById: context.actorUserId ?? null },
+      // Free the [companyId, name] unique slot so the name can be re-created.
+      data: {
+        deletedAt: new Date(),
+        isActive: false,
+        deletedById: context.actorUserId ?? null,
+        name: `${application.name} (deleted ${id.slice(0, 8)})`,
+      },
     });
     await recordAudit(
       { ...context, companyId: application.companyId },

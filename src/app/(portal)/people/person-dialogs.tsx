@@ -6,12 +6,14 @@ import {
   createPersonAction,
   updatePersonAction,
   setEmploymentStatusAction,
+  transferCompanyAction,
   createSystemUserAction,
   resetSystemUserPasswordAction,
   changeSystemUserRoleAction,
   setSystemUserEnabledAction,
 } from "@/modules/people/actions";
 import { useAction } from "@/shared/ui/use-action";
+import { ArrowLeftRight } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { quickCreateDepartmentAction, quickCreatePositionAction, quickCreateLocationAction } from "@/modules/catalogs/actions";
 import { useToast } from "@/shared/ui/toast";
@@ -37,6 +39,110 @@ export interface OrgData {
   departments: { id: string; name: string; companyId: string }[];
   positions: { id: string; name: string; companyId: string }[];
   locations: { id: string; name: string; companyId: string }[];
+}
+
+/**
+ * Move an employee to another company. Shared applications move with them; the
+ * server blocks the transfer if they still hold company-specific application
+ * access the target company cannot offer. Department/position/location reset.
+ */
+export function TransferCompanyDialog({
+  personId,
+  currentCompanyId,
+  org,
+}: {
+  personId: string;
+  currentCompanyId: string;
+  org: OrgData;
+}) {
+  const { run, loading } = useAction();
+  const [open, setOpen] = useState(false);
+  const [companyId, setCompanyId] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
+  const [positionId, setPositionId] = useState("");
+
+  const targets = org.companies.filter((company) => company.id !== currentCompanyId);
+  const departments = org.departments.filter((department) => department.companyId === companyId);
+  const positions = org.positions.filter((position) => position.companyId === companyId);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <ArrowLeftRight className="h-4 w-4" /> Transfer
+        </Button>
+      </DialogTrigger>
+      <DialogContent
+        title="Transfer to another company"
+        description="Shared applications move with the employee. Company-specific application access the target company cannot offer must be changed or disabled first."
+      >
+        <div className="space-y-3">
+          <div>
+            <Label htmlFor="tc-company" required>New company</Label>
+            <Combobox
+              id="tc-company"
+              value={companyId}
+              placeholder="Select a company"
+              options={targets.map((company) => ({ value: company.id, label: company.name }))}
+              onChange={(value) => {
+                setCompanyId(value);
+                setDepartmentId("");
+                setPositionId("");
+              }}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="tc-dept">Department</Label>
+              <Combobox
+                id="tc-dept"
+                value={departmentId}
+                placeholder="None"
+                emptyLabel="None"
+                disabled={!companyId}
+                options={departments.map((department) => ({ value: department.id, label: department.name }))}
+                onChange={setDepartmentId}
+              />
+            </div>
+            <div>
+              <Label htmlFor="tc-pos">Position</Label>
+              <Combobox
+                id="tc-pos"
+                value={positionId}
+                placeholder="None"
+                emptyLabel="None"
+                disabled={!companyId}
+                options={positions.map((position) => ({ value: position.id, label: position.name }))}
+                onChange={setPositionId}
+              />
+            </div>
+          </div>
+          <HelperText>Department, position and location reset on transfer; set the new ones here or later.</HelperText>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button
+              loading={loading}
+              disabled={!companyId}
+              onClick={() =>
+                run(
+                  () =>
+                    transferCompanyAction({
+                      personId,
+                      newCompanyId: companyId,
+                      newDepartmentId: departmentId || undefined,
+                      newPositionId: positionId || undefined,
+                    }),
+                  { successMessage: "Employee transferred.", onSuccess: () => setOpen(false) },
+                )
+              }
+            >
+              Transfer
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export interface PersonRecord {

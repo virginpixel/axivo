@@ -309,9 +309,8 @@ export async function assignAsset(
     if (!asset) throw new NotFoundError("Asset not found.");
     if (!person) throw new NotFoundError("Employee not found.");
     if (!person.isActive) throw new BusinessRuleError("Only active employees may receive assets.");
-    if (asset.companyId !== person.companyId && !options.allowCrossCompany) {
-      throw new BusinessRuleError("Assets cannot be assigned across companies unless explicitly transferred.");
-    }
+    // Assets are not company-locked for assignment: an asset owned by one company
+    // may be given to an employee of another (e.g. an HRH laptop to a CXR staff).
     if (asset.status !== "AVAILABLE" && asset.status !== "RESERVED") {
       throw new BusinessRuleError(`Only Available assets may be assigned (current status: ${asset.status}).`);
     }

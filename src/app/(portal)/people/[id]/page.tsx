@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { StatusBadge, Badge } from "@/shared/ui/badge";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
 import { formatDate, formatDateTime, fullName } from "@/shared/utils";
-import { PersonDialog, EmploymentStatusSelect, CreateAccountDialog, AccountControls } from "../person-dialogs";
+import { PersonDialog, EmploymentStatusSelect, CreateAccountDialog, AccountControls, TransferCompanyDialog } from "../person-dialogs";
 import { ReturnAssetButton, GenerateHandoverButton, ClearanceControl, PersonDocumentDelete, CheckInButton } from "./person-clearance";
 import { leaveTypeLabel } from "@/modules/assets/checkouts";
 import { ChangeAccessDialog } from "./access-change";
@@ -20,6 +20,7 @@ import {
   AddLicenseAssignmentDialog,
 } from "./person-quick-add";
 import { documentKindLabel } from "@/modules/documents/categories";
+import { HeldValues } from "./held-values";
 import { Eye, Download } from "lucide-react";
 import { AssignmentRowActions } from "../../applications/application-dialogs";
 import { LicenseAssignmentActions } from "../../licenses/license-dialogs";
@@ -57,6 +58,7 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
   const canManageAssets = user.permissions.has("assets.assignments.manage");
   const canManageAppAssignments = user.permissions.has("applications.assignments.manage");
   const canManageLicenseAssignments = user.permissions.has("licenses.assignments.manage");
+  const canTransfer = user.permissions.has("people.transfer");
 
   const openClearance = await db.clearance.findFirst({
     where: { personId: person.id, status: "IN_PROGRESS" },
@@ -195,14 +197,17 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
       : Promise.resolve([]),
     canManageAssets
       ? db.asset.findMany({
-          where: { deletedAt: null, companyId: person.companyId, status: "AVAILABLE" },
-          orderBy: { name: "asc" },
-          select: { id: true, name: true, assetTag: true, model: true },
+          // Any available asset can be assigned to any employee (e.g. an HRH
+          // laptop given to a CXR staff member); assets are not company-locked.
+          where: { deletedAt: null, status: "AVAILABLE" },
+          orderBy: [{ company: { name: "asc" } }, { name: "asc" }],
+          select: { id: true, name: true, assetTag: true, model: true, company: { select: { name: true } } },
         })
       : Promise.resolve([]),
     canManageLicenseAssignments
       ? db.license.findMany({
-          where: { deletedAt: null, companyId: person.companyId, status: "ACTIVE" },
+          // Include shared licenses (available to all companies), not just this company's.
+          where: { deletedAt: null, status: "ACTIVE", OR: [{ companyId: person.companyId }, { isShared: true }] },
           orderBy: { name: "asc" },
           select: { id: true, name: true },
         })
@@ -251,6 +256,13 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                 />
               ) : null}
               <EmploymentStatusSelect personId={person.id} current={person.employmentStatus} />
+              {canTransfer ? (
+                <TransferCompanyDialog
+                  personId={person.id}
+                  currentCompanyId={person.companyId}
+                  org={{ companies: orgCompanies, departments: orgDepartments, positions: orgPositions, locations: orgLocations }}
+                />
+              ) : null}
               <PersonDialog
                 orgData={{ companies: orgCompanies, departments: orgDepartments, positions: orgPositions, locations: orgLocations }}
                 person={{
@@ -375,18 +387,7 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                         <TD className="font-medium">{assignment.application.name}</TD>
                         <TD>{assignment.applicationRole?.name ?? "None"}</TD>
                         <TD className="max-w-64">
-                          {heldEntries.length === 0 ? (
-                            <span className="text-muted-foreground">-</span>
-                          ) : (
-                            <div className="space-y-0.5">
-                              {heldEntries.map((entry) => (
-                                <p key={entry.label} className="text-xs">
-                                  <span className="text-muted-foreground">{entry.label}: </span>
-                                  {entry.value}
-                                </p>
-                              ))}
-                            </div>
-                          )}
+                          <HeldValues entries={heldEntries} />
                         </TD>
                         <TD className="font-register">{assignment.username ?? "None"}</TD>
                         <TD>{assignment.assignedByLabel ?? "-"}</TD>
@@ -431,7 +432,7 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                 personId={person.id}
                 assets={availableAssets.map((asset) => ({
                   id: asset.id,
-                  label: [asset.name, asset.assetTag, asset.model].filter(Boolean).join(" · "),
+                  label: [asset.name, asset.assetTag, asset.model, asset.company?.name].filter(Boolean).join(" · "),
                 }))}
               />
             ) : null}

@@ -3,7 +3,7 @@ import { storage } from "@/shared/storage/storage";
 import { getSetting, SETTING_KEYS } from "@/shared/settings/settings";
 import { BRAND_PRIMARY } from "@/shared/branding";
 import { renderPdf, type PdfSection } from "@/shared/pdf/pdf";
-import { formatDate, formatDateTime } from "@/shared/utils";
+import { formatDate } from "@/shared/utils";
 import type { AuthenticatedUser } from "@/shared/auth/session";
 
 /** Read the configured request-form logos from storage, so the evidence PDF
@@ -114,7 +114,7 @@ export async function buildRequestEvidencePdf(
 
   // Group items by kind: applications/role-changes into one table, asset
   // requests/checkouts into another. Each is shown only when it has items.
-  const isAppItem = (type: string) => type === "APPLICATION_ACCESS" || type === "ROLE_CHANGE";
+  const isAppItem = (type: string) => type === "APPLICATION" || type === "ROLE_CHANGE";
   const appItems = request.items.filter((item) => isAppItem(item.itemType));
   const assetItems = request.items.filter((item) => !isAppItem(item.itemType));
 
@@ -152,13 +152,10 @@ export async function buildRequestEvidencePdf(
     const answers = (item.itemData as Record<string, unknown> | null) ?? {};
     const target =
       item.application?.name ?? item.assetCategory?.name ?? item.targetNameSnapshot ?? item.description ?? "Item";
-    const detailFields = [
-      ...Object.entries(answers)
-        .map(([key, value]) => ({ label: labels[key] ?? key.replace(/_/g, " "), value: cell(value) }))
-        .filter((entry) => entry.value !== "—"),
-      ...(item.implementedAt ? [{ label: "Implemented", value: formatDateTime(item.implementedAt) }] : []),
-      ...(item.implementedByLabel ? [{ label: "Implemented by", value: item.implementedByLabel }] : []),
-    ];
+    // Only the extra requested fields belong here; dates live in Approval history.
+    const detailFields = Object.entries(answers)
+      .map(([key, value]) => ({ label: labels[key] ?? key.replace(/_/g, " "), value: cell(value) }))
+      .filter((entry) => entry.value !== "—");
     if (detailFields.length > 0) {
       sections.push({ heading: `Details — ${target}`, fields: detailFields });
     }

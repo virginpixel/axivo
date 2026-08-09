@@ -285,7 +285,7 @@ export function WorkflowDialog({
             <HelperText>
               {workflow
                 ? "Saving creates a new workflow version. Requests already in progress continue on their original version."
-                : "The last step must be an IT Implementation step assigned to the IT Implementation role."}
+                : "End with an IT Implementation step when IT must provision the access or asset. Approval-only flows (e.g. asset checkout) can omit it and complete on final approval."}
             </HelperText>
           </div>
 

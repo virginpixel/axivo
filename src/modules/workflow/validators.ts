@@ -27,16 +27,10 @@ export const workflowSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
-    // The final step must be IT Implementation; implementation begins only
-    // after the final approval (Doc 09 Ch5/8, Doc 01 Ch12).
-    const last = value.steps[value.steps.length - 1];
-    if (last && last.stepType !== "IT_IMPLEMENTATION") {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["steps"],
-        message: "The final workflow step must be an IT Implementation step.",
-      });
-    }
+    // An IT Implementation step is optional: flows that provision something
+    // (application access, an asset) end with it, but approval-only flows such
+    // as asset checkout have nothing to implement and complete on final approval
+    // (Doc 09 Ch5/8). When present it must be single and last.
     const implementationSteps = value.steps.filter((s) => s.stepType === "IT_IMPLEMENTATION");
     if (implementationSteps.length > 1) {
       ctx.addIssue({

@@ -198,7 +198,14 @@ export async function deleteLicense(context: AuditContext, id: string) {
   return db.$transaction(async (tx) => {
     await tx.license.update({
       where: { id },
-      data: { deletedAt: new Date(), isActive: false, deletedById: context.actorUserId ?? null },
+      // Free the [companyId, name] unique slot so the same name can be re-created;
+      // the archived row keeps a traceable name.
+      data: {
+        deletedAt: new Date(),
+        isActive: false,
+        deletedById: context.actorUserId ?? null,
+        name: `${license.name} (deleted ${id.slice(0, 8)})`,
+      },
     });
     await recordAudit(
       { ...context, companyId: license.companyId },

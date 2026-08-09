@@ -7,7 +7,7 @@ import { useAction } from "@/shared/ui/use-action";
 import { Button } from "@/shared/ui/button";
 import { Combobox } from "@/shared/ui/combobox";
 import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
-import { Input, Label, FieldError, HelperText, Textarea } from "@/shared/ui/input";
+import { Input, Select, Label, FieldError, HelperText, Textarea } from "@/shared/ui/input";
 
 interface RequestField {
   fieldKey: string;
@@ -132,9 +132,22 @@ export function ChangeAccessDialog({
                     onChange={(next) => setValues((current) => ({ ...current, [field.fieldKey]: next }))}
                     options={field.options.map((option) => ({ value: option, label: option }))}
                   />
+                ) : field.fieldType === "YES_NO" ? (
+                  <Select
+                    id={`ca-${field.fieldKey}`}
+                    value={(value as string) ?? ""}
+                    onChange={(event) =>
+                      setValues((current) => ({ ...current, [field.fieldKey]: event.target.value }))
+                    }
+                  >
+                    <option value="">Select…</option>
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </Select>
                 ) : (
                   <Input
                     id={`ca-${field.fieldKey}`}
+                    type={field.fieldType === "NUMBER" ? "number" : field.fieldType === "DATE" ? "date" : "text"}
                     value={Array.isArray(value) ? value.join(", ") : ((value as string) ?? "")}
                     onChange={(event) =>
                       setValues((current) => ({ ...current, [field.fieldKey]: event.target.value }))
