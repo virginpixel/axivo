@@ -176,7 +176,9 @@ export async function updateForm(context: AuditContext, id: string, input: FormI
     include: { currentVersion: true },
   });
   if (!existing) throw new NotFoundError("Form not found.");
-  if (existing.companyId !== input.companyId) {
+  // Normalise null/undefined so an all-company form (companyId null) is not
+  // mistaken for a company move on an ordinary edit like a rename.
+  if ((existing.companyId ?? null) !== (input.companyId ?? null)) {
     throw new BusinessRuleError("Forms cannot be moved between companies.");
   }
   if (existing.status === "ARCHIVED") {

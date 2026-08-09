@@ -97,6 +97,18 @@ export async function createLicense(context: AuditContext, input: LicenseInput) 
     if (!contract) throw new BusinessRuleError("The linked contract must belong to the same company.");
   }
   return db.$transaction(async (tx) => {
+    // Free the [companyId, name] unique slot from any soft-deleted license with
+    // the same name (e.g. one deleted before name-freeing was added), so it can
+    // be re-created without hitting the database unique constraint.
+    const archived = await tx.license.findFirst({
+      where: { companyId: input.companyId, name: { equals: input.name, mode: "insensitive" }, deletedAt: { not: null } },
+    });
+    if (archived) {
+      await tx.license.update({
+        where: { id: archived.id },
+        data: { name: `${archived.name} (deleted ${archived.id.slice(0, 8)})` },
+      });
+    }
     const license = await tx.license.create({
       data: { ...input, applicationId: input.applicationId ?? null, createdById: context.actorUserId ?? null },
     });

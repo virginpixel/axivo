@@ -36,6 +36,17 @@ export async function createApplication(context: AuditContext, input: Applicatio
     });
   }
   return db.$transaction(async (tx) => {
+    // Free the [companyId, name] slot from any soft-deleted application so the
+    // name can be re-created (covers rows deleted before name-freeing existed).
+    const archived = await tx.application.findFirst({
+      where: { companyId: input.companyId, name: { equals: input.name, mode: "insensitive" }, deletedAt: { not: null } },
+    });
+    if (archived) {
+      await tx.application.update({
+        where: { id: archived.id },
+        data: { name: `${archived.name} (deleted ${archived.id.slice(0, 8)})` },
+      });
+    }
     const application = await tx.application.create({
       data: { ...input, workflowId: input.workflowId ?? null, createdById: context.actorUserId ?? null },
     });
@@ -143,6 +154,17 @@ export async function createApplicationRole(context: AuditContext, input: Applic
     });
   }
   return db.$transaction(async (tx) => {
+    // Free the [applicationId, name] slot from any soft-deleted role so the name
+    // can be re-created (covers rows deleted before name-freeing existed).
+    const archived = await tx.applicationRole.findFirst({
+      where: { applicationId: input.applicationId, name: { equals: input.name, mode: "insensitive" }, deletedAt: { not: null } },
+    });
+    if (archived) {
+      await tx.applicationRole.update({
+        where: { id: archived.id },
+        data: { name: `${archived.name} (deleted ${archived.id.slice(0, 8)})` },
+      });
+    }
     const role = await tx.applicationRole.create({
       data: { ...input, createdById: context.actorUserId ?? null },
     });
