@@ -432,7 +432,8 @@ export function AssignRoleDialog({
   const [companyId, setCompanyId] = useState(companies[0]?.id ?? "");
   const [approvalRoleId, setApprovalRoleId] = useState(roles[0]?.id ?? "");
   const [personIds, setPersonIds] = useState<string[]>([]);
-  const people = peopleByCompany[companyId] ?? [];
+  // Approvers may serve any company (e.g. a shared GM), so offer people from all.
+  const people = Object.values(peopleByCompany).flat();
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

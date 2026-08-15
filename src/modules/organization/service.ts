@@ -521,9 +521,8 @@ export async function assignApprovalRole(context: AuditContext, input: ApprovalR
   if (!person.isActive) {
     throw new BusinessRuleError("Inactive people cannot be assigned to approval roles.");
   }
-  if (person.companyId !== input.companyId) {
-    throw new BusinessRuleError("Assigned people must belong to the same company.");
-  }
+  // An approver may serve more than one company (e.g. a shared GM whose profile
+  // lives under one company), so the person need not belong to input.companyId.
   const existing = await db.approvalRoleAssignment.findUnique({
     where: {
       companyId_approvalRoleId_personId: {
