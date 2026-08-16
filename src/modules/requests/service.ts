@@ -376,6 +376,12 @@ export async function submitPublicRequest(
   await queueNotification({
     companyId: form.companyId,
     eventType: "REQUEST_SUBMITTED",
+    templateKey: "request_submitted",
+    variables: {
+      requesterName: input.requesterName,
+      requestNumber,
+      requestedForName: input.requestedForName,
+    },
     subject: `Request ${requestNumber} received`,
     body: `Dear ${input.requesterName},<br/><br/>Your request <strong>${requestNumber}</strong> has been received and routed for approval. You will be notified of progress by email.`,
     recipients: [{ email: input.requesterEmail, name: input.requesterName }],

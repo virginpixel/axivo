@@ -127,6 +127,12 @@ export async function sendDeliveryEmail(
   await queueNotification({
     companyId: delivery.person.companyId,
     eventType: "CREDENTIAL_DELIVERY",
+    templateKey: "credential_delivery",
+    variables: {
+      employeeName: delivery.person.firstName,
+      applicationName: delivery.application.name,
+      actionUrl: url,
+    },
     subject: `Your access to ${delivery.application.name} is ready`,
     body: [
       `Dear ${delivery.person.firstName},`,

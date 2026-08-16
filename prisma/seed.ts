@@ -33,8 +33,8 @@ const NOTIFICATION_TEMPLATES: { key: string; name: string; type: string; subject
     name: "Approval Required",
     type: "APPROVAL_REQUIRED",
     subject: "Approval required: {{itemLabel}} for {{requestedForName}} ({{requestNumber}})",
-    body: "Dear {{approverName}},<br/><br/>Your approval is required for request <strong>{{requestNumber}}</strong>.<br/>Item: <strong>{{itemLabel}}</strong><br/>Requested for: {{requestedForName}}<br/><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:24px 0;\"><tr><td align=\"center\"><a href=\"{{actionUrl}}\" style=\"display:inline-block;background:#3f53ca;color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;line-height:1;padding:14px 30px;border-radius:999px;\">Review request</a></td></tr></table>",
-    variables: ["approverName", "itemLabel", "requestedForName", "requestNumber", "actionUrl"],
+    body: "Dear {{approverName}},<br/><br/>Your approval is required for request <strong>{{requestNumber}}</strong>.<br/>Item: <strong>{{itemLabel}}</strong><br/>Requested for: <strong>{{requestedForName}}</strong>{{itemDetails}}<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:24px 0;\"><tr><td align=\"center\"><a href=\"{{actionUrl}}\" style=\"display:inline-block;background:#3f53ca;color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;line-height:1;padding:14px 30px;border-radius:999px;\">Review request</a></td></tr></table>",
+    variables: ["approverName", "itemLabel", "requestedForName", "requestNumber", "itemDetails", "actionUrl"],
   },
   {
     key: "request_rejected",

@@ -297,9 +297,19 @@ export async function activateStep(
       requestedForDepartmentId: ic.request.requestedForDepartmentId,
       allowDelegation,
     });
+    const { publicBaseUrl: baseUrlForImpl } = await import("@/shared/settings/runtime");
+    const implementationUrl = `${await baseUrlForImpl()}/requests/${ic.request.id}`;
     await queueNotification({
       companyId: ic.request.companyId,
       eventType: "IMPLEMENTATION_REQUIRED",
+      templateKey: "implementation_required",
+      variables: {
+        recipientName: "IT team",
+        itemLabel: ic.requestItem.label,
+        requestNumber: ic.request.requestNumber,
+        requestedForName: ic.request.requestedForName,
+        actionUrl: implementationUrl,
+      },
       subject: `Implementation required: ${ic.requestItem.label} (${ic.request.requestNumber})`,
       body: `Request <strong>${ic.request.requestNumber}</strong> for <strong>${ic.request.requestedForName}</strong> has completed all approvals.<br/>The item "<strong>${ic.requestItem.label}</strong>" is ready for IT implementation. Sign in to the Axivo portal to complete it.`,
       recipients: approvers.map((approver) => ({
@@ -421,6 +431,16 @@ export async function sendApprovalEmails(
   const ic = await loadInstanceContext(db, stepInstance.workflowInstanceId);
   const round = stepInstance.activatedAt?.getTime() ?? 0;
 
+  // Pre-rendered detail block for the {{itemDetails}} template variable: the
+  // access role asked for and the answers to the target's request fields, so an
+  // approver sees exactly what was requested (which outlets, which cost centre).
+  const itemDetails =
+    (ic.requestItem.roleName ? `<br/>Access role: <strong>${ic.requestItem.roleName}</strong>` : "") +
+    (ic.requestItem.details.length > 0
+      ? `<br/><br/><strong>Details requested</strong><br/>` +
+        ic.requestItem.details.map((detail) => `${detail.label}: ${detail.value}`).join("<br/>")
+      : "");
+
   for (const assignment of stepInstance.assignments) {
     if (assignment.actedAt) continue;
     const { token } = await issueToken({
@@ -435,6 +455,15 @@ export async function sendApprovalEmails(
     await queueNotification({
       companyId: ic.request.companyId,
       eventType: "APPROVAL_REQUIRED",
+      templateKey: "approval_required",
+      variables: {
+        approverName: assignment.person.firstName,
+        itemLabel: ic.requestItem.label,
+        requestedForName: ic.request.requestedForName,
+        requestNumber: ic.request.requestNumber,
+        itemDetails,
+        actionUrl: url,
+      },
       subject: `Approval required: ${ic.requestItem.label} for ${ic.request.requestedForName} (${ic.request.requestNumber})`,
       body: [
         `Dear ${assignment.person.firstName},`,
@@ -673,6 +702,13 @@ async function notifyRequesterOfRejection(ic: InstanceContext, comments: string)
   await queueNotification({
     companyId: ic.request.companyId,
     eventType: "REQUEST_REJECTED",
+    templateKey: "request_rejected",
+    variables: {
+      requesterName: ic.request.requesterName,
+      itemLabel: ic.requestItem.label,
+      requestNumber: ic.request.requestNumber,
+      comments,
+    },
     subject: `Request ${ic.request.requestNumber}: "${ic.requestItem.label}" was rejected`,
     body: [
       `Dear ${ic.request.requesterName},`,
@@ -699,6 +735,14 @@ async function sendCorrectionEmail(ic: InstanceContext, comments: string): Promi
   await queueNotification({
     companyId: ic.request.companyId,
     eventType: "CORRECTION_REQUESTED",
+    templateKey: "correction_requested",
+    variables: {
+      requesterName: ic.request.requesterName,
+      itemLabel: ic.requestItem.label,
+      requestNumber: ic.request.requestNumber,
+      comments,
+      actionUrl: url,
+    },
     subject: `Correction requested: ${ic.requestItem.label} (${ic.request.requestNumber})`,
     body: [
       `Dear ${ic.request.requesterName},`,
@@ -926,9 +970,28 @@ export async function rollupRequestStatus(context: AuditContext, requestId: stri
         request.companyId,
       );
       if (notify) {
+        const grantedSummary =
+          `<strong>Granted for ${request.requestedForName}:</strong><ul>` +
+          request.items
+            .filter((item) => item.status === "COMPLETED")
+            .map((item) => {
+              const target =
+                item.application?.name ?? item.assetCategory?.name ?? item.description ?? "Item";
+              const role = item.applicationRole?.name ? ` (${item.applicationRole.name})` : "";
+              return `<li>${target}${role}</li>`;
+            })
+            .join("") +
+          "</ul>";
         await queueNotification({
           companyId: request.companyId,
           eventType: "REQUEST_COMPLETED",
+          templateKey: "request_completed",
+          variables: {
+            requesterName: request.requesterName,
+            requestNumber: request.requestNumber,
+            requestedForName: request.requestedForName,
+            itemSummary: grantedSummary,
+          },
           subject: `Request ${request.requestNumber} completed`,
           body: [
             `Dear ${request.requesterName},`,
