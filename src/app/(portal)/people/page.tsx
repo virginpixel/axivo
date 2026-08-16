@@ -144,7 +144,7 @@ export default async function PeoplePage({
               {rows.map((person) => (
                 <TR key={person.id}>
                   <TD>
-                    <Link href={`/people/${person.id}`} className="font-medium text-primary hover:underline">
+                    <Link href={`/people/${person.id}`} className="font-medium text-foreground hover:underline">
                       {fullName(person)}
                     </Link>
                     <p className="text-xs text-muted-foreground">{person.email}</p>

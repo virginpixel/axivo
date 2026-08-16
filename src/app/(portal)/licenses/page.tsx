@@ -137,7 +137,7 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
               return (
                 <TR key={license.id}>
                   <TD>
-                    <Link href={`/licenses/${license.id}`} className="font-medium text-primary hover:underline">
+                    <Link href={`/licenses/${license.id}`} className="font-medium text-foreground hover:underline">
                       {license.name}
                     </Link>
                     <p className="text-xs text-muted-foreground">

@@ -25,10 +25,17 @@ import {
   updateCurrencyAction,
   setCurrencyActiveAction,
   setBaseCurrencyAction,
+  deleteManufacturerAction,
+  deleteVendorAction,
+  deleteAssetModelAction,
+  deleteCustomFieldAction,
+  deleteFieldSetAction,
+  deleteCurrencyAction,
 } from "@/modules/catalogs/actions";
 import { CUSTOM_FIELD_FORMAT_LABELS, type CustomFieldFormat } from "@/modules/catalogs/format";
 import { useAction } from "@/shared/ui/use-action";
 import type { ActionResult } from "@/shared/errors";
+import { DeleteButton } from "@/shared/ui/delete-button";
 import { Button } from "@/shared/ui/button";
 import { Input, Select, Textarea, Label, FieldError, HelperText } from "@/shared/ui/input";
 import { Combobox } from "@/shared/ui/combobox";
@@ -91,8 +98,13 @@ export function ManufacturerDialog({ manufacturer }: { manufacturer?: { id: stri
   );
 }
 
-export function ManufacturerToggle({ id, isActive }: { id: string; isActive: boolean }) {
-  return <ToggleButton isActive={isActive} onToggle={() => setManufacturerActiveAction(id, !isActive)} />;
+export function ManufacturerToggle({ id, isActive, name }: { id: string; isActive: boolean; name?: string }) {
+  return (
+    <span className="inline-flex items-center gap-0.5">
+      <ToggleButton isActive={isActive} onToggle={() => setManufacturerActiveAction(id, !isActive)} />
+      <DeleteButton action={deleteManufacturerAction} id={id} entityLabel={name ?? "manufacturer"} successMessage="Manufacturer deleted." />
+    </span>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -176,8 +188,13 @@ export function VendorDialog({ vendor }: { vendor?: VendorRecord }) {
   );
 }
 
-export function VendorToggle({ id, isActive }: { id: string; isActive: boolean }) {
-  return <ToggleButton isActive={isActive} onToggle={() => setVendorActiveAction(id, !isActive)} />;
+export function VendorToggle({ id, isActive, name }: { id: string; isActive: boolean; name?: string }) {
+  return (
+    <span className="inline-flex items-center gap-0.5">
+      <ToggleButton isActive={isActive} onToggle={() => setVendorActiveAction(id, !isActive)} />
+      <DeleteButton action={deleteVendorAction} id={id} entityLabel={name ?? "vendor"} successMessage="Vendor deleted." />
+    </span>
+  );
 }
 
 /** Upload / replace / remove a vendor logo. */
@@ -297,8 +314,13 @@ export function AssetModelDialog({
   );
 }
 
-export function AssetModelToggle({ id, isActive }: { id: string; isActive: boolean }) {
-  return <ToggleButton isActive={isActive} onToggle={() => setAssetModelActiveAction(id, !isActive)} />;
+export function AssetModelToggle({ id, isActive, name }: { id: string; isActive: boolean; name?: string }) {
+  return (
+    <span className="inline-flex items-center gap-0.5">
+      <ToggleButton isActive={isActive} onToggle={() => setAssetModelActiveAction(id, !isActive)} />
+      <DeleteButton action={deleteAssetModelAction} id={id} entityLabel={name ?? "asset model"} successMessage="Asset model deleted." />
+    </span>
+  );
 }
 
 /** Upload / replace / remove the default image for an asset model. */
@@ -397,8 +419,13 @@ export function CustomFieldDialog({ field }: { field?: CustomFieldRecord }) {
   );
 }
 
-export function CustomFieldToggle({ id, isActive }: { id: string; isActive: boolean }) {
-  return <ToggleButton isActive={isActive} onToggle={() => setCustomFieldActiveAction(id, !isActive)} />;
+export function CustomFieldToggle({ id, isActive, name }: { id: string; isActive: boolean; name?: string }) {
+  return (
+    <span className="inline-flex items-center gap-0.5">
+      <ToggleButton isActive={isActive} onToggle={() => setCustomFieldActiveAction(id, !isActive)} />
+      <DeleteButton action={deleteCustomFieldAction} id={id} entityLabel={name ?? "custom field"} successMessage="Custom field deleted." />
+    </span>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -514,8 +541,13 @@ export function FieldSetDialog({
   );
 }
 
-export function FieldSetToggle({ id, isActive }: { id: string; isActive: boolean }) {
-  return <ToggleButton isActive={isActive} onToggle={() => setFieldSetActiveAction(id, !isActive)} />;
+export function FieldSetToggle({ id, isActive, name }: { id: string; isActive: boolean; name?: string }) {
+  return (
+    <span className="inline-flex items-center gap-0.5">
+      <ToggleButton isActive={isActive} onToggle={() => setFieldSetActiveAction(id, !isActive)} />
+      <DeleteButton action={deleteFieldSetAction} id={id} entityLabel={name ?? "fieldset"} successMessage="Fieldset deleted." />
+    </span>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -583,8 +615,13 @@ export function CurrencyDialog({ currency }: { currency?: CurrencyRecord }) {
   );
 }
 
-export function CurrencyToggle({ id, isActive }: { id: string; isActive: boolean }) {
-  return <ToggleButton isActive={isActive} onToggle={() => setCurrencyActiveAction(id, !isActive)} />;
+export function CurrencyToggle({ id, isActive, name }: { id: string; isActive: boolean; name?: string }) {
+  return (
+    <span className="inline-flex items-center gap-0.5">
+      <ToggleButton isActive={isActive} onToggle={() => setCurrencyActiveAction(id, !isActive)} />
+      <DeleteButton action={deleteCurrencyAction} id={id} entityLabel={name ?? "currency"} successMessage="Currency deleted." />
+    </span>
+  );
 }
 
 export function BaseCurrencyForm({ current, currencies }: { current: string; currencies: { code: string; name: string }[] }) {

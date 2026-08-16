@@ -14,7 +14,8 @@ import {
   removeRequestFormLogoAction,
 } from "@/modules/settings/actions";
 import { Trash2, Pencil } from "lucide-react";
-import { setAssetCategoryActiveAction } from "@/modules/assets/actions";
+import { setAssetCategoryActiveAction, deleteAssetCategoryAction } from "@/modules/assets/actions";
+import { DeleteButton } from "@/shared/ui/delete-button";
 import { setSettingTimezoneAction } from "@/modules/settings/general-actions";
 import { useAction } from "@/shared/ui/use-action";
 import type { ActionResult } from "@/shared/errors";
@@ -233,23 +234,26 @@ export function LogoUploadForm({ hasLogo }: { hasLogo: boolean }) {
   );
 }
 
-export function AssetCategoryToggle({ id, isActive }: { id: string; isActive: boolean }) {
+export function AssetCategoryToggle({ id, isActive, name }: { id: string; isActive: boolean; name?: string }) {
   const { run, loading } = useAction();
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      loading={loading}
-      aria-label={isActive ? "Disable category" : "Enable category"}
-      title={isActive ? "Disable" : "Enable"}
-      onClick={() =>
-        run(() => setAssetCategoryActiveAction(id, !isActive), {
-          successMessage: isActive ? "Category disabled." : "Category enabled.",
-        })
-      }
-    >
-      <Power className={`h-4 w-4 ${isActive ? "text-success" : "text-muted-foreground"}`} />
-    </Button>
+    <span className="inline-flex items-center gap-0.5">
+      <Button
+        variant="ghost"
+        size="icon"
+        loading={loading}
+        aria-label={isActive ? "Disable category" : "Enable category"}
+        title={isActive ? "Disable" : "Enable"}
+        onClick={() =>
+          run(() => setAssetCategoryActiveAction(id, !isActive), {
+            successMessage: isActive ? "Category disabled." : "Category enabled.",
+          })
+        }
+      >
+        <Power className={`h-4 w-4 ${isActive ? "text-success" : "text-muted-foreground"}`} />
+      </Button>
+      <DeleteButton action={deleteAssetCategoryAction} id={id} entityLabel={name ?? "asset category"} successMessage="Asset category deleted." />
+    </span>
   );
 }
 

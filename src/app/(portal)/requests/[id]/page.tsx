@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { StatusBadge } from "@/shared/ui/badge";
 import { formatDateTime } from "@/shared/utils";
 import { RequestAdminActions, ImplementationPanel, StepAdminControls, RequestedForResolution, ApprovalActionPanel } from "./request-actions";
+import { DeleteButton } from "@/shared/ui/delete-button";
+import { deleteRequestAction } from "@/modules/requests/actions";
 import { ResendAckButton } from "@/shared/ui/resend-ack-button";
 import { isStoredSecretResendable } from "@/modules/credentials/service";
 import { AutoRefresh } from "@/shared/ui/auto-refresh";
@@ -22,8 +24,8 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
   const { user } = await requirePermission("requests.view");
   const { id } = await params;
 
-  const request = await db.request.findUnique({
-    where: { id },
+  const request = await db.request.findFirst({
+    where: { id, deletedAt: null },
     include: {
       company: true,
       requestedFor: { select: { id: true, firstName: true, lastName: true } },
@@ -159,6 +161,17 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
             </a>
             {canAdmin && !["COMPLETED", "CANCELLED", "REJECTED"].includes(request.status) ? (
               <RequestAdminActions requestId={request.id} />
+            ) : null}
+            {canAdmin ? (
+              <DeleteButton
+                action={deleteRequestAction}
+                id={request.id}
+                entityLabel={request.requestNumber}
+                message={`This removes request ${request.requestNumber} from the lists. Its audit trail is retained.`}
+                successMessage="Request deleted."
+                redirectTo="/requests"
+                variant="button"
+              />
             ) : null}
           </div>
         }

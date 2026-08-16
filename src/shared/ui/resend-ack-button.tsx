@@ -52,7 +52,9 @@ export function ResendAckButton({
           description={
             needsNewSecret
               ? "The stored temporary password has expired or was already viewed, so it cannot be sent again. Reset the password in the application, then enter the new one here."
-              : "Sends a fresh secure link with the stored temporary password. Leave the address blank to use the employee's profile email."
+              : kind === "credential"
+                ? "Sends a fresh secure link with the stored temporary password. Leave the address blank to use the employee's profile email."
+                : "Sends a fresh secure link to review and acknowledge the asset handover. Leave the address blank to use the employee's profile email."
           }
         >
           <div className="space-y-3">

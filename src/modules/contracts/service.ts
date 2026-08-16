@@ -270,3 +270,33 @@ export async function unlinkContract(context: AuditContext, linkId: string) {
     );
   });
 }
+
+/** Soft-delete a contract; the archived row keeps history and frees its number. */
+export async function deleteContract(context: AuditContext, id: string) {
+  const contract = await db.contract.findFirst({ where: { id, deletedAt: null } });
+  if (!contract) throw new NotFoundError("Contract not found.");
+  return db.$transaction(async (tx) => {
+    await tx.contract.update({
+      where: { id },
+      data: {
+        deletedAt: new Date(),
+        deletedById: context.actorUserId ?? null,
+        contractNumber: contract.contractNumber
+          ? `${contract.contractNumber} (deleted ${id.slice(0, 8)})`
+          : null,
+      },
+    });
+    await recordAudit(
+      { ...context, companyId: contract.companyId },
+      {
+        module: MODULE,
+        eventType: "contract.deleted",
+        action: `Deleted contract "${contract.name}"`,
+        targetType: "contract",
+        targetId: id,
+        targetLabel: contract.name,
+      },
+      tx,
+    );
+  });
+}

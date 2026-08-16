@@ -33,7 +33,7 @@ const NOTIFICATION_TEMPLATES: { key: string; name: string; type: string; subject
     name: "Approval Required",
     type: "APPROVAL_REQUIRED",
     subject: "Approval required: {{itemLabel}} for {{requestedForName}} ({{requestNumber}})",
-    body: "Dear {{approverName}},<br/><br/>Your approval is required for request <strong>{{requestNumber}}</strong>.<br/>Item: <strong>{{itemLabel}}</strong><br/>Requested for: {{requestedForName}}<br/><br/><a href=\"{{actionUrl}}\">Review and act on this request</a>",
+    body: "Dear {{approverName}},<br/><br/>Your approval is required for request <strong>{{requestNumber}}</strong>.<br/>Item: <strong>{{itemLabel}}</strong><br/>Requested for: {{requestedForName}}<br/><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:24px 0;\"><tr><td align=\"center\"><a href=\"{{actionUrl}}\" style=\"display:inline-block;background:#3f53ca;color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;line-height:1;padding:14px 30px;border-radius:999px;\">Review request</a></td></tr></table>",
     variables: ["approverName", "itemLabel", "requestedForName", "requestNumber", "actionUrl"],
   },
   {
@@ -49,7 +49,7 @@ const NOTIFICATION_TEMPLATES: { key: string; name: string; type: string; subject
     name: "Correction Requested",
     type: "CORRECTION_REQUESTED",
     subject: "Correction requested: {{itemLabel}} ({{requestNumber}})",
-    body: "Dear {{requesterName}},<br/><br/>An approver requested a correction for <strong>{{itemLabel}}</strong> on request <strong>{{requestNumber}}</strong>.<br/>Comments: {{comments}}<br/><br/><a href=\"{{actionUrl}}\">Review and correct this item</a>",
+    body: "Dear {{requesterName}},<br/><br/>An approver requested a correction for <strong>{{itemLabel}}</strong> on request <strong>{{requestNumber}}</strong>.<br/>Comments: {{comments}}<br/><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:24px 0;\"><tr><td align=\"center\"><a href=\"{{actionUrl}}\" style=\"display:inline-block;background:#3f53ca;color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;line-height:1;padding:14px 30px;border-radius:999px;\">Review &amp; correct item</a></td></tr></table>",
     variables: ["requesterName", "itemLabel", "requestNumber", "comments", "actionUrl"],
   },
   {
@@ -57,7 +57,7 @@ const NOTIFICATION_TEMPLATES: { key: string; name: string; type: string; subject
     name: "Credential Delivery",
     type: "CREDENTIAL_DELIVERY",
     subject: "Your access to {{applicationName}} is ready",
-    body: "Dear {{employeeName}},<br/><br/>Your access to <strong>{{applicationName}}</strong> has been set up. For security your credentials are not included in this email.<br/><br/><a href=\"{{actionUrl}}\">View your credentials securely</a>",
+    body: "Dear {{employeeName}},<br/><br/>Your access to <strong>{{applicationName}}</strong> has been set up. For security your credentials are not included in this email.<br/><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:24px 0;\"><tr><td align=\"center\"><a href=\"{{actionUrl}}\" style=\"display:inline-block;background:#3f53ca;color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;line-height:1;padding:14px 30px;border-radius:999px;\">View credentials</a></td></tr></table>",
     variables: ["employeeName", "applicationName", "actionUrl"],
   },
   {
@@ -65,7 +65,7 @@ const NOTIFICATION_TEMPLATES: { key: string; name: string; type: string; subject
     name: "Asset Handover",
     type: "ASSET_HANDOVER",
     subject: "Asset handover acknowledgement required",
-    body: "Dear {{employeeName}},<br/><br/>{{assetCount}} company asset(s) have been assigned to you. Please review and acknowledge receipt.<br/><br/><a href=\"{{actionUrl}}\">Review and acknowledge asset handover</a>",
+    body: "Dear {{employeeName}},<br/><br/>{{assetCount}} company asset(s) have been assigned to you. Please review and acknowledge receipt.<br/><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:24px 0;\"><tr><td align=\"center\"><a href=\"{{actionUrl}}\" style=\"display:inline-block;background:#3f53ca;color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;line-height:1;padding:14px 30px;border-radius:999px;\">Review &amp; acknowledge</a></td></tr></table>",
     variables: ["employeeName", "assetCount", "actionUrl"],
   },
   {
@@ -81,7 +81,7 @@ const NOTIFICATION_TEMPLATES: { key: string; name: string; type: string; subject
     name: "Implementation Required",
     type: "IMPLEMENTATION_REQUIRED",
     subject: "Ready to implement: {{itemLabel}} ({{requestNumber}})",
-    body: "Dear {{recipientName}},<br/><br/><strong>{{itemLabel}}</strong> on request <strong>{{requestNumber}}</strong> has completed approval and is ready for IT to implement.<br/>Requested for: {{requestedForName}}<br/><br/><a href=\"{{actionUrl}}\">Open the request</a>",
+    body: "Dear {{recipientName}},<br/><br/><strong>{{itemLabel}}</strong> on request <strong>{{requestNumber}}</strong> has completed approval and is ready for IT to implement.<br/>Requested for: {{requestedForName}}<br/><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:24px 0;\"><tr><td align=\"center\"><a href=\"{{actionUrl}}\" style=\"display:inline-block;background:#3f53ca;color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;line-height:1;padding:14px 30px;border-radius:999px;\">Open request</a></td></tr></table>",
     variables: ["recipientName", "itemLabel", "requestNumber", "requestedForName", "actionUrl"],
   },
   {
@@ -97,7 +97,7 @@ const NOTIFICATION_TEMPLATES: { key: string; name: string; type: string; subject
     name: "Pending Action Reminder",
     type: "REMINDER",
     subject: "Reminder: action pending on {{requestNumber}}",
-    body: "This is a reminder that an action assigned to you on request <strong>{{requestNumber}}</strong> is still pending.<br/><br/><a href=\"{{actionUrl}}\">Open the pending action</a>",
+    body: "This is a reminder that an action assigned to you on request <strong>{{requestNumber}}</strong> is still pending.<br/><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:24px 0;\"><tr><td align=\"center\"><a href=\"{{actionUrl}}\" style=\"display:inline-block;background:#3f53ca;color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;line-height:1;padding:14px 30px;border-radius:999px;\">Open pending action</a></td></tr></table>",
     variables: ["requestNumber", "actionUrl"],
   },
   {

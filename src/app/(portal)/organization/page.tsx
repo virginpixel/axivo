@@ -2,12 +2,18 @@ import Link from "next/link";
 import { requirePermission } from "@/shared/auth/guard";
 import { db } from "@/shared/db";
 import { LiveSearch } from "@/shared/ui/live-search";
-import { Select } from "@/shared/ui/input";
+import { CompanyPill } from "@/shared/ui/filter-pill";
+import { DeleteButton } from "@/shared/ui/delete-button";
 import { PageHeader } from "@/shared/ui/page";
 import { EmptyState } from "@/shared/ui/table";
 import { SortableTable } from "@/shared/ui/sortable-table";
 import { StatusBadge } from "@/shared/ui/badge";
 import { cn, fullName } from "@/shared/utils";
+import {
+  deleteCompanyAction,
+  deleteDepartmentAction,
+  deletePositionAction,
+} from "@/modules/organization/actions";
 import {
   CompanyDialog,
   OrgEntityDialog,
@@ -15,6 +21,7 @@ import {
   ToggleActiveButton,
   ApprovalRoleDialog,
 } from "./org-dialogs";
+import { ShowInactiveToggle } from "./org-filters";
 import { AssignmentManager } from "./sections";
 
 export const metadata = { title: "Organization" };
@@ -96,31 +103,25 @@ export default async function OrganizationPage({
         ))}
       </nav>
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        {/* Company filter as pills for the departments/positions tabs. */}
+        {isGlobalAdmin && (tab === "departments" || tab === "positions") ? (
+          <nav aria-label="Filter by company" className="flex flex-wrap gap-2">
+            <CompanyPill href={`/organization?tab=${tab}`} label="All companies" active={!selectedCompanyId} />
+            {companyOptions.map((company) => (
+              <CompanyPill
+                key={company.id}
+                href={`/organization?tab=${tab}&company=${company.id}`}
+                label={company.name}
+                active={selectedCompanyId === company.id}
+              />
+            ))}
+          </nav>
+        ) : null}
         <LiveSearch placeholder="Search by name" className="w-full sm:w-64" />
-        <form method="get" className="flex flex-wrap items-center gap-2">
-          <input type="hidden" name="tab" value={tab} />
-          <input type="hidden" name="q" value={q} />
-          {isGlobalAdmin && (tab === "departments" || tab === "positions") ? (
-            <Select name="company" defaultValue={selectedCompanyId} className="w-full sm:w-48" aria-label="Filter by company">
-              <option value="">All companies</option>
-              {companyOptions.map((company) => (
-                <option key={company.id} value={company.id}>{company.name}</option>
-              ))}
-            </Select>
-          ) : null}
-          {/* Only Departments and Positions can be disabled, so the filter is
-              only meaningful there (Companies and Approval Roles have no toggle). */}
-          {tab === "departments" || tab === "positions" ? (
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="showInactive" value="1" defaultChecked={showInactive} className="h-4 w-4" />
-              Show inactive
-            </label>
-          ) : null}
-          <button type="submit" className="h-9 rounded-full border border-input bg-card px-4 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">
-            Apply
-          </button>
-        </form>
+        {/* Only Departments and Positions can be disabled, so the toggle is
+            only meaningful there (Companies and Approval Roles have no toggle). */}
+        {tab === "departments" || tab === "positions" ? <ShowInactiveToggle /> : null}
       </div>
 
       {tab === "companies" ? (
@@ -160,6 +161,7 @@ export default async function OrganizationPage({
                             }}
                           />
                           <ToggleActiveButton entity="company" id={company.id} isActive={company.isActive} />
+                          <DeleteButton action={deleteCompanyAction} id={company.id} entityLabel={company.name} successMessage="Company deleted." />
                         </div>
                       ) : null,
                     },
@@ -291,6 +293,7 @@ async function DepartmentsSection({
                       }}
                     />
                     <ToggleActiveButton entity="department" id={department.id} isActive={department.isActive} />
+                    <DeleteButton action={deleteDepartmentAction} id={department.id} entityLabel={department.name} successMessage="Department deleted." />
                   </div>
                 ) : null,
               },
@@ -367,6 +370,7 @@ async function PositionsSection({
                       }}
                     />
                     <ToggleActiveButton entity="position" id={position.id} isActive={position.isActive} />
+                    <DeleteButton action={deletePositionAction} id={position.id} entityLabel={position.name} successMessage="Position deleted." />
                   </div>
                 ) : null,
               },

@@ -38,6 +38,7 @@ export default async function RequestsPage({
   const isGlobalAdmin = user.systemRoleKey === "SYSTEM_ADMINISTRATOR";
 
   const where: Prisma.RequestWhereInput = {
+    deletedAt: null,
     ...(isGlobalAdmin ? {} : { companyId: user.companyId }),
     ...(params.status && REQUEST_STATUSES.includes(params.status as RequestStatus)
       ? { status: params.status as RequestStatus }
@@ -160,7 +161,7 @@ export default async function RequestsPage({
               {rows.map((request) => (
                 <TR key={request.id}>
                   <TD>
-                    <Link href={`/requests/${request.id}`} className="font-medium text-primary hover:underline">
+                    <Link href={`/requests/${request.id}`} className="font-medium text-foreground hover:underline">
                       <span className="font-register">{request.requestNumber}</span>
                     </Link>
                     <p className="text-xs text-muted-foreground">by {request.requesterName}</p>

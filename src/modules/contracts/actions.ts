@@ -125,3 +125,14 @@ export async function unlinkContractAction(linkId: string): Promise<ActionResult
     return toActionError(error);
   }
 }
+
+export async function deleteContractAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("contracts.manage");
+    await service.deleteContract(audit, id);
+    revalidatePath("/contracts");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}

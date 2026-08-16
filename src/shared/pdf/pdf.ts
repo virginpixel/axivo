@@ -42,7 +42,7 @@ export async function renderPdf(definition: PdfDefinition): Promise<Buffer> {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    const primary = definition.branding.primaryColor ?? "#24424c";
+    const primary = definition.branding.primaryColor ?? "#3f53ca";
     const ink = "#1a1a1a";
     const muted = "#6b7280";
     const hair = "#e5e7eb";

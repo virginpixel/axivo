@@ -24,6 +24,20 @@ function escapeHtmlAttribute(value: string): string {
 }
 
 /**
+ * A centred, pill-shaped call-to-action button for email bodies. Built as a
+ * table so it centres reliably across email clients; the brand indigo is baked
+ * in because the brand colour is a fixed product constant.
+ */
+export function emailButton(url: string, label: string, color = "#3f53ca"): string {
+  return (
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0;">` +
+    `<tr><td align="center">` +
+    `<a href="${escapeHtmlAttribute(url)}" style="display:inline-block;background:${escapeHtmlAttribute(color)};color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;line-height:1;padding:14px 30px;border-radius:999px;">${escapeHtmlText(label)}</a>` +
+    `</td></tr></table>`
+  );
+}
+
+/**
  * Wrap a rendered template body in the email chrome. The brand logo sits
  * centred above the greeting rather than inside a coloured bar carrying the
  * product name: a recipient should see the organisation writing to them, not

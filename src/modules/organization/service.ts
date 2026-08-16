@@ -103,6 +103,126 @@ export async function setCompanyActive(context: AuditContext, id: string, isActi
   });
 }
 
+/**
+ * Soft-delete an organization record: the row is archived (never hard-deleted,
+ * so audit history survives) and its unique name is freed for reuse. Deletion
+ * is refused while the record still has active dependents.
+ */
+export async function deleteCompany(context: AuditContext, id: string) {
+  const company = await db.company.findFirst({ where: { id, deletedAt: null } });
+  if (!company) throw new NotFoundError("Company not found.");
+  const [people, assets] = await Promise.all([
+    db.person.count({ where: { companyId: id, deletedAt: null } }),
+    db.asset.count({ where: { companyId: id, deletedAt: null } }),
+  ]);
+  if (people > 0 || assets > 0) {
+    throw new BusinessRuleError(
+      `"${company.name}" still has ${people} employee(s) and ${assets} asset(s). Remove them before deleting the company.`,
+    );
+  }
+  return db.$transaction(async (tx) => {
+    await tx.company.update({
+      where: { id },
+      data: {
+        isActive: false,
+        deletedAt: new Date(),
+        deletedById: context.actorUserId ?? null,
+        name: `${company.name} (deleted ${id.slice(0, 8)})`,
+      },
+    });
+    await recordAudit(
+      { ...context, companyId: id },
+      { module: MODULE, eventType: "company.deleted", action: `Deleted company "${company.name}"`, targetType: "company", targetId: id, targetLabel: company.name },
+      tx,
+    );
+  });
+}
+
+export async function deleteDepartment(context: AuditContext, id: string) {
+  const department = await db.department.findFirst({ where: { id, deletedAt: null } });
+  if (!department) throw new NotFoundError("Department not found.");
+  const people = await db.person.count({ where: { departmentId: id, deletedAt: null } });
+  if (people > 0) {
+    throw new BusinessRuleError(
+      `"${department.name}" still has ${people} employee(s). Reassign them before deleting it.`,
+    );
+  }
+  return db.$transaction(async (tx) => {
+    await tx.department.update({
+      where: { id },
+      data: {
+        isActive: false,
+        deletedAt: new Date(),
+        deletedById: context.actorUserId ?? null,
+        name: `${department.name} (deleted ${id.slice(0, 8)})`,
+      },
+    });
+    await recordAudit(
+      { ...context, companyId: department.companyId },
+      { module: MODULE, eventType: "department.deleted", action: `Deleted department "${department.name}"`, targetType: "department", targetId: id, targetLabel: department.name },
+      tx,
+    );
+  });
+}
+
+export async function deletePosition(context: AuditContext, id: string) {
+  const position = await db.position.findFirst({ where: { id, deletedAt: null } });
+  if (!position) throw new NotFoundError("Position not found.");
+  const people = await db.person.count({ where: { positionId: id, deletedAt: null } });
+  if (people > 0) {
+    throw new BusinessRuleError(
+      `"${position.name}" still has ${people} employee(s). Reassign them before deleting it.`,
+    );
+  }
+  return db.$transaction(async (tx) => {
+    await tx.position.update({
+      where: { id },
+      data: {
+        isActive: false,
+        deletedAt: new Date(),
+        deletedById: context.actorUserId ?? null,
+        name: `${position.name} (deleted ${id.slice(0, 8)})`,
+      },
+    });
+    await recordAudit(
+      { ...context, companyId: position.companyId },
+      { module: MODULE, eventType: "position.deleted", action: `Deleted position "${position.name}"`, targetType: "position", targetId: id, targetLabel: position.name },
+      tx,
+    );
+  });
+}
+
+export async function deleteLocation(context: AuditContext, id: string) {
+  const location = await db.location.findFirst({ where: { id, deletedAt: null } });
+  if (!location) throw new NotFoundError("Location not found.");
+  const [people, assets, children] = await Promise.all([
+    db.person.count({ where: { locationId: id, deletedAt: null } }),
+    db.asset.count({ where: { locationId: id, deletedAt: null } }),
+    db.location.count({ where: { parentId: id, deletedAt: null } }),
+  ]);
+  if (people > 0 || assets > 0 || children > 0) {
+    throw new BusinessRuleError(
+      `"${location.name}" is still in use (${people} employee(s), ${assets} asset(s), ${children} sub-location(s)). Clear them before deleting it.`,
+    );
+  }
+  return db.$transaction(async (tx) => {
+    await tx.location.update({
+      where: { id },
+      data: {
+        isActive: false,
+        deletedAt: new Date(),
+        deletedById: context.actorUserId ?? null,
+        name: `${location.name} (deleted ${id.slice(0, 8)})`,
+      },
+    });
+    await recordAudit(
+      { ...context, companyId: location.companyId },
+      { module: MODULE, eventType: "location.deleted", action: `Deleted location "${location.name}"`, targetType: "location", targetId: id, targetLabel: location.name },
+      tx,
+    );
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Departments (Doc 06 Ch3)
 // ---------------------------------------------------------------------------
@@ -250,9 +370,30 @@ export async function setDepartmentActive(context: AuditContext, id: string, isA
 // Locations (Doc 06 Ch4)
 // ---------------------------------------------------------------------------
 
+/**
+ * Sub-locations are one level deep: a parent must exist, belong to the same
+ * company, be top-level itself, and never be the location being edited.
+ */
+async function assertValidParentLocation(
+  parentId: string | undefined,
+  companyId: string,
+  selfId?: string,
+): Promise<void> {
+  if (!parentId) return;
+  if (parentId === selfId) throw new BusinessRuleError("A location cannot be its own parent.");
+  const parent = await db.location.findFirst({ where: { id: parentId, deletedAt: null } });
+  if (!parent || parent.companyId !== companyId) {
+    throw new BusinessRuleError("The parent location must belong to the same company.");
+  }
+  if (parent.parentId) {
+    throw new BusinessRuleError("Sub-locations are only one level deep; pick a top-level location as the parent.");
+  }
+}
+
 export async function createLocation(context: AuditContext, input: LocationInput) {
   await assertCompanyActive(input.companyId);
   await assertUniqueInCompany("location", input.companyId, input.name);
+  await assertValidParentLocation(input.parentId, input.companyId);
   return db.$transaction(async (tx) => {
     const location = await tx.location.create({
       data: { ...input, createdById: context.actorUserId ?? null },
@@ -280,6 +421,7 @@ export async function updateLocation(context: AuditContext, id: string, input: L
     throw new BusinessRuleError("Locations cannot be moved between companies.");
   }
   await assertUniqueInCompany("location", input.companyId, input.name, id);
+  await assertValidParentLocation(input.parentId, input.companyId, id);
   return db.$transaction(async (tx) => {
     const location = await tx.location.update({
       where: { id },

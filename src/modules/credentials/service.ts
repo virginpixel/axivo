@@ -1,4 +1,5 @@
 import { db, type DbClient } from "@/shared/db";
+import { emailButton } from "@/shared/email/template";
 import { recordAudit, type AuditContext } from "@/shared/audit/audit";
 import { BusinessRuleError, NotFoundError } from "@/shared/errors";
 import { encryptSecret, decryptSecret } from "@/shared/crypto/encryption";
@@ -133,7 +134,7 @@ export async function sendDeliveryEmail(
       `Your access to <strong>${delivery.application.name}</strong> has been set up.`,
       `For security, your credentials are not included in this email.`,
       ``,
-      `<a href="${url}">View your credentials securely</a>`,
+      emailButton(url, "View credentials"),
       ``,
       `The temporary password can be viewed once and expires automatically. If the link expires, contact IT to resend it.`,
     ].join("<br/>"),

@@ -60,7 +60,8 @@ export function StatusDonut({
             nameKey="name"
             innerRadius="62%"
             outerRadius="82%"
-            paddingAngle={2}
+            paddingAngle={4}
+            cornerRadius={10}
             strokeWidth={0}
           >
             {nonEmpty.map((slice, index) => (

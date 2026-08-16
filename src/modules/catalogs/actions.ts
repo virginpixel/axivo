@@ -758,3 +758,127 @@ export async function quickCreatePositionAction(companyId: string, name: string)
     return toActionError(error);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Deletes (soft-delete; refused while the catalog entry is still referenced)
+// ---------------------------------------------------------------------------
+
+export async function deleteManufacturerAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("settings.manage");
+    const item = await db.manufacturer.findFirst({ where: { id, deletedAt: null } });
+    if (!item) throw new BusinessRuleError("Manufacturer not found.");
+    const [models, assets] = await Promise.all([
+      db.assetModel.count({ where: { manufacturerId: id, deletedAt: null } }),
+      db.asset.count({ where: { manufacturer: item.name, deletedAt: null } }),
+    ]);
+    if (models > 0 || assets > 0) {
+      throw new BusinessRuleError(`"${item.name}" is still used by ${models} model(s) and ${assets} asset(s). Clear them before deleting it.`);
+    }
+    await db.manufacturer.update({ where: { id }, data: { isActive: false, deletedAt: new Date(), name: `${item.name} (deleted ${id.slice(0, 8)})` } });
+    await recordAudit(audit, { module: "settings", eventType: "manufacturer.deleted", action: `Deleted manufacturer "${item.name}"`, targetType: "manufacturer", targetId: id, targetLabel: item.name });
+    revalidateCatalogs();
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function deleteVendorAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("settings.manage");
+    const item = await db.vendor.findFirst({ where: { id, deletedAt: null } });
+    if (!item) throw new BusinessRuleError("Vendor not found.");
+    const [assets, contracts] = await Promise.all([
+      db.asset.count({ where: { supplier: item.name, deletedAt: null } }),
+      db.contract.count({ where: { vendor: item.name, deletedAt: null } }),
+    ]);
+    if (assets > 0 || contracts > 0) {
+      throw new BusinessRuleError(`"${item.name}" is still used by ${assets} asset(s) and ${contracts} contract(s). Clear them before deleting it.`);
+    }
+    await db.vendor.update({ where: { id }, data: { isActive: false, deletedAt: new Date(), name: `${item.name} (deleted ${id.slice(0, 8)})` } });
+    await recordAudit(audit, { module: "settings", eventType: "vendor.deleted", action: `Deleted vendor "${item.name}"`, targetType: "vendor", targetId: id, targetLabel: item.name });
+    revalidateCatalogs();
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function deleteAssetModelAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("settings.manage");
+    const item = await db.assetModel.findFirst({ where: { id, deletedAt: null } });
+    if (!item) throw new BusinessRuleError("Asset model not found.");
+    const assets = await db.asset.count({ where: { model: item.name, deletedAt: null } });
+    if (assets > 0) {
+      throw new BusinessRuleError(`"${item.name}" is still used by ${assets} asset(s). Clear them before deleting it.`);
+    }
+    await db.assetModel.update({ where: { id }, data: { isActive: false, deletedAt: new Date(), name: `${item.name} (deleted ${id.slice(0, 8)})` } });
+    await recordAudit(audit, { module: "settings", eventType: "asset_model.deleted", action: `Deleted asset model "${item.name}"`, targetType: "asset_model", targetId: id, targetLabel: item.name });
+    revalidateCatalogs();
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function deleteCustomFieldAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("settings.manage");
+    const item = await db.customField.findFirst({ where: { id, deletedAt: null } });
+    if (!item) throw new BusinessRuleError("Custom field not found.");
+    const used = await db.fieldSetField.count({ where: { customFieldId: id } });
+    if (used > 0) {
+      throw new BusinessRuleError(`"${item.name}" is used in ${used} fieldset(s). Remove it from them before deleting it.`);
+    }
+    await db.customField.update({ where: { id }, data: { isActive: false, deletedAt: new Date(), name: `${item.name} (deleted ${id.slice(0, 8)})` } });
+    await recordAudit(audit, { module: "settings", eventType: "custom_field.deleted", action: `Deleted custom field "${item.name}"`, targetType: "custom_field", targetId: id, targetLabel: item.name });
+    revalidateCatalogs();
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function deleteFieldSetAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("settings.manage");
+    const item = await db.fieldSet.findFirst({ where: { id, deletedAt: null } });
+    if (!item) throw new BusinessRuleError("Fieldset not found.");
+    const models = await db.assetModel.count({ where: { fieldSetId: id, deletedAt: null } });
+    if (models > 0) {
+      throw new BusinessRuleError(`"${item.name}" is attached to ${models} asset model(s). Detach it before deleting it.`);
+    }
+    await db.$transaction(async (tx) => {
+      await tx.fieldSetField.deleteMany({ where: { fieldSetId: id } });
+      await tx.fieldSet.update({ where: { id }, data: { isActive: false, deletedAt: new Date(), name: `${item.name} (deleted ${id.slice(0, 8)})` } });
+    });
+    await recordAudit(audit, { module: "settings", eventType: "field_set.deleted", action: `Deleted fieldset "${item.name}"`, targetType: "field_set", targetId: id, targetLabel: item.name });
+    revalidateCatalogs();
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function deleteCurrencyAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("settings.manage");
+    const item = await db.currency.findFirst({ where: { id, deletedAt: null } });
+    if (!item) throw new BusinessRuleError("Currency not found.");
+    const [contracts, companies] = await Promise.all([
+      db.contract.count({ where: { currency: item.code, deletedAt: null } }),
+      db.company.count({ where: { currency: item.code, deletedAt: null } }),
+    ]);
+    if (contracts > 0 || companies > 0) {
+      throw new BusinessRuleError(`${item.code} is still used by ${contracts} contract(s) and ${companies} company default(s). Change those before deleting it.`);
+    }
+    await db.currency.update({ where: { id }, data: { isActive: false, deletedAt: new Date(), code: `${item.code}-DEL-${id.slice(0, 4)}` } });
+    await recordAudit(audit, { module: "settings", eventType: "currency.deleted", action: `Deleted currency ${item.code}`, targetType: "currency", targetId: id, targetLabel: item.code });
+    revalidateCatalogs();
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}

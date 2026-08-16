@@ -8,6 +8,8 @@ import { StatusBadge } from "@/shared/ui/badge";
 import { formatDate, fullName } from "@/shared/utils";
 import { ContractRowActions } from "../contract-dialogs";
 import { ContractDocuments } from "./contract-documents";
+import { DeleteButton } from "@/shared/ui/delete-button";
+import { deleteContractAction } from "@/modules/contracts/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +67,7 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
         description={[contract.vendor, contract.category, contract.company.name].filter(Boolean).join(" · ")}
         actions={
           canManage ? (
+            <div className="flex items-center gap-2">
             <ContractRowActions
               contract={{
                 id: contract.id,
@@ -88,6 +91,15 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
               catalogs={catalogs}
               hideView
             />
+            <DeleteButton
+              action={deleteContractAction}
+              id={contract.id}
+              entityLabel={contract.name}
+              successMessage="Contract deleted."
+              redirectTo="/contracts"
+              variant="button"
+            />
+            </div>
           ) : (
             <StatusBadge status={contract.status} />
           )
@@ -115,7 +127,7 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
                 <ul className="space-y-1">
                   {contract.licenses.map((license) => (
                     <li key={license.id}>
-                      <Link href={`/licenses/${license.id}`} className="text-primary hover:underline">{license.name}</Link>
+                      <Link href={`/licenses/${license.id}`} className="text-foreground hover:underline">{license.name}</Link>
                     </li>
                   ))}
                 </ul>

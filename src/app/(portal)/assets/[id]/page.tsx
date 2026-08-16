@@ -62,7 +62,8 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
     }),
     db.location.findMany({
       where: { deletedAt: null, isActive: true, ...companyScope },
-      orderBy: { name: "asc" }, select: { id: true, name: true, companyId: true },
+      orderBy: [{ parent: { name: "asc" } }, { name: "asc" }],
+      select: { id: true, name: true, companyId: true, parent: { select: { name: true } } },
     }),
     db.person.findMany({
       where: { deletedAt: null, isActive: true, ...companyScope },
@@ -103,6 +104,12 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
     }),
   ]);
 
+  // Compose "Parent → Child" labels so sub-locations read clearly in pickers.
+  const locationOptions = locations.map((location) => ({
+    id: location.id,
+    companyId: location.companyId,
+    name: location.parent ? `${location.parent.name} → ${location.name}` : location.name,
+  }));
   const catalogs = {
     manufacturers: manufacturers.map((m) => ({ name: m.name })),
     models: models.map((m) => ({
@@ -169,7 +176,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
               <AssetTransferDialog
                 asset={{ id: asset.id, name: asset.name, companyId: asset.companyId, locationId: asset.locationId }}
                 companies={companies}
-                locations={locations}
+                locations={locationOptions}
                 people={peopleOptions}
                 currentHolder={
                   activeAssignment
@@ -199,7 +206,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
               activeMaintenanceId={activeMaintenance?.id ?? null}
               companies={companies}
               categories={categories}
-              locations={locations}
+              locations={locationOptions}
               catalogs={catalogs}
               people={peopleOptions.map((person) => ({ id: person.id, name: person.name }))}
               permissions={{ canManage, canAssign, canMaintain, canDispose }}
@@ -298,7 +305,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
               node: (
                 <TR>
                   <TD>
-                    <Link href={`/people/${assignment.personId}`} className="font-medium text-primary hover:underline">
+                    <Link href={`/people/${assignment.personId}`} className="font-medium text-foreground hover:underline">
                       {fullName(assignment.person)}
                     </Link>
                   </TD>

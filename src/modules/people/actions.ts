@@ -137,3 +137,14 @@ export async function setSystemUserEnabledAction(
     return toActionError(error);
   }
 }
+
+export async function deletePersonAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("people.manage");
+    await service.deletePerson(audit, id);
+    revalidatePath("/people");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}

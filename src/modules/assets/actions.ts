@@ -53,6 +53,18 @@ export async function setAssetCategoryActiveAction(id: string, isActive: boolean
   }
 }
 
+export async function deleteAssetCategoryAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("assets.manage");
+    await service.deleteAssetCategory(audit, id);
+    revalidatePath("/assets");
+    revalidatePath("/settings");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
 export async function createAssetAction(raw: unknown): Promise<ActionResult<{ id: string }>> {
   try {
     const { audit } = await requirePermission("assets.manage");

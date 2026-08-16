@@ -111,25 +111,25 @@ export default async function PublicFormPage({ params }: { params: Promise<{ slu
         <div className="mx-auto w-full max-w-2xl px-4">
           <div className="mb-6 text-center">
             {(formLogos.left || formLogos.center || formLogos.right) ? (
-              // Customer logos are usually dark artwork; on a dark ground they
-              // vanish, so in dark mode they sit on a white plate.
-              <div className="mb-4 flex items-center justify-between gap-3 rounded-xl dark:bg-white dark:p-3">
+              // Customer logos are usually dark artwork; on the dark ground they
+              // would vanish, so in dark mode they are flattened to white.
+              <div className="mb-4 flex items-center justify-between gap-3">
                 <div className="flex h-14 flex-1 items-center justify-start">
                   {formLogos.left ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src="/api/branding/form-logo/left" alt="" className="max-h-14 max-w-full object-contain" />
+                    <img src="/api/branding/form-logo/left" alt="" className="max-h-14 max-w-full object-contain dark:brightness-0 dark:invert" />
                   ) : null}
                 </div>
                 <div className="flex h-14 flex-1 items-center justify-center">
                   {formLogos.center ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src="/api/branding/form-logo/center" alt="" className="max-h-14 max-w-full object-contain" />
+                    <img src="/api/branding/form-logo/center" alt="" className="max-h-14 max-w-full object-contain dark:brightness-0 dark:invert" />
                   ) : null}
                 </div>
                 <div className="flex h-14 flex-1 items-center justify-end">
                   {formLogos.right ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src="/api/branding/form-logo/right" alt="" className="max-h-14 max-w-full object-contain" />
+                    <img src="/api/branding/form-logo/right" alt="" className="max-h-14 max-w-full object-contain dark:brightness-0 dark:invert" />
                   ) : null}
                 </div>
               </div>

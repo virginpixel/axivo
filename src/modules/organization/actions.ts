@@ -58,6 +58,51 @@ export async function setCompanyActiveAction(id: string, isActive: boolean): Pro
   }
 }
 
+export async function deleteCompanyAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("organization.company.manage");
+    await service.deleteCompany(audit, id);
+    revalidatePath("/organization");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function deleteDepartmentAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("organization.manage");
+    await service.deleteDepartment(audit, id);
+    revalidatePath("/organization");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function deletePositionAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("organization.manage");
+    await service.deletePosition(audit, id);
+    revalidatePath("/organization");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function deleteLocationAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("organization.manage");
+    await service.deleteLocation(audit, id);
+    revalidatePath("/organization");
+    revalidatePath("/settings");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
 // --- Departments ---
 
 export async function createDepartmentAction(raw: unknown): Promise<ActionResult<{ id: string }>> {

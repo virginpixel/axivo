@@ -1,4 +1,5 @@
 import { db, type DbClient } from "@/shared/db";
+import { emailButton } from "@/shared/email/template";
 import { recordAudit, type AuditContext } from "@/shared/audit/audit";
 import { BusinessRuleError, NotFoundError, AuthorizationError } from "@/shared/errors";
 import { issueToken, tokenActionUrl, revokeTokensForTarget } from "@/shared/tokens/secure-tokens";
@@ -451,7 +452,7 @@ export async function sendApprovalEmails(
         `Requested for: <strong>${ic.request.requestedForName}</strong> (${ic.request.requestedForEmail})`,
         `Requested by: ${ic.request.requesterName} (${ic.request.requesterEmail})`,
         ``,
-        `<a href="${url}">Review and act on this request</a>`,
+        emailButton(url, "Review request"),
         ``,
         `This secure link is personal to you and expires automatically.`,
       ].join("<br/>"),
@@ -705,7 +706,7 @@ async function sendCorrectionEmail(ic: InstanceContext, comments: string): Promi
       `An approver has requested a correction for the item "<strong>${ic.requestItem.label}</strong>" on request <strong>${ic.request.requestNumber}</strong>.`,
       `Comments: ${comments}`,
       ``,
-      `<a href="${url}">Review and correct this item</a>`,
+      emailButton(url, "Review & correct item"),
       ``,
       `Only this item requires correction; other items continue unaffected.`,
     ].join("<br/>"),

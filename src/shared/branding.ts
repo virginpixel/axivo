@@ -6,7 +6,7 @@
  */
 
 /** Fixed brand colors. Applied everywhere (app shell, emails, generated PDFs). */
-export const BRAND_PRIMARY = "#24424c";
+export const BRAND_PRIMARY = "#3f53ca";
 export const BRAND_SECONDARY = "#121212";
 
 /** Convert a #rrggbb hex color to the "H S% L%" triple used by the tokens. */

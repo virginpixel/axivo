@@ -5,7 +5,7 @@ import { PageHeader, Pagination } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge, Badge } from "@/shared/ui/badge";
 import { Card, CardHeader, CardTitle } from "@/shared/ui/card";
-import { Select } from "@/shared/ui/input";
+import { CompanyPill } from "@/shared/ui/filter-pill";
 import { fullName } from "@/shared/utils";
 import { LiveSearch } from "@/shared/ui/live-search";
 import {
@@ -117,21 +117,21 @@ export default async function ApplicationsPage({
         actions={canManage ? <ApplicationDialog companies={companies} workflows={workflows} /> : undefined}
       />
 
-      <div className="mb-4 flex flex-wrap items-end gap-2">
-        <LiveSearch paramName="q" pageParam="page" placeholder="Search applications" className="w-full sm:w-64" />
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         {isGlobalAdmin ? (
-          <form method="get" className="flex flex-wrap items-end gap-2">
-            {q ? <input type="hidden" name="q" value={q} /> : null}
-            {aq ? <input type="hidden" name="aq" value={aq} /> : null}
-            <Select name="company" defaultValue={params.company ?? ""} className="w-full sm:w-44" aria-label="Filter by company">
-              <option value="">All companies</option>
-              {companies.map((company) => (
-                <option key={company.id} value={company.id}>{company.name}</option>
-              ))}
-            </Select>
-            <button type="submit" className="h-9 rounded-full border border-input bg-card px-4 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">Filter</button>
-          </form>
+          <nav aria-label="Filter by company" className="flex flex-wrap gap-2">
+            <CompanyPill href={`/applications${q ? `?q=${encodeURIComponent(q)}` : ""}`} label="All companies" active={!params.company} />
+            {companies.map((company) => (
+              <CompanyPill
+                key={company.id}
+                href={`/applications?company=${company.id}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
+                label={company.name}
+                active={params.company === company.id}
+              />
+            ))}
+          </nav>
         ) : null}
+        <LiveSearch paramName="q" pageParam="page" placeholder="Search applications" className="w-full sm:w-64" />
       </div>
 
       {applications.length === 0 ? (
@@ -145,10 +145,10 @@ export default async function ApplicationsPage({
                   <div>
                     <CardTitle className="flex items-center gap-2">
                       <Link href={`/applications/${application.id}`} className="hover:underline">{application.name}</Link>
-                      <span className="text-sm font-normal text-muted-foreground">
+                      <span className="font-sans text-sm font-normal text-muted-foreground">
                         {application.isShared ? "All companies" : application.company.name}
                       </span>
-                      {application.isShared ? <Badge variant="info">Shared</Badge> : null}
+                      {application.isShared ? <Badge variant="info" className="font-sans">Shared</Badge> : null}
                     </CardTitle>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {application._count.assignments} active assignment(s) · {application.roles.length} role(s) · {application.credentialFields.length} field(s)

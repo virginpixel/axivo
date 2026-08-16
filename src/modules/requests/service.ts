@@ -870,3 +870,27 @@ export async function getRequestTimeline(requestId: string) {
     include: { fieldChanges: true },
   });
 }
+
+/** Soft-delete a request: hidden from lists but retained (with its audit trail). */
+export async function deleteRequest(context: AuditContext, id: string) {
+  const request = await db.request.findFirst({ where: { id, deletedAt: null } });
+  if (!request) throw new NotFoundError("Request not found.");
+  return db.$transaction(async (tx) => {
+    await tx.request.update({
+      where: { id },
+      data: { deletedAt: new Date(), deletedById: context.actorUserId ?? null },
+    });
+    await recordAudit(
+      { ...context, companyId: request.companyId },
+      {
+        module: MODULE,
+        eventType: "request.deleted",
+        action: `Deleted request ${request.requestNumber}`,
+        targetType: "request",
+        targetId: id,
+        targetLabel: request.requestNumber,
+      },
+      tx,
+    );
+  });
+}

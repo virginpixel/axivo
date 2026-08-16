@@ -557,3 +557,48 @@ export async function matchPersonByEmail(
     include: { department: true },
   });
 }
+
+/**
+ * Soft-delete an employee record. Refused while they still hold assets,
+ * application access or licenses (run clearance first); the archived row keeps
+ * history and frees the employee ID for reuse.
+ */
+export async function deletePerson(context: AuditContext, id: string) {
+  const person = await db.person.findFirst({ where: { id, deletedAt: null } });
+  if (!person) throw new NotFoundError("Person not found.");
+  const [assets, apps, licenses] = await Promise.all([
+    db.assetAssignment.count({ where: { personId: id, status: "ASSIGNED", deletedAt: null } }),
+    db.applicationAssignment.count({ where: { personId: id, status: { not: "REMOVED" }, deletedAt: null } }),
+    db.licenseAssignment.count({
+      where: { personId: id, status: { in: ["ACTIVE", "PENDING", "SUSPENDED"] }, deletedAt: null },
+    }),
+  ]);
+  if (assets > 0 || apps > 0 || licenses > 0) {
+    throw new BusinessRuleError(
+      `${person.firstName} ${person.lastName} still holds ${assets} asset(s), ${apps} application(s) and ${licenses} license(s). Run clearance or remove these before deleting the record.`,
+    );
+  }
+  return db.$transaction(async (tx) => {
+    await tx.person.update({
+      where: { id },
+      data: {
+        isActive: false,
+        deletedAt: new Date(),
+        deletedById: context.actorUserId ?? null,
+        employeeId: `${person.employeeId} (deleted ${id.slice(0, 8)})`,
+      },
+    });
+    await recordAudit(
+      { ...context, companyId: person.companyId },
+      {
+        module: MODULE,
+        eventType: "person.deleted",
+        action: `Deleted employee "${person.firstName} ${person.lastName}"`,
+        targetType: "person",
+        targetId: id,
+        targetLabel: `${person.firstName} ${person.lastName}`,
+      },
+      tx,
+    );
+  });
+}

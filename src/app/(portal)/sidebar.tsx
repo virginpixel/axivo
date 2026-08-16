@@ -100,13 +100,12 @@ export function Sidebar({
               onClick={() => setMobileOpen(false)}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors",
-                // The accent marks your position in the list; everything else
-                // is a quiet shift in surface and ink.
-                "before:absolute before:left-0 before:top-1/2 before:h-4 before:w-[3px] before:-translate-y-1/2 before:rounded-full before:bg-primary before:transition-opacity",
+                "flex items-center gap-3 rounded-full px-3.5 py-2 text-sm transition-colors",
+                // The active item is a solid accent pill; everything else is a
+                // quiet shift in surface and ink.
                 active
-                  ? "bg-primary/25 font-medium text-rail-foreground before:opacity-100"
-                  : "font-normal text-rail-muted before:opacity-0 hover:bg-white/10 hover:text-rail-foreground",
+                  ? "bg-primary font-medium text-primary-foreground"
+                  : "font-normal text-rail-muted hover:bg-white/10 hover:text-rail-foreground",
               )}
             >
               <span className={cn("shrink-0 transition-opacity", active ? "opacity-100" : "opacity-70")}>

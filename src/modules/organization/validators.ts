@@ -28,6 +28,8 @@ export const locationSchema = z
     name: requiredText("Location name"),
     code: optionalText(20),
     description: optionalText(),
+    /** Optional parent for a one-level sub-location (e.g. Front Office → Reception). */
+    parentId: uuidSchema.optional().or(z.literal("").transform(() => undefined)),
   })
   .strict();
 

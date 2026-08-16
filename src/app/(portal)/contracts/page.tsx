@@ -175,7 +175,7 @@ export default async function ContractsPage({
             {contracts.map((contract) => (
               <TR key={contract.id}>
                 <TD>
-                  <Link href={`/contracts/${contract.id}`} className="font-medium text-primary hover:underline">
+                  <Link href={`/contracts/${contract.id}`} className="font-medium text-foreground hover:underline">
                     {contract.name}
                   </Link>
                   {contract.contractNumber ? (

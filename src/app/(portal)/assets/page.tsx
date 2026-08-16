@@ -89,7 +89,8 @@ export default async function AssetsPage({
       }),
       db.location.findMany({
         where: { deletedAt: null, isActive: true, ...companyScope },
-        orderBy: { name: "asc" }, select: { id: true, name: true, companyId: true },
+        orderBy: [{ parent: { name: "asc" } }, { name: "asc" }],
+        select: { id: true, name: true, companyId: true, parent: { select: { name: true } } },
       }),
       db.person.findMany({
         where: { deletedAt: null, isActive: true, ...companyScope },
@@ -111,6 +112,12 @@ export default async function AssetsPage({
     db.vendor.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { name: "asc" }, select: { name: true } }),
   ]);
 
+  // Compose "Parent → Child" labels so sub-locations read clearly in pickers.
+  const locationOptions = locations.map((location) => ({
+    id: location.id,
+    companyId: location.companyId,
+    name: location.parent ? `${location.parent.name} → ${location.name}` : location.name,
+  }));
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const counts = Object.fromEntries(statusCounts.map((entry) => [entry.status, entry._count]));
   const peopleByCompany: Record<string, { id: string; name: string }[]> = {};
@@ -147,7 +154,7 @@ export default async function AssetsPage({
             <AssetDialog
               companies={companies}
               categories={categoryOptions}
-              locations={locations}
+              locations={locationOptions}
               catalogs={catalogs}
               people={people.map((person) => ({ id: person.id, name: fullName(person), companyId: person.companyId }))}
             />
@@ -199,7 +206,7 @@ export default async function AssetsPage({
                 return (
                   <TR key={asset.id}>
                     <TD>
-                      <Link href={`/assets/${asset.id}`} className="font-medium text-primary hover:underline">
+                      <Link href={`/assets/${asset.id}`} className="font-medium text-foreground hover:underline">
                         {asset.name || asset.assetTag || "Unnamed asset"}
                       </Link>
                       {asset.assetTag ? (
@@ -235,7 +242,7 @@ export default async function AssetsPage({
                         activeMaintenanceId={asset.maintenance[0]?.id ?? null}
                         companies={companies}
                         categories={categoryOptions}
-                        locations={locations}
+                        locations={locationOptions}
                         catalogs={catalogs}
                         people={peopleByCompany[asset.companyId] ?? []}
                         permissions={{ canManage, canAssign, canMaintain, canDispose }}

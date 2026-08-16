@@ -21,6 +21,8 @@ import {
 } from "./person-quick-add";
 import { documentKindLabel } from "@/modules/documents/categories";
 import { HeldValues } from "./held-values";
+import { DeleteButton } from "@/shared/ui/delete-button";
+import { deletePersonAction } from "@/modules/people/actions";
 import { Eye, Download } from "lucide-react";
 import { AssignmentRowActions } from "../../applications/application-dialogs";
 import { LicenseAssignmentActions } from "../../licenses/license-dialogs";
@@ -281,6 +283,17 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                   employmentStatus: person.employmentStatus,
                 }}
               />
+              {canManage ? (
+                <DeleteButton
+                  action={deletePersonAction}
+                  id={person.id}
+                  entityLabel={fullName(person)}
+                  message={`This removes ${fullName(person)} from People. Allowed only once they hold no assets, applications or licenses; history is retained.`}
+                  successMessage="Employee deleted."
+                  redirectTo="/people"
+                  variant="button"
+                />
+              ) : null}
             </div>
           ) : undefined
         }
@@ -350,7 +363,7 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
       </div>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
-        <Card>
+        <Card className="lg:col-span-2">
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle>Application access</CardTitle>
             {canManageAppAssignments ? (
@@ -424,7 +437,7 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="lg:col-span-2">
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle>Assets</CardTitle>
             {canManageAssets ? (
@@ -452,7 +465,7 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                   {person.assetAssignments.map((assignment) => (
                     <TR key={assignment.id}>
                       <TD>
-                        <Link href={`/assets/${assignment.asset.id}`} className="font-medium text-primary hover:underline">
+                        <Link href={`/assets/${assignment.asset.id}`} className="font-medium text-foreground hover:underline">
                           {assignment.asset.name || assignment.asset.assetTag}
                         </Link>
                         <p className="text-xs text-muted-foreground">

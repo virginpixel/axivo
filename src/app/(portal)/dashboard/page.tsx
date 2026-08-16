@@ -7,7 +7,6 @@ import { StatusBadge } from "@/shared/ui/badge";
 import { AutoRefresh } from "@/shared/ui/auto-refresh";
 import { formatDateTime } from "@/shared/utils";
 import { StatusDonut } from "./dashboard-charts";
-import { Greeting } from "./greeting";
 
 export const metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
@@ -73,8 +72,6 @@ export default async function DashboardPage() {
     .map((entry) => ({ name: categoryNames.get(entry.categoryId) ?? "Unknown", count: entry._count }))
     .sort((a, b) => b.count - a.count);
 
-  const firstName = user.displayName.split(" ")[0] || user.displayName;
-  const waitingTotal = pendingApprovals + pendingImplementations + correctionsPending;
   const queues = [
     { count: pendingApprovals, label: "Approvals", hint: "Requests awaiting your decision", href: "/requests?status=PENDING_APPROVAL", action: "Review" },
     { count: pendingImplementations, label: "Implementations", hint: "Approved items awaiting IT", href: "/requests?status=IMPLEMENTATION_PENDING", action: "Open" },
@@ -85,21 +82,7 @@ export default async function DashboardPage() {
     <div>
       <AutoRefresh />
 
-      <header className="mb-8 max-w-3xl">
-        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-primary">
-          Operational overview{isGlobalAdmin ? " across all companies" : ""}
-        </div>
-        <h1 className="font-display text-4xl font-normal tracking-tight sm:text-5xl">
-          <Greeting name={firstName} />
-        </h1>
-        <p className="mt-2 text-base text-muted-foreground">
-          {waitingTotal > 0
-            ? `${waitingTotal} request item${waitingTotal === 1 ? "" : "s"} ${waitingTotal === 1 ? "is" : "are"} waiting on you. Everything else is running itself.`
-            : "Nothing is waiting on you right now. Everything else is running itself."}
-        </p>
-      </header>
-
-      <section className="mb-6 rounded-3xl border border-primary/15 bg-accent/50 p-6 sm:p-8">
+      <section className="mb-6 mt-2 rounded-3xl border border-primary/15 bg-accent/50 p-6 sm:p-8">
         <div className="flex items-baseline gap-3">
           <h2 className="font-display text-2xl font-normal">Waiting on you</h2>
           <Link href="/requests" className="text-sm font-medium text-primary hover:underline">
@@ -202,7 +185,7 @@ export default async function DashboardPage() {
                       .toUpperCase()}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <Link href={`/requests/${request.id}`} className="font-register text-sm text-primary hover:underline">
+                    <Link href={`/requests/${request.id}`} className="font-register text-sm text-foreground hover:underline">
                       {request.requestNumber}
                     </Link>
                     <p className="truncate text-xs text-muted-foreground">

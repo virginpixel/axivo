@@ -32,6 +32,8 @@ import {
 import { CUSTOM_FIELD_FORMAT_LABELS, type CustomFieldFormat } from "@/modules/catalogs/format";
 import { CategoryDialog } from "../assets/asset-dialogs";
 import { OrgEntityDialog, ToggleActiveButton } from "../organization/org-dialogs";
+import { DeleteButton } from "@/shared/ui/delete-button";
+import { deleteLocationAction } from "@/modules/organization/actions";
 
 export const metadata = { title: "Settings" };
 export const dynamic = "force-dynamic";
@@ -79,9 +81,9 @@ export default async function SettingsPage({
               href={`/settings?tab=${entry.key}`}
               aria-current={tab === entry.key ? "page" : undefined}
               className={cn(
-                "rounded-md px-3 py-2 text-sm font-medium",
+                "rounded-full px-4 py-2 text-sm font-medium transition-colors",
                 tab === entry.key
-                  ? "bg-primary/10 text-primary"
+                  ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
             >
@@ -479,6 +481,7 @@ async function LocationsTab({
       orderBy: { name: "asc" },
       include: {
         company: { select: { name: true } },
+        parent: { select: { name: true } },
         _count: { select: { assets: { where: { deletedAt: null } } } },
       },
     }),
@@ -488,13 +491,17 @@ async function LocationsTab({
       select: { id: true, name: true },
     }),
   ]);
+  // Only top-level locations can be a parent (one-level sub-locations).
+  const parentOptions = locations
+    .filter((location) => !location.parentId)
+    .map((location) => ({ id: location.id, name: location.name, companyId: location.companyId }));
   return (
     <section aria-label="Asset locations">
       <p className="mb-3 text-sm text-muted-foreground">
         Locations record where assets are placed (offices, floors, warehouses).
       </p>
       <div className="mb-3 flex justify-end">
-        {canManage ? <OrgEntityDialog entity="location" companies={companies} /> : null}
+        {canManage ? <OrgEntityDialog entity="location" companies={companies} parents={parentOptions} /> : null}
       </div>
       <Table>
         <THead>
@@ -507,7 +514,9 @@ async function LocationsTab({
           {locations.map((location) => (
             <TR key={location.id}>
               <TD className="font-medium">
-                <Link href={`/settings/locations/${location.id}`} className="hover:underline">{location.name}</Link>
+                <Link href={`/settings/locations/${location.id}`} className="hover:underline">
+                  {location.parent ? `${location.parent.name} → ${location.name}` : location.name}
+                </Link>
               </TD>
               <TD>{location.company.name}</TD>
               <TD>{location._count.assets}</TD>
@@ -518,15 +527,18 @@ async function LocationsTab({
                     <OrgEntityDialog
                       entity="location"
                       companies={companies}
+                      parents={parentOptions}
                       record={{
                         id: location.id,
                         companyId: location.companyId,
                         name: location.name,
                         code: location.code,
                         description: location.description,
+                        parentId: location.parentId,
                       }}
                     />
                     <ToggleActiveButton entity="location" id={location.id} isActive={location.isActive} />
+                    <DeleteButton action={deleteLocationAction} id={location.id} entityLabel={location.name} successMessage="Location deleted." />
                   </div>
                 </TD>
               ) : null}

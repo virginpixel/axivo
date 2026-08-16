@@ -26,16 +26,17 @@
     --popover: 0 0% 100%;
     --popover-foreground: 230 30% 12%;
 
-    /* The single accent: the brand teal. Action, links, active state, focus. */
-    --primary: 195 37% 22%;
-    --primary-foreground: 195 30% 97%;
-    --secondary: 200 18% 26%;
+    /* The single accent: the brand indigo (#3f53ca). Action, links, active
+       state, focus. */
+    --primary: 231 57% 52%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 231 14% 28%;
     --secondary-foreground: 228 40% 98%;
 
     --muted: 228 28% 95%;
     --muted-foreground: 230 12% 44%;
-    --accent: 195 34% 93%;
-    --accent-foreground: 195 42% 24%;
+    --accent: 231 50% 95%;
+    --accent-foreground: 231 55% 44%;
 
     /* State, each off the accent hue so it reads as meaning, not chrome. */
     --destructive: 4 68% 48%;
@@ -49,7 +50,7 @@
 
     --border: 230 18% 88%;
     --input: 230 16% 82%;
-    --ring: 195 37% 30%;
+    --ring: 231 57% 58%;
     --radius: 0.75rem;
 
     /* Navigation rail: a near-black dark rail (design "Organic" rail). */
@@ -69,15 +70,15 @@
     --popover: 240 8% 11%;
     --popover-foreground: 240 20% 96%;
 
-    --primary: 191 40% 42%;
+    --primary: 231 57% 60%;
     --primary-foreground: 0 0% 100%;
     --secondary: 240 8% 26%;
     --secondary-foreground: 240 20% 96%;
 
     --muted: 240 8% 16%;
     --muted-foreground: 240 6% 64%;
-    --accent: 195 30% 18%;
-    --accent-foreground: 190 45% 72%;
+    --accent: 231 30% 22%;
+    --accent-foreground: 231 70% 82%;
 
     --destructive: 4 62% 55%;
     --destructive-foreground: 240 20% 96%;
@@ -90,7 +91,7 @@
 
     --border: 240 6% 22%;
     --input: 240 6% 26%;
-    --ring: 191 44% 50%;
+    --ring: 240 55% 66%;
 
     /* Rail goes darker still on a dark ground. */
     --rail: 240 10% 5%;

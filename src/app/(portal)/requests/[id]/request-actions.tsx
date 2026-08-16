@@ -485,7 +485,7 @@ export function RequestedForResolution({
     return (
       <div className="mb-4 rounded-lg border bg-muted/30 p-3 text-sm">
         <span className="text-muted-foreground">Will be assigned to </span>
-        <a href={`/people/${personId}`} className="font-medium text-primary hover:underline">
+        <a href={`/people/${personId}`} className="font-medium text-foreground hover:underline">
           {personName}
         </a>
         {requestedForEmployeeId ? (

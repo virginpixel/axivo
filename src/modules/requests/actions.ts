@@ -276,3 +276,14 @@ export async function createRequestedForPersonAction(
     return toActionError(error);
   }
 }
+
+export async function deleteRequestAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("requests.admin");
+    await service.deleteRequest(audit, id);
+    revalidatePath("/requests", "layout");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}

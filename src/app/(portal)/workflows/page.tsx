@@ -2,7 +2,7 @@ import { requirePermission } from "@/shared/auth/guard";
 import { db } from "@/shared/db";
 import { PageHeader, Pagination } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
-import { StatusBadge } from "@/shared/ui/badge";
+import { StatusBadge, Badge } from "@/shared/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { fullName, formatDate } from "@/shared/utils";
 import { CompanyPill } from "@/shared/ui/filter-pill";
@@ -175,9 +175,11 @@ export default async function WorkflowsPage({
                     ))}
                   </ol>
                   {workflow.forms.length > 0 ? (
-                    <p className="mt-3 text-xs text-muted-foreground">
-                      Used by: {workflow.forms.map((form) => form.name).join(", ")}
-                    </p>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {workflow.forms.map((form) => (
+                        <Badge key={form.id} variant="default">{form.name}</Badge>
+                      ))}
+                    </div>
                   ) : null}
                 </CardContent>
               </Card>

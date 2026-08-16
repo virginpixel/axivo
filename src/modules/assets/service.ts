@@ -1,4 +1,5 @@
 import { db, type DbClient } from "@/shared/db";
+import { emailButton } from "@/shared/email/template";
 import { formatDateTimeWithZone } from "@/shared/utils";
 import { recordAudit, diffRecords, type AuditContext } from "@/shared/audit/audit";
 import { BusinessRuleError, NotFoundError, ValidationError } from "@/shared/errors";
@@ -118,6 +119,39 @@ export async function setAssetCategoryActive(context: AuditContext, id: string, 
       tx,
     );
     return category;
+  });
+}
+
+/** Soft-delete an asset category; refused while assets or requests still use it. */
+export async function deleteAssetCategory(context: AuditContext, id: string) {
+  const category = await db.assetCategory.findFirst({ where: { id, deletedAt: null } });
+  if (!category) throw new NotFoundError("Asset category not found.");
+  const [assets, requestItems] = await Promise.all([
+    db.asset.count({ where: { categoryId: id, deletedAt: null } }),
+    db.requestItem.count({ where: { assetCategoryId: id } }),
+  ]);
+  if (assets > 0 || requestItems > 0) {
+    throw new BusinessRuleError(
+      `"${category.name}" is still used by ${assets} asset(s) and ${requestItems} request item(s). Clear them before deleting it.`,
+    );
+  }
+  return db.$transaction(async (tx) => {
+    await tx.assetCategory.update({
+      where: { id },
+      data: { isActive: false, deletedAt: new Date(), name: `${category.name} (deleted ${id.slice(0, 8)})` },
+    });
+    await recordAudit(
+      context,
+      {
+        module: MODULE,
+        eventType: "category.deleted",
+        action: `Deleted asset category "${category.name}"`,
+        targetType: "asset_category",
+        targetId: id,
+        targetLabel: category.name,
+      },
+      tx,
+    );
   });
 }
 
@@ -603,7 +637,7 @@ export async function sendHandover(
       actionUrl: url,
     },
     subject: "Asset handover acknowledgement required",
-    body: `Dear ${person.firstName},<br/><br/>Company assets have been assigned to you. Please review and acknowledge receipt using the secure link below.<br/><br/><a href="${url}">Review and acknowledge asset handover</a>`,
+    body: `Dear ${person.firstName},<br/><br/>Company assets have been assigned to you. Please review and acknowledge receipt using the button below.<br/>${emailButton(url, "Review & acknowledge")}`,
     recipients: [{ email: recipientEmail, name: `${person.firstName} ${person.lastName}`, personId: person.id }],
     entityType: "handover",
     entityId: handover.id,

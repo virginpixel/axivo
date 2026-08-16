@@ -237,10 +237,13 @@ export function OrgEntityDialog({
   entity,
   companies,
   record,
+  parents,
 }: {
   entity: "location" | "position";
   companies: { id: string; name: string }[];
-  record?: { id: string; companyId: string; name: string; code: string | null; description: string | null };
+  record?: { id: string; companyId: string; name: string; code: string | null; description: string | null; parentId?: string | null };
+  /** Candidate parent locations (top-level only), for one-level sub-locations. */
+  parents?: { id: string; name: string; companyId: string }[];
 }) {
   const { run, loading, fieldErrors } = useAction();
   const [open, setOpen] = useState(false);
@@ -249,8 +252,15 @@ export function OrgEntityDialog({
     name: record?.name ?? "",
     code: record?.code ?? "",
     description: record?.description ?? "",
+    parentId: record?.parentId ?? "",
   });
   const label = entity.charAt(0).toUpperCase() + entity.slice(1);
+  // A location can sit under any other top-level location of the same company
+  // (never under itself). Only offered for the location entity.
+  const parentOptions =
+    entity === "location"
+      ? (parents ?? []).filter((p) => p.companyId === form.companyId && p.id !== record?.id)
+      : [];
 
   async function submit() {
     const payload = {
@@ -258,6 +268,7 @@ export function OrgEntityDialog({
       name: form.name,
       code: form.code || undefined,
       description: form.description || undefined,
+      ...(entity === "location" ? { parentId: form.parentId || undefined } : {}),
     };
     const actions = ENTITY_ACTIONS[entity];
     await run(
@@ -303,6 +314,21 @@ export function OrgEntityDialog({
             <div>
               <Label htmlFor={`${entity}-code`}>Code</Label>
               <Input id={`${entity}-code`} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
+            </div>
+          ) : null}
+          {entity === "location" ? (
+            <div>
+              <Label htmlFor="location-parent">Parent location</Label>
+              <Select
+                id="location-parent"
+                value={form.parentId}
+                onChange={(e) => setForm({ ...form, parentId: e.target.value })}
+              >
+                <option value="">None (top-level location)</option>
+                {parentOptions.map((parent) => (
+                  <option key={parent.id} value={parent.id}>{parent.name}</option>
+                ))}
+              </Select>
             </div>
           ) : null}
           <div>
