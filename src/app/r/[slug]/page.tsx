@@ -111,7 +111,9 @@ export default async function PublicFormPage({ params }: { params: Promise<{ slu
         <div className="mx-auto w-full max-w-2xl px-4">
           <div className="mb-6 text-center">
             {(formLogos.left || formLogos.center || formLogos.right) ? (
-              <div className="mb-4 flex items-center justify-between gap-3">
+              // Customer logos are usually dark artwork; on a dark ground they
+              // vanish, so in dark mode they sit on a white plate.
+              <div className="mb-4 flex items-center justify-between gap-3 rounded-xl dark:bg-white dark:p-3">
                 <div className="flex h-14 flex-1 items-center justify-start">
                   {formLogos.left ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -132,7 +134,7 @@ export default async function PublicFormPage({ params }: { params: Promise<{ slu
                 </div>
               </div>
             ) : null}
-            <p className="label-caps text-primary">
+            <p className="label-caps text-accent-foreground">
               {form.company?.name ?? "All companies"}
             </p>
             <h1 className="mt-1.5 text-3xl font-semibold">{form.name}</h1>

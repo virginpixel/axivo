@@ -26,16 +26,16 @@
     --popover: 0 0% 100%;
     --popover-foreground: 230 30% 12%;
 
-    /* The single accent: action, links, active state, focus. */
-    --primary: 232 58% 45%;
-    --primary-foreground: 228 40% 98%;
-    --secondary: 230 22% 26%;
+    /* The single accent: the brand teal. Action, links, active state, focus. */
+    --primary: 195 37% 22%;
+    --primary-foreground: 195 30% 97%;
+    --secondary: 200 18% 26%;
     --secondary-foreground: 228 40% 98%;
 
     --muted: 228 28% 95%;
     --muted-foreground: 230 12% 44%;
-    --accent: 230 45% 95%;
-    --accent-foreground: 232 58% 38%;
+    --accent: 195 34% 93%;
+    --accent-foreground: 195 42% 24%;
 
     /* State, each off the accent hue so it reads as meaning, not chrome. */
     --destructive: 4 68% 48%;
@@ -49,15 +49,55 @@
 
     --border: 230 18% 88%;
     --input: 230 16% 82%;
-    --ring: 232 58% 45%;
-    --radius: 0.375rem;
+    --ring: 195 37% 30%;
+    --radius: 0.75rem;
 
-    /* Navigation rail: the one place the design spends any weight. */
-    --rail: 231 32% 13%;
-    --rail-foreground: 228 30% 92%;
-    --rail-muted: 228 12% 62%;
-    --rail-border: 231 26% 22%;
-    --rail-active: 231 30% 20%;
+    /* Navigation rail: a near-black dark rail (design "Organic" rail). */
+    --rail: 240 6% 8%;
+    --rail-foreground: 240 20% 96%;
+    --rail-muted: 240 6% 62%;
+    --rail-border: 240 6% 20%;
+    --rail-active: 240 6% 16%;
+  }
+
+  /* Dark theme (toggled via the .dark class on <html>). */
+  .dark {
+    --background: 240 8% 8%;
+    --foreground: 240 20% 96%;
+    --card: 240 8% 11%;
+    --card-foreground: 240 20% 96%;
+    --popover: 240 8% 11%;
+    --popover-foreground: 240 20% 96%;
+
+    --primary: 191 40% 42%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 8% 26%;
+    --secondary-foreground: 240 20% 96%;
+
+    --muted: 240 8% 16%;
+    --muted-foreground: 240 6% 64%;
+    --accent: 195 30% 18%;
+    --accent-foreground: 190 45% 72%;
+
+    --destructive: 4 62% 55%;
+    --destructive-foreground: 240 20% 96%;
+    --success: 154 40% 52%;
+    --success-foreground: 200 40% 10%;
+    --warning: 35 74% 58%;
+    --warning-foreground: 200 40% 10%;
+    --info: 191 55% 55%;
+    --info-foreground: 200 40% 10%;
+
+    --border: 240 6% 22%;
+    --input: 240 6% 26%;
+    --ring: 191 44% 50%;
+
+    /* Rail goes darker still on a dark ground. */
+    --rail: 240 10% 5%;
+    --rail-foreground: 240 20% 94%;
+    --rail-muted: 240 6% 58%;
+    --rail-border: 240 6% 16%;
+    --rail-active: 240 8% 13%;
   }
 
   * {
@@ -69,13 +109,19 @@
     text-rendering: optimizeLegibility;
   }
 
-  /* Headings carry the condensed face and tighter tracking as a system, so no
-     individual heading has to remember to opt in. */
-  h1,
-  h2,
-  h3 {
-    @apply font-display tracking-tight;
+  /* Only the top-level page title carries the Caprasimo display face by default;
+     it ships one display weight, so it renders at 400 (never synthetic-bold).
+     Smaller section headings (h2-h4) stay in the readable interface sans unless
+     a component opts back into font-display (card/dialog titles do). */
+  h1 {
+    @apply font-display;
+    font-weight: 400;
+    letter-spacing: -0.015em;
     text-wrap: balance;
+  }
+  /* Guard: Caprasimo must never be synthetic-bolded, wherever it is applied. */
+  .font-display {
+    font-weight: 400 !important;
   }
 
   /* Digits line up in every table in this application. */
@@ -83,6 +129,20 @@
   th,
   input[type="number"] {
     font-variant-numeric: tabular-nums;
+  }
+
+  /* Native file inputs otherwise fall back to the browser's own button and
+     "no file chosen" text, both black — invisible on the dark card ground.
+     Theme the selector button and force the surrounding label to our ink. */
+  input[type="file"] {
+    @apply cursor-pointer text-foreground;
+  }
+  input[type="file"]::file-selector-button {
+    @apply mr-3 cursor-pointer rounded-full border border-input bg-muted px-3 py-1 text-sm font-medium text-foreground;
+    transition: background-color 0.15s ease;
+  }
+  input[type="file"]::file-selector-button:hover {
+    @apply bg-accent text-accent-foreground;
   }
 
   ::selection {

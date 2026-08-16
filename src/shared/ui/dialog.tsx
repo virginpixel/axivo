@@ -26,7 +26,7 @@ export function DialogContent({
       <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-rail/55 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=open]:fade-in-0" />
       <DialogPrimitive.Content
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 shadow-pop focus:outline-none",
+          "fixed left-1/2 top-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 rounded-3xl border bg-card p-6 shadow-pop focus:outline-none",
           "max-h-[85vh] overflow-y-auto scrollbar-thin",
           wide ? "max-w-3xl" : "max-w-lg",
           className,
@@ -34,7 +34,7 @@ export function DialogContent({
         {...props}
       >
         <div className="mb-5 pr-6">
-          <DialogPrimitive.Title className="font-display text-xl font-semibold tracking-tight">
+          <DialogPrimitive.Title className="font-display text-xl font-normal tracking-tight">
             {title}
           </DialogPrimitive.Title>
           {description ? (
@@ -45,7 +45,7 @@ export function DialogContent({
         </div>
         {children}
         <DialogPrimitive.Close
-          className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          className="absolute right-4 top-4 rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           aria-label="Close"
         >
           <X className="h-4 w-4" />
@@ -82,7 +82,7 @@ export function ConfirmDialog({
         <div className="mt-6 flex justify-end gap-2">
           <button
             type="button"
-            className="rounded-md border px-4 py-2 text-sm hover:bg-accent"
+            className="rounded-full border px-4 py-2 text-sm hover:bg-accent"
             onClick={() => onOpenChange(false)}
           >
             Cancel
@@ -91,7 +91,7 @@ export function ConfirmDialog({
             type="button"
             disabled={loading}
             className={cn(
-              "rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-50",
+              "rounded-full px-4 py-2 text-sm font-medium text-white disabled:opacity-50",
               destructive ? "bg-destructive hover:bg-destructive/90" : "bg-primary hover:bg-primary/90",
             )}
             onClick={onConfirm}

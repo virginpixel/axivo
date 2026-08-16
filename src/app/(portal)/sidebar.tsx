@@ -84,7 +84,7 @@ export function Sidebar({
   const sectionFor = new Map(NAV_SECTIONS.map((section) => [section.startsAt, section.label]));
 
   const nav = (
-    <nav aria-label="Primary" className="flex-1 overflow-y-auto px-2.5 py-3 scrollbar-thin">
+    <nav aria-label="Primary" className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4 scrollbar-thin">
       {items.map((item) => {
         const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
         const heading = sectionFor.get(item.href);
@@ -100,13 +100,13 @@ export function Sidebar({
               onClick={() => setMobileOpen(false)}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "relative flex items-center gap-2.5 rounded-md py-1.5 pl-3 pr-2.5 text-sm transition-colors",
+                "relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors",
                 // The accent marks your position in the list; everything else
                 // is a quiet shift in surface and ink.
-                "before:absolute before:left-0 before:top-1/2 before:h-4 before:w-[2px] before:-translate-y-1/2 before:rounded-full before:bg-primary before:transition-opacity",
+                "before:absolute before:left-0 before:top-1/2 before:h-4 before:w-[3px] before:-translate-y-1/2 before:rounded-full before:bg-primary before:transition-opacity",
                 active
-                  ? "bg-rail-active font-medium text-rail-foreground before:opacity-100"
-                  : "font-normal text-rail-muted before:opacity-0 hover:bg-rail-active/60 hover:text-rail-foreground",
+                  ? "bg-primary/25 font-medium text-rail-foreground before:opacity-100"
+                  : "font-normal text-rail-muted before:opacity-0 hover:bg-white/10 hover:text-rail-foreground",
               )}
             >
               <span className={cn("shrink-0 transition-opacity", active ? "opacity-100" : "opacity-70")}>
@@ -158,15 +158,15 @@ export function Sidebar({
       ) : null}
 
       {/* Desktop sidebar */}
-      <aside className="hidden w-[15rem] shrink-0 flex-col border-r border-rail-border bg-rail text-rail-foreground md:flex">
-        <div className="flex h-14 items-center border-b border-rail-border px-4">
+      <aside className="hidden w-64 shrink-0 flex-col bg-rail text-rail-foreground md:flex">
+        <div className="flex h-16 items-center px-5">
           <Link href="/dashboard" className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             <Wordmark systemName={systemName} />
           </Link>
         </div>
         {nav}
-        <div className="border-t border-rail-border px-4 py-2.5">
-          <span className="text-micro uppercase tracking-[0.11em] text-rail-muted/70">
+        <div className="px-5 py-3.5">
+          <span className="text-micro uppercase tracking-[0.11em] text-rail-muted/60">
             {systemName} {version}
           </span>
         </div>
@@ -183,8 +183,8 @@ function Wordmark({ systemName }: { systemName: string }) {
   return (
     <span className="flex items-center gap-2">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/axivo-icon.png" alt="" className="h-6 w-auto shrink-0" />
-      <span className="font-display text-lg font-semibold tracking-tight text-rail-foreground">
+      <img src="/axivo-icon.png" alt="" className="h-7 w-auto shrink-0" />
+      <span className="font-display text-2xl leading-none tracking-tight text-rail-foreground">
         {systemName}
       </span>
     </span>

@@ -109,11 +109,15 @@ export default async function OrganizationPage({
               ))}
             </Select>
           ) : null}
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="showInactive" value="1" defaultChecked={showInactive} className="h-4 w-4" />
-            Show inactive
-          </label>
-          <button type="submit" className="h-9 rounded-md border border-input bg-card px-3.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">
+          {/* Only Departments and Positions can be disabled, so the filter is
+              only meaningful there (Companies and Approval Roles have no toggle). */}
+          {tab === "departments" || tab === "positions" ? (
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="showInactive" value="1" defaultChecked={showInactive} className="h-4 w-4" />
+              Show inactive
+            </label>
+          ) : null}
+          <button type="submit" className="h-9 rounded-full border border-input bg-card px-4 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">
             Apply
           </button>
         </form>

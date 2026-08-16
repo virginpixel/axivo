@@ -213,6 +213,8 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
           <CardHeader><CardTitle>Details</CardTitle></CardHeader>
           <CardContent>
             <dl className="grid grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
+              <Row label="Company" value={asset.company.name} />
+              <Row label="Category" value={asset.category.name} />
               <Row label="Asset tag" value={asset.assetTag ?? "None"} />
               <Row label="Serial number" value={asset.serialNumber ?? "None"} />
               <Row label="Manufacturer" value={asset.manufacturer ?? "None"} />

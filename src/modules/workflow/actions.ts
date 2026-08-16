@@ -127,13 +127,18 @@ export async function tokenApprovalAction(token: string, raw: unknown): Promise<
   }
 }
 
-/** Approver acting from within the portal (IT Approval role members, etc.). */
+/**
+ * Approver acting from within the portal (IT Approval role members, etc.).
+ * Gated on requests.view (the request page's own guard); the engine then
+ * authorizes the decision by confirming the caller is a resolved approver for
+ * this step, so a viewer who is not an approver is rejected there.
+ */
 export async function portalApprovalAction(
   stepInstanceId: string,
   raw: unknown,
 ): Promise<ActionResult<{ result: string }>> {
   try {
-    const context = await requirePermission("workflows.view");
+    const context = await requirePermission("requests.view");
     const input = parse(approvalActionSchema, raw);
     const result = await engine.applyApprovalAction(context.audit, {
       stepInstanceId,

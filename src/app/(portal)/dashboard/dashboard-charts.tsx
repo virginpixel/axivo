@@ -49,7 +49,7 @@ export function StatusDonut({
     <div className="relative h-56 w-full" role="img" aria-label={ariaLabel}>
       {/* The hole in a donut is free space; the total belongs in it. */}
       <div className="pointer-events-none absolute inset-x-0 top-[38%] -translate-y-1/2 text-center">
-        <p className="font-display text-2xl font-semibold tabular-nums leading-none">{total}</p>
+        <p className="text-3xl font-bold tabular-nums leading-none tracking-tight">{total}</p>
         {totalLabel ? <p className="label-caps mt-1 text-muted-foreground">{totalLabel}</p> : null}
       </div>
       <ResponsiveContainer width="100%" height="100%">

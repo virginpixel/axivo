@@ -48,7 +48,7 @@ export default async function PeoplePage({
   const [rows, total, companies, departments, positions, locations] = await Promise.all([
     db.person.findMany({
       where,
-      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
       include: {
@@ -120,7 +120,7 @@ export default async function PeoplePage({
               <option key={status} value={status}>{status.replace("_", " ")}</option>
             ))}
           </Select>
-          <button type="submit" className="h-9 rounded-md border border-input bg-card px-3.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">
+          <button type="submit" className="h-9 rounded-full border border-input bg-card px-4 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">
             Filter
           </button>
         </form>

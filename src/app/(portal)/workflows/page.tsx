@@ -4,8 +4,8 @@ import { PageHeader, Pagination } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge } from "@/shared/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
-import { Select } from "@/shared/ui/input";
 import { fullName, formatDate } from "@/shared/utils";
+import { CompanyPill } from "@/shared/ui/filter-pill";
 import {
   WorkflowDialog,
   WorkflowToggleButton,
@@ -86,15 +86,17 @@ export default async function WorkflowsPage({
       />
 
       {isGlobalAdmin ? (
-        <form method="get" className="mb-4 flex flex-wrap items-end gap-2">
-          <Select name="company" defaultValue={params.company ?? ""} className="w-full sm:w-44" aria-label="Filter by company">
-            <option value="">All companies</option>
-            {companies.map((company) => (
-              <option key={company.id} value={company.id}>{company.name}</option>
-            ))}
-          </Select>
-          <button type="submit" className="h-9 rounded-md border border-input bg-card px-3.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">Filter</button>
-        </form>
+        <nav aria-label="Filter by company" className="mb-4 flex flex-wrap gap-2">
+          <CompanyPill href="/workflows" label="All companies" active={!params.company} />
+          {companies.map((company) => (
+            <CompanyPill
+              key={company.id}
+              href={`/workflows?company=${company.id}`}
+              label={company.name}
+              active={params.company === company.id}
+            />
+          ))}
+        </nav>
       ) : null}
 
       {workflows.length === 0 ? (

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Send, UserRoundPen, UserPlus, CircleAlert, X } from "lucide-react";
+import { Send, UserRoundPen, UserPlus, CircleAlert, X, Check, PenLine, Ban } from "lucide-react";
 import {
   cancelRequestAction,
   completeImplementationAction,
@@ -10,6 +10,7 @@ import {
 import {
   resendApprovalNotificationsAction,
   transferStepApproverAction,
+  portalApprovalAction,
 } from "@/modules/workflow/actions";
 import { useAction } from "@/shared/ui/use-action";
 import { Button } from "@/shared/ui/button";
@@ -17,6 +18,98 @@ import { Input, Textarea, Select, Label, FieldError, HelperText } from "@/shared
 import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
 import { Combobox } from "@/shared/ui/combobox";
 
+
+/**
+ * In-portal approval controls, shown on an active step to the signed-in
+ * approver. Runs the same engine action as the emailed secure link, so the
+ * validation, ANY/ALL rule and audit trail are identical whichever route the
+ * approver takes. Rejection and correction require a comment (Doc 09 Ch6).
+ */
+export function ApprovalActionPanel({ stepInstanceId }: { stepInstanceId: string }) {
+  const { run, loading } = useAction();
+  const [mode, setMode] = useState<null | "REJECTED" | "CORRECTION_REQUESTED">(null);
+  const [comments, setComments] = useState("");
+
+  function submit(action: "APPROVED" | "REJECTED" | "CORRECTION_REQUESTED") {
+    run(
+      () => portalApprovalAction(stepInstanceId, { action, comments: comments.trim() || undefined }),
+      {
+        successMessage:
+          action === "APPROVED"
+            ? "Approved."
+            : action === "REJECTED"
+              ? "Request rejected."
+              : "Correction requested.",
+        onSuccess: () => {
+          setMode(null);
+          setComments("");
+        },
+      },
+    );
+  }
+
+  return (
+    <div className="mt-2 rounded-md border border-primary/25 bg-accent/50 p-3">
+      <p className="mb-2 text-xs font-semibold">This step is waiting on your decision.</p>
+      {mode ? (
+        <div className="space-y-2">
+          <Label htmlFor={`approval-comments-${stepInstanceId}`} required>
+            {mode === "REJECTED" ? "Reason for rejection" : "What needs correcting"}
+          </Label>
+          <Textarea
+            id={`approval-comments-${stepInstanceId}`}
+            value={comments}
+            onChange={(event) => setComments(event.target.value)}
+            rows={3}
+            placeholder={
+              mode === "REJECTED"
+                ? "Explain why this request is being rejected."
+                : "Describe the change the requester needs to make."
+            }
+          />
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setMode(null);
+                setComments("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant={mode === "REJECTED" ? "destructive" : "primary"}
+              size="sm"
+              loading={loading}
+              disabled={!comments.trim()}
+              onClick={() => submit(mode)}
+            >
+              {mode === "REJECTED" ? "Reject request" : "Request correction"}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" loading={loading} onClick={() => submit("APPROVED")}>
+            <Check className="h-4 w-4" /> Approve
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setMode("CORRECTION_REQUESTED")}>
+            <PenLine className="h-4 w-4" /> Request correction
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            onClick={() => setMode("REJECTED")}
+          >
+            <Ban className="h-4 w-4" /> Reject
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Resend + transfer controls shown next to an active approval step. */
 export function StepAdminControls({

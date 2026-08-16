@@ -28,13 +28,16 @@ export async function AssignmentManager({
     db.person.findMany({
       where: { deletedAt: null, isActive: true, companyId: { in: companyIds } },
       orderBy: [{ lastName: "asc" }],
-      select: { id: true, firstName: true, lastName: true, companyId: true },
+      select: { id: true, firstName: true, lastName: true, companyId: true, employeeId: true },
     }),
   ]);
 
   const peopleByCompany: Record<string, { id: string; name: string }[]> = {};
   for (const person of people) {
-    (peopleByCompany[person.companyId] ??= []).push({ id: person.id, name: fullName(person) });
+    (peopleByCompany[person.companyId] ??= []).push({
+      id: person.id,
+      name: `${fullName(person)} · ${person.employeeId}`,
+    });
   }
 
   return (

@@ -1,25 +1,23 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans, IBM_Plex_Sans_Condensed, IBM_Plex_Mono } from "next/font/google";
-import { getSetting, SETTING_KEYS } from "@/shared/settings/settings";
-import { brandingStyle, type BrandingConfig } from "@/shared/branding";
+import { Figtree, Caprasimo, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
 /*
- * Three type roles, one superfamily, so the console reads as a single
- * instrument: condensed for display, sans for the interface, mono for the
- * register (asset tags, request numbers, employee IDs). Self-hosted by
- * next/font at build time, so no request ever leaves the deployment.
+ * Type roles: Figtree for the interface, Caprasimo (a display serif) for
+ * headings, mono for the register (asset tags, request numbers, employee IDs).
+ * Self-hosted by next/font at build time, so no request ever leaves the
+ * deployment.
  */
-const sans = IBM_Plex_Sans({
+const sans = Figtree({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
   variable: "--font-sans",
   display: "swap",
 });
 
-const condensed = IBM_Plex_Sans_Condensed({
+const display = Caprasimo({
   subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  weight: ["400"],
   variable: "--font-display",
   display: "swap",
 });
@@ -30,6 +28,12 @@ const mono = IBM_Plex_Mono({
   variable: "--font-mono",
   display: "swap",
 });
+
+/*
+ * Set the theme class before first paint so there is no light/dark flash. The
+ * stored preference is "light" | "dark" | "system"; "system" follows the OS.
+ */
+const themeScript = `(function(){try{var t=localStorage.getItem('axivo-theme')||'system';var d=t==='dark'||(t!=='light'&&window.matchMedia('(prefers-color-scheme:dark)').matches);document.documentElement.classList.toggle('dark',d);}catch(e){}})();`;
 
 export const metadata: Metadata = {
   title: {
@@ -42,20 +46,13 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  // Brand colors override the design tokens at the body level so every surface
-  // - including dialogs rendered through portals - picks them up (Doc 03 Ch2).
-  let branding: BrandingConfig = {};
-  try {
-    branding = await getSetting<BrandingConfig>(SETTING_KEYS.BRANDING);
-  } catch {
-    // Database unavailable (e.g. first boot): fall back to default tokens.
-  }
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${sans.variable} ${condensed.variable} ${mono.variable}`}>
-      <body className="min-h-screen font-sans" style={brandingStyle(branding) as React.CSSProperties}>
-        {children}
-      </body>
+    <html lang="en" className={`${sans.variable} ${display.variable} ${mono.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
+      <body className="min-h-screen font-sans">{children}</body>
     </html>
   );
 }

@@ -9,7 +9,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
       type={type}
       ref={ref}
       className={cn(
-        "flex h-9 w-full rounded-md border border-input bg-card px-2.5 text-sm transition-colors",
+        "flex h-9 w-full rounded-full border border-input bg-card px-4 text-sm transition-colors",
         "placeholder:text-muted-foreground/80 hover:border-input/70",
         "focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25",
         "disabled:cursor-not-allowed disabled:opacity-50 read-only:bg-muted",
@@ -28,7 +28,7 @@ export const Textarea = React.forwardRef<
   <textarea
     ref={ref}
     className={cn(
-      "flex min-h-[76px] w-full rounded-md border border-input bg-card px-2.5 py-2 text-sm transition-colors",
+      "flex min-h-[76px] w-full rounded-2xl border border-input bg-card px-4 py-2.5 text-sm transition-colors",
       "placeholder:text-muted-foreground/80 focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25",
       "disabled:cursor-not-allowed disabled:opacity-50",
       className,
@@ -45,7 +45,7 @@ export const Select = React.forwardRef<
   <select
     ref={ref}
     className={cn(
-      "flex h-9 w-full rounded-md border border-input bg-card px-2.5 text-sm transition-colors",
+      "flex h-9 w-full rounded-full border border-input bg-card px-4 text-sm transition-colors",
       "focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25",
       "disabled:cursor-not-allowed disabled:opacity-50",
       className,

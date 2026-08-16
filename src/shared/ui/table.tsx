@@ -5,7 +5,7 @@ import { cn } from "@/shared/utils";
 
 export function Table({ className, ...props }: React.HTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="relative w-full overflow-x-auto rounded-lg border bg-card">
+    <div className="relative w-full overflow-x-auto rounded-2xl border bg-card">
       <table className={cn("w-full caption-bottom text-sm", className)} {...props} />
     </div>
   );
@@ -45,7 +45,7 @@ export function TH({ className, ...props }: React.ThHTMLAttributes<HTMLTableCell
   return (
     <th
       className={cn(
-        "h-9 whitespace-nowrap px-3 text-left align-middle text-micro font-semibold uppercase tracking-[0.07em] text-muted-foreground",
+        "h-11 whitespace-nowrap px-5 text-left align-middle text-micro font-semibold uppercase tracking-[0.07em] text-muted-foreground",
         className,
       )}
       {...props}
@@ -54,7 +54,7 @@ export function TH({ className, ...props }: React.ThHTMLAttributes<HTMLTableCell
 }
 
 export function TD({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={cn("px-3 py-2.5 align-middle", className)} {...props} />;
+  return <td className={cn("px-5 py-3.5 align-middle", className)} {...props} />;
 }
 
 export function EmptyState({
@@ -67,7 +67,7 @@ export function EmptyState({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-input bg-card px-6 py-16 text-center">
+    <div className="flex flex-col items-center justify-center gap-2 rounded-3xl border border-dashed border-input bg-card px-6 py-16 text-center">
       <div className="rounded-full bg-muted p-3 text-muted-foreground">
         <svg
           className="h-6 w-6 text-muted-foreground"

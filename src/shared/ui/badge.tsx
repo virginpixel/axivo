@@ -7,17 +7,17 @@ import { cn } from "@/shared/utils";
  * discrete piece of state at a glance, where flat colored text does not.
  */
 const badgeVariants = cva(
-  "inline-flex items-center whitespace-nowrap rounded-full border px-2 py-px text-xs font-medium leading-5",
+  "inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold leading-5",
   {
     variants: {
       variant: {
-        default: "border-border bg-muted text-muted-foreground",
-        primary: "border-primary/25 bg-primary/10 text-primary",
-        success: "border-success/25 bg-success/10 text-success",
-        warning: "border-warning/30 bg-warning/10 text-warning",
-        destructive: "border-destructive/25 bg-destructive/10 text-destructive",
-        info: "border-info/25 bg-info/10 text-info",
-        outline: "border-input text-foreground",
+        default: "bg-muted text-muted-foreground",
+        primary: "bg-primary/15 text-primary",
+        success: "bg-success/20 text-success",
+        warning: "bg-warning/20 text-warning",
+        destructive: "bg-destructive/15 text-destructive",
+        info: "bg-info/20 text-info",
+        outline: "border border-input text-foreground",
       },
     },
     defaultVariants: { variant: "default" },

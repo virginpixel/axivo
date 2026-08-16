@@ -207,9 +207,6 @@ export function CatalogSection({
 }
 
 export function LogoUploadForm({ hasLogo }: { hasLogo: boolean }) {
-  const { run, loading } = useAction();
-  const [file, setFile] = useState<File | null>(null);
-
   return (
     <Card>
       <CardHeader>
@@ -220,36 +217,16 @@ export function LogoUploadForm({ hasLogo }: { hasLogo: boolean }) {
           their own logos below.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        {hasLogo ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src="/api/branding/logo" alt="Current logo" className="max-h-16 w-auto rounded border bg-white p-1" />
-        ) : (
-          <p className="text-sm text-muted-foreground">No logo uploaded yet.</p>
-        )}
-        <div className="flex items-end gap-2">
-          <div className="w-72">
-            <Label htmlFor="logo-file">Logo image</Label>
-            <Input
-              id="logo-file"
-              type="file"
-              accept="image/png,image/jpeg,image/svg+xml,image/webp"
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-            />
-          </div>
-          <Button
-            size="sm"
-            loading={loading}
-            disabled={!file}
-            onClick={() => {
-              if (!file) return;
-              const data = new FormData();
-              data.set("file", file);
-              void run(() => uploadBrandingLogoAction(data), { successMessage: "Logo updated." });
-            }}
-          >
-            <Upload className="h-4 w-4" /> Upload logo
-          </Button>
+      <CardContent>
+        <div className="max-w-xs">
+          <LogoSlot
+            position="left"
+            label="Brand logo"
+            hasLogo={hasLogo}
+            src="/api/branding/logo"
+            accept="image/png,image/jpeg,image/svg+xml,image/webp"
+            onUpload={(data) => uploadBrandingLogoAction(data)}
+          />
         </div>
       </CardContent>
     </Card>
@@ -334,6 +311,7 @@ export function RequestFormLogosForm({ present }: { present: { left: boolean; ce
 
 function LogoSlot({
   position,
+  label,
   hasLogo,
   src,
   accept,
@@ -341,11 +319,14 @@ function LogoSlot({
   onRemove,
 }: {
   position: "left" | "center" | "right";
+  /** Caption override; defaults to the slot position. */
+  label?: string;
   hasLogo: boolean;
   src: string;
   accept: string;
   onUpload: (data: FormData) => Promise<ActionResult<undefined>>;
-  onRemove: () => Promise<ActionResult<undefined>>;
+  /** When omitted, the slot offers replace-only (no remove control). */
+  onRemove?: () => Promise<ActionResult<undefined>>;
 }) {
   const { run, loading } = useAction();
   function onFile(event: React.ChangeEvent<HTMLInputElement>) {
@@ -358,11 +339,13 @@ function LogoSlot({
   }
   return (
     <div className="rounded-md border p-3">
-      <p className="label-caps mb-2 text-muted-foreground">{position}</p>
-      <div className="mb-2 flex h-16 items-center justify-center rounded bg-muted/40">
+      <p className="label-caps mb-2 text-muted-foreground">{label ?? position}</p>
+      {/* Preview ground is always light: logos are usually dark-on-transparent
+          and would disappear against a dark surface in dark mode. */}
+      <div className="mb-2 flex h-16 items-center justify-center rounded bg-white ring-1 ring-border/60">
         {hasLogo ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={src} alt={`${position} logo`} className="max-h-14 max-w-full object-contain" />
+          <img src={src} alt={`${label ?? position} logo`} className="max-h-14 max-w-full object-contain p-1" />
         ) : (
           <span className="text-xs text-muted-foreground">No logo</span>
         )}
@@ -372,7 +355,7 @@ function LogoSlot({
           <Upload className="h-3.5 w-3.5" /> {hasLogo ? "Replace" : "Upload"}
           <input type="file" accept={accept} className="hidden" onChange={onFile} disabled={loading} />
         </label>
-        {hasLogo ? (
+        {hasLogo && onRemove ? (
           <Button variant="ghost" size="icon" loading={loading} aria-label="Remove logo" title="Remove"
             onClick={() => run(() => onRemove(), { successMessage: "Logo removed." })}>
             <Trash2 className="h-4 w-4 text-destructive" />

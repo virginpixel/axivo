@@ -178,7 +178,7 @@ export default async function AssetsPage({
               <option key={category.id} value={category.id}>{category.name}</option>
             ))}
           </Select>
-          <button type="submit" className="h-9 rounded-md border border-input bg-card px-3.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">Filter</button>
+          <button type="submit" className="h-9 rounded-full border border-input bg-card px-4 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">Filter</button>
         </form>
       </div>
 
@@ -189,7 +189,7 @@ export default async function AssetsPage({
           <Table>
             <THead>
               <TR>
-                <TH>Asset</TH><TH>Category</TH><TH>Manufacturer / model</TH><TH>Serial</TH><TH>Assigned to</TH><TH>Warranty</TH><TH>Status</TH>
+                <TH>Asset</TH>{isGlobalAdmin ? <TH>Company</TH> : null}<TH>Category</TH><TH>Manufacturer / model</TH><TH>Serial</TH><TH>Assigned to</TH><TH>Warranty</TH><TH>Status</TH>
                 <TH className="text-right">Actions</TH>
               </TR>
             </THead>
@@ -206,6 +206,7 @@ export default async function AssetsPage({
                         <p className="font-register text-xs text-muted-foreground">{asset.assetTag}</p>
                       ) : null}
                     </TD>
+                    {isGlobalAdmin ? <TD>{asset.company.name}</TD> : null}
                     <TD>{asset.category.name}</TD>
                     <TD>{[asset.manufacturer, asset.model].filter(Boolean).join(" ") || "None"}</TD>
                     <TD>{asset.serialNumber ?? "None"}</TD>

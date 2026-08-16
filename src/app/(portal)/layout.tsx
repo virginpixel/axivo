@@ -38,7 +38,7 @@ export default async function PortalLayout({ children }: { children: React.React
 
   return (
     <ToastProvider>
-      <div className="flex min-h-screen">
+      <div className="flex h-screen overflow-hidden">
         <Sidebar
           permissions={Array.from(user.permissions)}
           systemName={branding.systemName || "Axivo"}
@@ -60,8 +60,8 @@ export default async function PortalLayout({ children }: { children: React.React
             }))}
             maintenanceEnabled={maintenance.enabled}
           />
-          <main className="flex-1 overflow-y-auto px-4 py-5 md:px-8 md:py-7">
-            <div className="mx-auto w-full max-w-[100rem]">{children}</div>
+          <main className="flex-1 overflow-y-auto px-5 py-6 md:px-11 md:py-9">
+            <div className="w-full">{children}</div>
           </main>
         </div>
       </div>

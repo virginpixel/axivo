@@ -140,7 +140,7 @@ export function Combobox({
       aria-haspopup="listbox"
       aria-invalid={aria["aria-invalid"]}
       className={cn(
-        "flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-3 py-1 text-left text-sm shadow-sm",
+        "flex h-9 w-full items-center justify-between gap-2 rounded-full border border-input bg-card px-4 py-1 text-left text-sm shadow-sm",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         "disabled:cursor-not-allowed disabled:opacity-50",
         aria["aria-invalid"] && "border-destructive",

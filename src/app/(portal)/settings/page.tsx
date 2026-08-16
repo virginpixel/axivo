@@ -746,7 +746,11 @@ async function SessionsTab({ canManage, currentSessionId }: { canManage: boolean
             <TD className="font-mono text-xs">{session.ipAddress ?? "None"}</TD>
             <TD className="text-xs">{formatDateTime(session.createdAt)}</TD>
             <TD className="text-xs">{formatDateTime(session.lastActivityAt)}</TD>
-            <TD className="text-xs">{formatDateTime(session.absoluteExpiresAt)}</TD>
+            <TD className="text-xs">
+              {session.absoluteExpiresAt.getUTCFullYear() >= 9999
+                ? "Never expires"
+                : formatDateTime(session.absoluteExpiresAt)}
+            </TD>
             {canManage ? (
               <TD className="text-right">
                 {session.id === currentSessionId ? (

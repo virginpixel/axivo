@@ -76,7 +76,7 @@ export default async function PublicFormsIndexPage({
             // eslint-disable-next-line @next/next/no-img-element
             <img src="/api/branding/logo" alt="" className="mx-auto mb-3 max-h-16 w-auto" />
           ) : null}
-          <p className="label-caps text-primary">{branding.systemName ?? "Axivo"}</p>
+          <p className="label-caps text-accent-foreground">{branding.systemName ?? "Axivo"}</p>
           <h1 className="mt-1.5 text-3xl font-semibold">Submit a request</h1>
           <p className="mx-auto mt-2 max-w-[52ch] text-sm leading-relaxed text-muted-foreground">
             {subtitle}

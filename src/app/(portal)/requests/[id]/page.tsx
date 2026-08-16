@@ -7,7 +7,7 @@ import { PageHeader } from "@/shared/ui/page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { StatusBadge } from "@/shared/ui/badge";
 import { formatDateTime } from "@/shared/utils";
-import { RequestAdminActions, ImplementationPanel, StepAdminControls, RequestedForResolution } from "./request-actions";
+import { RequestAdminActions, ImplementationPanel, StepAdminControls, RequestedForResolution, ApprovalActionPanel } from "./request-actions";
 import { ResendAckButton } from "@/shared/ui/resend-ack-button";
 import { isStoredSecretResendable } from "@/modules/credentials/service";
 import { AutoRefresh } from "@/shared/ui/auto-refresh";
@@ -94,6 +94,10 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
   // Resolve approvers live for every active approval step, so someone added to
   // the role after the step went active is shown and can act. Keyed by step id.
   const liveApprovers = new Map<string, string[]>();
+  // Steps the signed-in user may act on right now, in the portal: they resolve
+  // as a current approver and have not already recorded a decision. The engine
+  // enforces the same rule; this only governs whether the buttons are shown.
+  const myActionableSteps = new Set<string>();
   for (const item of request.items) {
     for (const instance of item.workflowInstances) {
       for (const step of instance.stepInstances) {
@@ -108,6 +112,11 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
           step.id,
           resolved.map((approver) => `${approver.person.firstName} ${approver.person.lastName}`),
         );
+        const isApprover = user.personId
+          ? resolved.some((approver) => approver.person.id === user.personId)
+          : false;
+        const alreadyActed = step.actions.some((action) => action.person.id === user.personId);
+        if (isApprover && !alreadyActed) myActionableSteps.add(step.id);
       }
     }
   }
@@ -355,6 +364,9 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                                 {action.comments ? <span className="text-muted-foreground">: “{action.comments}”</span> : null}
                               </p>
                             ))}
+                            {myActionableSteps.has(step.id) ? (
+                              <ApprovalActionPanel stepInstanceId={step.id} />
+                            ) : null}
                           </div>
                         </li>
                       ))}
