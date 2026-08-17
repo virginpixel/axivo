@@ -816,6 +816,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
     run: async (user, filters) => {
       const requests = await db.request.findMany({
         where: {
+          deletedAt: null,
           ...companyScope(user),
           ...(filters?.companyId ? { companyId: filters.companyId } : {}),
           ...(filters?.formId ? { formId: filters.formId } : {}),

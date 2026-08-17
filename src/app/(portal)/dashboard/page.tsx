@@ -38,10 +38,10 @@ export default async function DashboardPage() {
     categoryCounts,
     categories,
   ] = await Promise.all([
-    db.requestItem.count({ where: { status: "PENDING_APPROVAL", request: companyFilter } }),
-    db.requestItem.count({ where: { status: "IMPLEMENTATION_PENDING", request: companyFilter } }),
-    db.requestItem.count({ where: { status: "CORRECTION_REQUESTED", request: companyFilter } }),
-    db.request.count({ where: { ...companyFilter, status: "COMPLETED" } }),
+    db.requestItem.count({ where: { status: "PENDING_APPROVAL", request: { ...companyFilter, deletedAt: null } } }),
+    db.requestItem.count({ where: { status: "IMPLEMENTATION_PENDING", request: { ...companyFilter, deletedAt: null } } }),
+    db.requestItem.count({ where: { status: "CORRECTION_REQUESTED", request: { ...companyFilter, deletedAt: null } } }),
+    db.request.count({ where: { ...companyFilter, deletedAt: null, status: "COMPLETED" } }),
     db.person.count({ where: { ...companyFilter, deletedAt: null, isActive: true } }),
     db.asset.count({ where: { ...companyFilter, deletedAt: null } }),
     db.contract.count({
@@ -53,13 +53,13 @@ export default async function DashboardPage() {
       },
     }),
     db.request.findMany({
-      where: companyFilter,
+      where: { ...companyFilter, deletedAt: null },
       orderBy: { submittedAt: "desc" },
       take: 8,
       include: { items: { select: { id: true } } },
     }),
     db.asset.groupBy({ by: ["status"], where: { ...companyFilter, deletedAt: null }, _count: true }),
-    db.request.groupBy({ by: ["status"], where: companyFilter, _count: true }),
+    db.request.groupBy({ by: ["status"], where: { ...companyFilter, deletedAt: null }, _count: true }),
     db.asset.groupBy({ by: ["categoryId"], where: { ...companyFilter, deletedAt: null }, _count: true }),
     db.assetCategory.findMany({
       where: { deletedAt: null },
