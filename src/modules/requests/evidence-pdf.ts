@@ -3,7 +3,7 @@ import { storage } from "@/shared/storage/storage";
 import { getSetting, SETTING_KEYS } from "@/shared/settings/settings";
 import { BRAND_PRIMARY } from "@/shared/branding";
 import { renderPdf, type PdfSection } from "@/shared/pdf/pdf";
-import { formatDate } from "@/shared/utils";
+import { formatDate, formatDateTime } from "@/shared/utils";
 import type { AuthenticatedUser } from "@/shared/auth/session";
 
 /** Read the configured request-form logos from storage, so the evidence PDF
@@ -168,22 +168,46 @@ export async function buildRequestEvidencePdf(
     const target =
       item.application?.name ?? item.assetCategory?.name ?? item.targetNameSnapshot ?? item.description ?? "Item";
     const steps = item.workflowInstances.flatMap((instance) => instance.stepInstances);
+    // Collect every event for this item so the history reads as a true timeline.
+    // A correction restart re-approves earlier steps, so the same step can carry
+    // several dated decisions; grouping a step's rows together would place, e.g.,
+    // both Department Head approvals side by side and hide the correction that
+    // happened between them. Sorting by date puts each event where it occurred.
+    const events: { order: number; date: Date | null; row: string[] }[] = [];
     for (const step of steps) {
-      if (step.actions.length > 0) {
-        for (const action of step.actions) {
-          historyRows.push([
+      for (const action of step.actions) {
+        events.push({
+          order: step.stepOrder,
+          date: action.createdAt,
+          row: [
             target,
             step.stepName,
             `${action.person.firstName} ${action.person.lastName}`,
             action.action.replace(/_/g, " "),
-            formatDate(action.createdAt),
+            // Date on top, time below, so the timeline is precise to the minute.
+            formatDateTime(action.createdAt).replace(" ", "\n"),
             action.comments ?? "",
-          ]);
-        }
-      } else {
-        historyRows.push([target, step.stepName, "—", step.status.replace(/_/g, " "), "—", ""]);
+          ],
+        });
+      }
+      // A pending row when the step still awaits a decision: either it has no
+      // decision yet, or it was re-activated after a correction (in which case
+      // its earlier correction row would otherwise make it look finished). An
+      // ACTIVE step reads as "Pending" to the approver.
+      if (step.actions.length === 0 || step.status === "ACTIVE") {
+        const shown = step.status === "ACTIVE" ? "PENDING" : step.status.replace(/_/g, " ");
+        events.push({ order: step.stepOrder, date: null, row: [target, step.stepName, "—", shown, "—", ""] });
       }
     }
+    // Dated events first, in the order they happened; still-pending steps after,
+    // in workflow order (they have no date and lie in the request's future).
+    events.sort((a, b) => {
+      if (a.date && b.date) return a.date.getTime() - b.date.getTime();
+      if (a.date) return -1;
+      if (b.date) return 1;
+      return a.order - b.order;
+    });
+    for (const event of events) historyRows.push(event.row);
   }
   if (historyRows.length > 0) {
     sections.push({
