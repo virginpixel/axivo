@@ -1,6 +1,6 @@
 "use client";
 
-import { wrapEmail, type EmailChrome } from "@/shared/email/template";
+import { wrapEmail, emailButton, type EmailChrome } from "@/shared/email/template";
 
 import { useState } from "react";
 import { Pencil, RotateCw, XCircle, Eraser, Eye } from "lucide-react";
@@ -67,7 +67,11 @@ export function ClearFailedButton() {
 function renderPreview(template: string, variables: string[]): string {
   let output = template;
   for (const variable of variables) {
-    output = output.replaceAll(`{{${variable}}}`, `<mark>${variable}</mark>`);
+    // The action button is real HTML, so render a sample so the preview shows
+    // the actual pill button rather than a "{{actionButton}}" placeholder.
+    const sample =
+      variable === "actionButton" ? emailButton("#", "Review request") : `<mark>${variable}</mark>`;
+    output = output.replaceAll(`{{${variable}}}`, sample);
   }
   return output.replace(/\{\{\s*([\w.]+)\s*\}\}/g, "<mark>$1</mark>");
 }

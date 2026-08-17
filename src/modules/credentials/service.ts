@@ -131,7 +131,7 @@ export async function sendDeliveryEmail(
     variables: {
       employeeName: delivery.person.firstName,
       applicationName: delivery.application.name,
-      actionUrl: url,
+      actionButton: emailButton(url, "View credentials"),
     },
     subject: `Your access to ${delivery.application.name} is ready`,
     body: [

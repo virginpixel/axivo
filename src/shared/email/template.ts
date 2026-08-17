@@ -24,15 +24,29 @@ function escapeHtmlAttribute(value: string): string {
 }
 
 /**
- * A centred, pill-shaped call-to-action button for email bodies. Built as a
- * table so it centres reliably across email clients; the brand indigo is baked
- * in because the brand colour is a fixed product constant.
+ * A centred, pill-shaped call-to-action button for email bodies.
+ *
+ * "Bulletproof": Outlook on Windows renders mail with the Word engine, which
+ * ignores display:inline-block + border-radius on links (the pill collapses to
+ * a plain text link). So a VML rounded-rectangle is emitted inside an mso-only
+ * conditional comment for Outlook, and the styled <a> for every other client.
+ * The brand indigo is baked in because it is a fixed product constant.
  */
 export function emailButton(url: string, label: string, color = "#3f53ca"): string {
+  const href = escapeHtmlAttribute(url);
+  const text = escapeHtmlText(label);
+  // VML needs an explicit pixel width; approximate from the label length.
+  const width = Math.max(160, label.length * 9 + 56);
   return (
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0;">` +
-    `<tr><td align="center">` +
-    `<a href="${escapeHtmlAttribute(url)}" style="display:inline-block;background:${escapeHtmlAttribute(color)};color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;line-height:1;padding:14px 30px;border-radius:999px;">${escapeHtmlText(label)}</a>` +
+    `<table role="presentation" border="0" cellpadding="0" cellspacing="0" align="center" style="margin:24px auto;"><tr><td align="center">` +
+    `<!--[if mso]>` +
+    `<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${href}" style="height:44px;v-text-anchor:middle;width:${width}px;" arcsize="50%" stroke="f" fillcolor="${color}">` +
+    `<w:anchorlock/><center style="color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;">${text}</center>` +
+    `</v:roundrect>` +
+    `<![endif]-->` +
+    `<!--[if !mso]><!-->` +
+    `<a href="${href}" style="display:inline-block;background:${color};color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-weight:bold;font-size:14px;line-height:44px;padding:0 30px;border-radius:999px;">${text}</a>` +
+    `<!--<![endif]-->` +
     `</td></tr></table>`
   );
 }
@@ -45,11 +59,20 @@ export function emailButton(url: string, label: string, color = "#3f53ca"): stri
  */
 export function wrapEmail(subject: string, bodyHtml: string, chrome: EmailChrome): string {
   const header = chrome.logoUrl
-    ? `<img src="${escapeHtmlAttribute(chrome.logoUrl)}" alt="${escapeHtmlAttribute(chrome.systemName)}" style="max-height:36px;max-width:150px;height:auto;width:auto;display:inline-block;" />`
+    ? // Word (Outlook on Windows) ignores max-width/max-height, so a width
+      // attribute is set explicitly or the logo renders at its native size.
+      `<img src="${escapeHtmlAttribute(chrome.logoUrl)}" alt="${escapeHtmlAttribute(chrome.systemName)}" width="140" style="width:140px;max-width:140px;height:auto;display:inline-block;" />`
     : `<span style="font-size:18px;font-weight:bold;color:${escapeHtmlAttribute(chrome.primaryColor)};">${escapeHtmlText(chrome.systemName)}</span>`;
 
   return `<!DOCTYPE html>
-<html>
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="x-apple-disable-message-reformatting" />
+<meta name="color-scheme" content="light dark" />
+<meta name="supported-color-schemes" content="light dark" />
+</head>
 <body style="margin:0;padding:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 0;">
     <tr><td align="center">

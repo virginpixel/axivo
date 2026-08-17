@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "arial",
+        "createdAt": "2026-08-17T05:02:00.388Z",
+        "reason": "HTML email templates must use a web-safe font; Outlook Word engine and Gmail have no reliable web-font support"
+      }
+    ]
+  }
+}

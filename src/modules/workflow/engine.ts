@@ -308,7 +308,7 @@ export async function activateStep(
         itemLabel: ic.requestItem.label,
         requestNumber: ic.request.requestNumber,
         requestedForName: ic.request.requestedForName,
-        actionUrl: implementationUrl,
+        actionButton: emailButton(implementationUrl, "Open request"),
       },
       subject: `Implementation required: ${ic.requestItem.label} (${ic.request.requestNumber})`,
       body: `Request <strong>${ic.request.requestNumber}</strong> for <strong>${ic.request.requestedForName}</strong> has completed all approvals.<br/>The item "<strong>${ic.requestItem.label}</strong>" is ready for IT implementation. Sign in to the Axivo portal to complete it.`,
@@ -462,7 +462,7 @@ export async function sendApprovalEmails(
         requestedForName: ic.request.requestedForName,
         requestNumber: ic.request.requestNumber,
         itemDetails,
-        actionUrl: url,
+        actionButton: emailButton(url, "Review request"),
       },
       subject: `Approval required: ${ic.requestItem.label} for ${ic.request.requestedForName} (${ic.request.requestNumber})`,
       body: [
@@ -741,7 +741,7 @@ async function sendCorrectionEmail(ic: InstanceContext, comments: string): Promi
       itemLabel: ic.requestItem.label,
       requestNumber: ic.request.requestNumber,
       comments,
-      actionUrl: url,
+      actionButton: emailButton(url, "Review & correct item"),
     },
     subject: `Correction requested: ${ic.requestItem.label} (${ic.request.requestNumber})`,
     body: [

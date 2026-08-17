@@ -634,7 +634,7 @@ export async function sendHandover(
     variables: {
       employeeName: `${person.firstName} ${person.lastName}`,
       assetCount: String(handover.assets.length),
-      actionUrl: url,
+      actionButton: emailButton(url, "Review & acknowledge"),
     },
     subject: "Asset handover acknowledgement required",
     body: `Dear ${person.firstName},<br/><br/>Company assets have been assigned to you. Please review and acknowledge receipt using the button below.<br/>${emailButton(url, "Review & acknowledge")}`,
