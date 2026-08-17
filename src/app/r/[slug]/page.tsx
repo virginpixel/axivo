@@ -1,4 +1,6 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { db } from "@/shared/db";
 import { getPublicForm } from "@/modules/forms/service";
 import { PublicRequestForm, type PublicField as PublicRequestField } from "./request-form";
@@ -109,6 +111,12 @@ export default async function PublicFormPage({ params }: { params: Promise<{ slu
     <ToastProvider>
       <main className="min-h-screen bg-background py-8">
         <div className="mx-auto w-full max-w-2xl px-4">
+          <Link
+            href={form.companyId ? `/?c=${form.companyId}` : "/"}
+            className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden /> Back to forms
+          </Link>
           <div className="mb-6 text-center">
             {(formLogos.left || formLogos.center || formLogos.right) ? (
               // Customer logos are usually dark artwork; on the dark ground they

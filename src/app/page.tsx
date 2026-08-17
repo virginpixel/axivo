@@ -74,7 +74,7 @@ export default async function PublicFormsIndexPage({
         <div className="mb-8 text-center">
           {branding.logoStorageKey ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src="/api/branding/logo" alt="" className="mx-auto mb-3 max-h-16 w-auto" />
+            <img src="/api/branding/logo" alt="" className="mx-auto mb-3 max-h-16 w-auto dark:brightness-0 dark:invert" />
           ) : null}
           <p className="label-caps text-accent-foreground">{branding.systemName ?? "Axivo"}</p>
           <h1 className="mt-1.5 text-3xl font-semibold">Submit a request</h1>

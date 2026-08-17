@@ -18,7 +18,7 @@ export default async function NotFound() {
       <div className="w-full max-w-md text-center">
         {branding.logoStorageKey ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src="/api/branding/logo" alt="" className="mx-auto mb-4 max-h-16 w-auto" />
+          <img src="/api/branding/logo" alt="" className="mx-auto mb-4 max-h-16 w-auto dark:brightness-0 dark:invert" />
         ) : null}
         <p className="text-sm font-semibold uppercase tracking-wide text-primary">
           {branding.systemName ?? "Axivo"}

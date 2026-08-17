@@ -79,7 +79,7 @@ export default async function LoginPage() {
               <img
                 src="/api/branding/logo"
                 alt={systemName}
-                className="mb-6 max-h-14 w-auto max-w-[220px] object-contain"
+                className="mb-6 max-h-14 w-auto max-w-[220px] object-contain dark:brightness-0 dark:invert"
               />
             ) : (
               <span className="mb-6 block h-6 w-[3px] rounded-full bg-primary" aria-hidden />

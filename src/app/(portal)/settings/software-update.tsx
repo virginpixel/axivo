@@ -54,15 +54,16 @@ export function SoftwareUpdateForm({
 
   async function apply() {
     if (!status?.latestVersion) return;
+    // Set the target up front so the label reads "Updating to vX" immediately,
+    // not "Updating to null" until the apply request returns.
+    targetRef.current = status.latestVersion;
     setApplying(true);
     setProgress(5);
     setStep("Starting the update");
     setSlow(false);
     try {
       const result = await applyUpdateAction(status.latestVersion);
-      if (result.ok) {
-        targetRef.current = status.latestVersion;
-      } else {
+      if (!result.ok) {
         toast("error", result.error);
         setApplying(false);
       }
@@ -77,22 +78,35 @@ export function SoftwareUpdateForm({
   const poll = useCallback(async () => {
     const target = targetRef.current;
     if (!target) return;
+    // Completion is detected with a plain GET to /api/version: it keeps working
+    // across the container swap, whereas a server action from the old bundle
+    // stops matching once the new build is up (which is why the bar used to
+    // stall at 82% and never auto-reload).
     try {
-      const result = await updateProgressAction();
-      if (result.ok) {
-        if (result.data.currentVersion === target) {
+      const res = await fetch("/api/version", { cache: "no-store" });
+      if (res.ok) {
+        const data = (await res.json()) as { version?: string };
+        if (data.version === target) {
           setProgress(100);
           setStep("Done. Reloading…");
           setDone(true);
           setTimeout(() => window.location.reload(), 1200);
           return;
         }
+      }
+    } catch {
+      // Web container is mid-recreate; the step logic below shows "restarting".
+    }
+    // Intermediate progress from the agent's task log (best effort - this is a
+    // server action and stops answering while the web container is recreated).
+    try {
+      const result = await updateProgressAction();
+      if (result.ok) {
         const derived = deriveStep(result.data.log);
         // Never move the bar backwards.
         setProgress((current) => Math.max(current, derived.pct));
         setStep(derived.label);
       } else {
-        // The web container is being recreated - it can't answer right now.
         setProgress((current) => Math.max(current, 82));
         setStep("Restarting Axivo on the new version…");
       }
