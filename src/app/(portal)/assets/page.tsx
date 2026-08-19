@@ -143,6 +143,9 @@ export default async function AssetsPage({
     id: category.id,
     name: category.name,
   }));
+  // Assets store their model as a free string; map it back to a catalog model id
+  // so the model can link to its page when it matches a known model.
+  const modelIdByName = new Map(catalogItems.map((model) => [model.name.toLowerCase(), model.id]));
 
   return (
     <div>
@@ -213,11 +216,44 @@ export default async function AssetsPage({
                         <p className="font-register text-xs text-muted-foreground">{asset.assetTag}</p>
                       ) : null}
                     </TD>
-                    {isGlobalAdmin ? <TD>{asset.company.name}</TD> : null}
-                    <TD>{asset.category.name}</TD>
-                    <TD>{[asset.manufacturer, asset.model].filter(Boolean).join(" ") || "None"}</TD>
+                    {isGlobalAdmin ? (
+                      <TD>
+                        <Link href={`/organization?company=${asset.companyId}`} className="hover:underline">
+                          {asset.company.name}
+                        </Link>
+                      </TD>
+                    ) : null}
+                    <TD>
+                      <Link href={`/settings/categories/${asset.categoryId}`} className="hover:underline">
+                        {asset.category.name}
+                      </Link>
+                    </TD>
+                    <TD>
+                      {(() => {
+                        const modelId = asset.model ? modelIdByName.get(asset.model.toLowerCase()) : undefined;
+                        if (!asset.manufacturer && !asset.model) return "None";
+                        return (
+                          <>
+                            {asset.manufacturer ? `${asset.manufacturer} ` : ""}
+                            {asset.model
+                              ? modelId
+                                ? <Link href={`/settings/models/${modelId}`} className="hover:underline">{asset.model}</Link>
+                                : asset.model
+                              : null}
+                          </>
+                        );
+                      })()}
+                    </TD>
                     <TD>{asset.serialNumber ?? "None"}</TD>
-                    <TD>{activeAssignment ? fullName(activeAssignment.person) : "None"}</TD>
+                    <TD>
+                      {activeAssignment ? (
+                        <Link href={`/people/${activeAssignment.person.id}`} className="hover:underline">
+                          {fullName(activeAssignment.person)}
+                        </Link>
+                      ) : (
+                        "None"
+                      )}
+                    </TD>
                     <TD>{asset.warrantyExpiry ? formatDate(asset.warrantyExpiry) : "None"}</TD>
                     <TD><StatusBadge status={asset.status} /></TD>
                     <TD className="text-right">

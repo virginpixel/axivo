@@ -65,8 +65,8 @@ const NOTIFICATION_TEMPLATES: { key: string; name: string; type: string; subject
     name: "Asset Handover",
     type: "ASSET_HANDOVER",
     subject: "Asset handover acknowledgement required",
-    body: "Dear {{employeeName}},<br/><br/>{{assetCount}} company asset(s) have been assigned to you. Please review and acknowledge receipt.<br/>{{actionButton}}",
-    variables: ["employeeName", "assetCount", "actionButton"],
+    body: "Dear {{employeeName}},<br/><br/>{{assetCount}} company asset(s) have been assigned to you. Please review and acknowledge receipt.{{assetList}}{{actionButton}}",
+    variables: ["employeeName", "assetCount", "assetList", "actionButton"],
   },
   {
     key: "request_submitted",

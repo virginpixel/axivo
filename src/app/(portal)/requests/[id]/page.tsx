@@ -375,6 +375,9 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                                 </span>{" "}
                                 {action.action.toLowerCase().replace("_", " ")}
                                 {action.comments ? <span className="text-muted-foreground">: “{action.comments}”</span> : null}
+                                {/* Timestamp so the sequence of decisions is legible,
+                                    e.g. an approval before vs. after a correction. */}
+                                <span className="ml-1.5 whitespace-nowrap text-muted-foreground">· {formatDateTime(action.createdAt)}</span>
                               </p>
                             ))}
                             {myActionableSteps.has(step.id) ? (

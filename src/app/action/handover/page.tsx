@@ -32,7 +32,7 @@ export default async function HandoverActionPage({
     where: { id: validation.valid ? validation.record.targetId : spent!.targetId },
     include: {
       person: true,
-      assets: { include: { assetAssignment: { include: { asset: true } } } },
+      assets: { include: { assetAssignment: { include: { asset: { include: { category: true } } } } } },
     },
   });
   if (!handover) return <InvalidTokenNotice reason="not_found" flow="handover" />;
@@ -46,28 +46,59 @@ export default async function HandoverActionPage({
         subtitle={`For ${handover.person.firstName} ${handover.person.lastName}`}
       >
         <div className="space-y-4">
-          <Table>
-            <THead>
-              <TR>
-                <TH>Asset tag</TH>
-                <TH>Serial number</TH>
-                <TH>Manufacturer</TH>
-                <TH>Model</TH>
-                <TH>Assigned</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {handover.assets.map((entry) => (
-                <TR key={entry.id}>
-                  <TD className="font-medium">{entry.assetAssignment.asset.assetTag}</TD>
-                  <TD>{entry.assetAssignment.asset.serialNumber ?? "None"}</TD>
-                  <TD>{entry.assetAssignment.asset.manufacturer ?? "None"}</TD>
-                  <TD>{entry.assetAssignment.asset.model ?? "None"}</TD>
-                  <TD>{formatDate(entry.assetAssignment.assignedAt)}</TD>
+          {/* Desktop keeps the full table; phones get one stacked card per asset
+              so every detail is readable without horizontal scrolling. */}
+          <div className="hidden sm:block">
+            <Table>
+              <THead>
+                <TR>
+                  <TH>Asset</TH>
+                  <TH>Category</TH>
+                  <TH>Serial number</TH>
+                  <TH>Manufacturer</TH>
+                  <TH>Model</TH>
+                  <TH>Assigned</TH>
                 </TR>
-              ))}
-            </TBody>
-          </Table>
+              </THead>
+              <TBody>
+                {handover.assets.map((entry) => (
+                  <TR key={entry.id}>
+                    <TD className="font-medium">{entry.assetAssignment.asset.name || entry.assetAssignment.asset.assetTag || "Asset"}</TD>
+                    <TD>{entry.assetAssignment.asset.category.name}</TD>
+                    <TD>{entry.assetAssignment.asset.serialNumber ?? "None"}</TD>
+                    <TD>{entry.assetAssignment.asset.manufacturer ?? "None"}</TD>
+                    <TD>{entry.assetAssignment.asset.model ?? "None"}</TD>
+                    <TD>{formatDate(entry.assetAssignment.assignedAt)}</TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          </div>
+          <div className="space-y-3 sm:hidden">
+            {handover.assets.map((entry) => {
+              const asset = entry.assetAssignment.asset;
+              const details: { label: string; value: string }[] = [
+                { label: "Category", value: asset.category.name },
+                { label: "Serial number", value: asset.serialNumber ?? "None" },
+                { label: "Manufacturer", value: asset.manufacturer ?? "None" },
+                { label: "Model", value: asset.model ?? "None" },
+                { label: "Assigned", value: formatDate(entry.assetAssignment.assignedAt) },
+              ];
+              return (
+                <div key={entry.id} className="rounded-lg border bg-card p-4">
+                  <p className="font-medium">{asset.name || asset.assetTag || "Asset"}</p>
+                  <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    {details.map((detail) => (
+                      <div key={detail.label}>
+                        <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{detail.label}</dt>
+                        <dd className="mt-0.5 break-words">{detail.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              );
+            })}
+          </div>
 
           <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
             <h3 className="mb-1 text-sm font-semibold text-foreground">Terms of responsibility</h3>

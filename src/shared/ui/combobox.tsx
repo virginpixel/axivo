@@ -89,7 +89,13 @@ export function Combobox({
   const listId = useId();
   const isMobile = useIsMobile();
 
-  const allOptions = useMemo(() => [...options, ...extra], [options, extra]);
+  // Drop any locally-created option once the real list (refreshed by the
+  // server action's revalidation) already carries it, so a freshly added
+  // value never appears twice.
+  const allOptions = useMemo(() => {
+    const known = new Set(options.map((option) => option.value));
+    return [...options, ...extra.filter((option) => !known.has(option.value))];
+  }, [options, extra]);
   const selected = allOptions.find((option) => option.value === value);
 
   const filtered = useMemo(() => {

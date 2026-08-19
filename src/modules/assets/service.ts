@@ -608,7 +608,10 @@ export async function sendHandover(
 ) {
   const handover = await db.handover.findFirst({
     where: { id: handoverId },
-    include: { person: true, assets: true },
+    include: {
+      person: true,
+      assets: { include: { assetAssignment: { include: { asset: { include: { category: true } } } } } },
+    },
   });
   if (!handover) throw new NotFoundError("Handover not found.");
   if (handover.status === "ACKNOWLEDGED") {
@@ -627,6 +630,17 @@ export async function sendHandover(
     targetId: handover.id,
   });
   const url = await tokenActionUrl("/action/handover", token);
+  // Itemise the assigned assets with their category so the email is clear about
+  // exactly what is being handed over, not just how many.
+  const assetLines = handover.assets.map((entry) => {
+    const asset = entry.assetAssignment.asset;
+    const name = asset.name || asset.assetTag || "Asset";
+    return `${name} · ${asset.category.name}`;
+  });
+  const assetList =
+    assetLines.length > 0
+      ? `<br/><br/><strong>Assets assigned</strong><br/>${assetLines.join("<br/>")}<br/>`
+      : "";
   await queueNotification({
     companyId: handover.companyId,
     eventType: "ASSET_HANDOVER",
@@ -634,10 +648,11 @@ export async function sendHandover(
     variables: {
       employeeName: `${person.firstName} ${person.lastName}`,
       assetCount: String(handover.assets.length),
+      assetList,
       actionButton: emailButton(url, "Review & acknowledge"),
     },
     subject: "Asset handover acknowledgement required",
-    body: `Dear ${person.firstName},<br/><br/>Company assets have been assigned to you. Please review and acknowledge receipt using the button below.<br/>${emailButton(url, "Review & acknowledge")}`,
+    body: `Dear ${person.firstName},<br/><br/>Company assets have been assigned to you. Please review and acknowledge receipt using the button below.${assetList}<br/>${emailButton(url, "Review & acknowledge")}`,
     recipients: [{ email: recipientEmail, name: `${person.firstName} ${person.lastName}`, personId: person.id }],
     entityType: "handover",
     entityId: handover.id,

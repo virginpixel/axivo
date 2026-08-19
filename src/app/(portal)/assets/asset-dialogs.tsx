@@ -537,12 +537,14 @@ export function AssetRowActions({
         <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
           <DialogContent title={`Assign ${asset.name}`} description="A handover acknowledgement email is sent automatically when the category requires it.">
             <Label htmlFor={`assign-person-${asset.id}`} required>Employee</Label>
-            <Combobox
+            <PersonPicker
               id={`assign-person-${asset.id}`} value={personId}
+              companyId={asset.companyId}
               placeholder="Select employee…"
-              options={people.map((person) => ({ value: person.id, label: person.name }))}
+              people={people}
               onChange={setPersonId}
             />
+            <HelperText>Not on the list yet? Add a new person with the button.</HelperText>
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setAssignOpen(false)}>Cancel</Button>
               <Button

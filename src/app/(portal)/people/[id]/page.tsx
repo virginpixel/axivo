@@ -397,7 +397,11 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                     const active = assignment.status !== "REMOVED";
                     return (
                       <TR key={assignment.id}>
-                        <TD className="font-medium">{assignment.application.name}</TD>
+                        <TD className="font-medium">
+                          <Link href={`/applications/${assignment.applicationId}`} className="text-foreground hover:underline">
+                            {assignment.application.name}
+                          </Link>
+                        </TD>
                         <TD>{assignment.applicationRole?.name ?? "None"}</TD>
                         <TD className="max-w-64">
                           <HeldValues entries={heldEntries} />
@@ -551,7 +555,11 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                 <TBody>
                   {person.licenseAssignments.map((assignment) => (
                     <TR key={assignment.id}>
-                      <TD className="font-medium">{assignment.license.name}</TD>
+                      <TD className="font-medium">
+                        <Link href={`/licenses/${assignment.licenseId}`} className="text-foreground hover:underline">
+                          {assignment.license.name}
+                        </Link>
+                      </TD>
                       <TD>{formatDate(assignment.assignedAt)}</TD>
                       <TD>{assignment.assignedByLabel ?? "-"}</TD>
                       <TD>{assignment.removedAt ? formatDate(assignment.removedAt) : "-"}</TD>
