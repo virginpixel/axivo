@@ -219,6 +219,41 @@ export async function buildRequestEvidencePdf(
     });
   }
 
+  // Forensic signature evidence: where each signing act (the submission and each
+  // approval decision) originated, and a hash of the exact content signed, so the
+  // integrity of the record can be verified by re-hashing later.
+  const evidenceRows: string[][] = [
+    [
+      "Submission",
+      request.requesterName,
+      formatDate(request.submittedAt),
+      request.sourceIp ?? "—",
+      request.submissionHash ?? "—",
+    ],
+  ];
+  for (const item of request.items) {
+    for (const instance of item.workflowInstances) {
+      for (const step of instance.stepInstances) {
+        for (const action of step.actions) {
+          evidenceRows.push([
+            `${step.stepName} — ${action.action.replace(/_/g, " ")}`,
+            `${action.person.firstName} ${action.person.lastName}`,
+            formatDate(action.createdAt),
+            action.ipAddress ?? "—",
+            action.contentHash ?? "—",
+          ]);
+        }
+      }
+    }
+  }
+  sections.push({
+    heading: "Signature evidence",
+    table: {
+      headers: ["Event", "By", "Date", "IP address", "Verification hash (SHA-256)"],
+      rows: evidenceRows,
+    },
+  });
+
   const logos = await loadRequestFormLogos();
 
   const pdf = await renderPdf({

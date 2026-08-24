@@ -119,7 +119,10 @@ export async function renderPdf(definition: PdfDefinition): Promise<Buffer> {
 
     for (const section of definition.sections) {
       if (section.heading) {
-        ensureSpace(52);
+        // A heading must not be separated from what it introduces: for a table,
+        // reserve the heading plus its column row and first data row, so the
+        // pair moves to the next page together.
+        ensureSpace(52 + (section.table ? measureTableLead(doc, section.table) : 0));
         doc.moveDown(0.5);
         doc
           .fillColor(primary)
@@ -193,6 +196,20 @@ export async function renderPdf(definition: PdfDefinition): Promise<Buffer> {
   });
 }
 
+/** Height a table needs before it can show anything: its column row plus the
+ *  first data row. Used to keep a heading with the table it introduces. */
+function measureTableLead(
+  doc: PDFKit.PDFDocument,
+  table: { headers: string[]; rows: string[][] },
+): number {
+  const cellWidth = 495 / table.headers.length - 12;
+  const tallest = (cells: string[], bold: boolean) => {
+    doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(9);
+    return cells.reduce((max, cell) => Math.max(max, doc.heightOfString(cell ?? "", { width: cellWidth })), 0) + 10;
+  };
+  return tallest(table.headers, true) + (table.rows.length > 0 ? tallest(table.rows[0]!, false) : 0);
+}
+
 function renderTable(
   doc: PDFKit.PDFDocument,
   table: { headers: string[]; rows: string[][] },
@@ -232,6 +249,14 @@ function renderTable(
   };
 
   const headerHeight = rowHeightFor(table.headers, true);
+  // Never strand the header at the foot of a page: if it cannot be followed by
+  // at least its first row, start the whole table on the next page. Otherwise a
+  // lone header prints here and is repeated overleaf, reading as a duplicate.
+  const firstRowHeight = table.rows.length > 0 ? rowHeightFor(table.rows[0]!, false) : 0;
+  if (doc.y + headerHeight + firstRowHeight > pageBottom) {
+    doc.addPage();
+    doc.y = 50;
+  }
   let sectionTop = doc.y;
   let y = sectionTop;
   drawCells(table.headers, y, headerHeight, true);

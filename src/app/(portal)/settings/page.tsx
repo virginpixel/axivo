@@ -439,7 +439,7 @@ async function AssetCategoriesTab({ canManage }: { canManage: boolean }) {
       <Table>
         <THead>
           <TR>
-            <TH>Category</TH><TH>Handover ack.</TH><TH>Clearance</TH><TH>Assets</TH><TH>Status</TH>
+            <TH>Category</TH><TH>Approval chain</TH><TH>Handover ack.</TH><TH>Clearance</TH><TH>Assets</TH><TH>Status</TH>
             {canManage ? <TH className="text-right">Actions</TH> : null}
           </TR>
         </THead>
@@ -449,13 +449,33 @@ async function AssetCategoriesTab({ canManage }: { canManage: boolean }) {
               <TD className="font-medium">
                 <Link href={`/settings/categories/${category.id}`} className="hover:underline">{category.name}</Link>
               </TD>
+              <TD>
+                {category.workflowId ? (
+                  workflows.find((workflow) => workflow.id === category.workflowId)?.name ?? "Unknown chain"
+                ) : (
+                  <span className="text-muted-foreground">Form&apos;s chain</span>
+                )}
+              </TD>
               <TD>{category.requireHandoverAcceptance ? "Required" : "None"}</TD>
               <TD>{category.requireClearanceRecovery ? "Required" : "None"}</TD>
               <TD>{category._count.assets}</TD>
               <TD>{category.isActive ? "Active" : "Inactive"}</TD>
               {canManage ? (
                 <TD className="text-right">
-                  <AssetCategoryToggle id={category.id} isActive={category.isActive} />
+                  <div className="flex items-center justify-end gap-1">
+                    <CategoryDialog
+                      workflows={workflows}
+                      category={{
+                        id: category.id,
+                        name: category.name,
+                        description: category.description,
+                        workflowId: category.workflowId,
+                        requireHandoverAcceptance: category.requireHandoverAcceptance,
+                        requireClearanceRecovery: category.requireClearanceRecovery,
+                      }}
+                    />
+                    <AssetCategoryToggle id={category.id} isActive={category.isActive} />
+                  </div>
                 </TD>
               ) : null}
             </TR>

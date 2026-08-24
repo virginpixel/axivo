@@ -1141,6 +1141,13 @@ model Handover {
   documentId     String?        @map("document_id") @db.Uuid
   sentAt         DateTime?      @map("sent_at")
   acknowledgedAt DateTime?      @map("acknowledged_at")
+  /// Electronic-acknowledgement evidence: where and how the receipt was signed,
+  /// the version of the terms shown, and a hash of the exact signed content so
+  /// any later change is detectable.
+  acknowledgedIp           String? @map("acknowledged_ip")
+  acknowledgedUserAgent    String? @map("acknowledged_user_agent")
+  acknowledgedTermsVersion String? @map("acknowledged_terms_version")
+  acknowledgedHash         String? @map("acknowledged_hash")
   createdAt      DateTime       @default(now()) @map("created_at")
   createdById    String?        @map("created_by") @db.Uuid
   updatedAt      DateTime       @updatedAt @map("updated_at")
@@ -1512,6 +1519,11 @@ model ApprovalAction {
   action                 ApprovalActionType @map("action")
   comments               String?            @map("comments")
   viaSecureToken         Boolean            @default(false) @map("via_secure_token")
+  /// Electronic-signature evidence for this decision: where it came from and a
+  /// hash of the exact item content the approver acted on.
+  ipAddress              String?            @map("ip_address")
+  userAgent              String?            @map("user_agent")
+  contentHash            String?            @map("content_hash")
   createdAt              DateTime           @default(now()) @map("created_at")
 
   stepInstance WorkflowStepInstance @relation(fields: [workflowStepInstanceId], references: [id])
@@ -1699,6 +1711,10 @@ model Request {
   cancelledAt   DateTime? @map("cancelled_at")
   cancelledById String?   @map("cancelled_by") @db.Uuid
   sourceIp      String?   @map("source_ip")
+  /// Submission electronic-signature evidence: the submitter's device and a hash
+  /// of the exact submitted content, alongside sourceIp above.
+  sourceUserAgent String? @map("source_user_agent")
+  submissionHash  String? @map("submission_hash")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
   deletedAt     DateTime? @map("deleted_at")

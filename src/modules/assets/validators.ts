@@ -9,8 +9,16 @@ export const assetCategorySchema = z
     description: optionalText(),
     requireHandoverAcceptance: z.boolean().default(false),
     requireClearanceRecovery: z.boolean().default(true),
-    /** Approval chain for items requesting this category; falls back to the form's. */
-    workflowId: uuidSchema.optional().or(z.literal("").transform(() => undefined)),
+    /**
+     * Approval chain for items requesting this category; falls back to the
+     * form's when null. Resolves to null rather than undefined so choosing
+     * "use the form's chain" actually clears a previously set override —
+     * Prisma reads undefined as "leave unchanged".
+     */
+    workflowId: z
+      .union([uuidSchema, z.literal("")])
+      .nullish()
+      .transform((value) => value || null),
   })
   .strict();
 

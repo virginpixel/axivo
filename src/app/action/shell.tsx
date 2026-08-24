@@ -5,14 +5,17 @@ export function ActionShell({
   title,
   subtitle,
   children,
+  /** Roomier column for pages carrying a multi-column table (e.g. handover). */
+  wide,
 }: {
   title: string;
   subtitle?: string;
   children: ReactNode;
+  wide?: boolean;
 }) {
   return (
     <main className="min-h-screen bg-background py-8">
-      <div className="mx-auto w-full max-w-2xl px-4">
+      <div className={`mx-auto w-full px-4 ${wide ? "max-w-4xl" : "max-w-2xl"}`}>
         <div className="mb-6 text-center">
           <p className="label-caps text-primary">Axivo</p>
           <h1 className="mt-1.5 text-3xl font-semibold">{title}</h1>

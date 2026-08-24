@@ -1,6 +1,7 @@
 import { db, type DbClient } from "@/shared/db";
 import { emailButton } from "@/shared/email/template";
 import { recordAudit, type AuditContext } from "@/shared/audit/audit";
+import { signatureHash } from "@/shared/audit/signature";
 import { BusinessRuleError, NotFoundError, AuthorizationError } from "@/shared/errors";
 import { issueToken, tokenActionUrl, revokeTokensForTarget } from "@/shared/tokens/secure-tokens";
 import { queueNotification } from "@/modules/notifications/service";
@@ -571,6 +572,17 @@ export async function applyApprovalAction(
   const now = new Date();
   let stepCompleted = false;
 
+  // Hash the exact item content this decision was made against, so the approval
+  // signature can later be shown to relate to unchanged data.
+  const contentHash = signatureHash({
+    requestNumber: ic.request.requestNumber,
+    item: ic.requestItem.label,
+    role: ic.requestItem.roleName ?? null,
+    details: ic.requestItem.details.map((detail) => ({ label: detail.label, value: detail.value })),
+    decision: params.action,
+    approverPersonId: params.actingPersonId,
+  });
+
   await db.$transaction(async (tx) => {
     await tx.approvalAction.create({
       data: {
@@ -580,6 +592,9 @@ export async function applyApprovalAction(
         action: params.action,
         comments: params.comments ?? null,
         viaSecureToken: params.viaSecureToken,
+        ipAddress: context.ipAddress ?? null,
+        userAgent: context.userAgent ?? null,
+        contentHash,
       },
     });
     await tx.approvalAssignment.update({

@@ -10,6 +10,7 @@ import {
   updateAssetAction,
   setAssetStatusAction,
   createAssetCategoryAction,
+  updateAssetCategoryAction,
   assignAssetAction,
   returnAssetAction,
   createMaintenanceAction,
@@ -57,30 +58,48 @@ interface Category { id: string; name: string }
 interface LocationOption { id: string; name: string; companyId: string }
 interface PersonOption { id: string; name: string }
 
+export interface AssetCategoryRecord {
+  id: string;
+  name: string;
+  description: string | null;
+  workflowId: string | null;
+  requireHandoverAcceptance: boolean;
+  requireClearanceRecovery: boolean;
+}
+
 /** Categories are global, so this dialog has no company selector. */
 export function CategoryDialog({
   workflows = [],
+  category,
 }: {
   workflows?: { id: string; name: string }[];
+  /** Present when editing an existing category rather than creating one. */
+  category?: AssetCategoryRecord;
 }) {
   const { run, loading, fieldErrors } = useAction();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
-    workflowId: "",
-    name: "",
-    description: "",
-    requireHandoverAcceptance: true,
-    requireClearanceRecovery: true,
+    workflowId: category?.workflowId ?? "",
+    name: category?.name ?? "",
+    description: category?.description ?? "",
+    requireHandoverAcceptance: category?.requireHandoverAcceptance ?? true,
+    requireClearanceRecovery: category?.requireClearanceRecovery ?? true,
   });
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Plus className="h-4 w-4" /> New category
-        </Button>
+        {category ? (
+          <Button variant="ghost" size="icon" aria-label={`Edit ${category.name}`} title="Edit category">
+            <Pencil className="h-4 w-4" />
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm">
+            <Plus className="h-4 w-4" /> New category
+          </Button>
+        )}
       </DialogTrigger>
-      <DialogContent title="New asset category">
+      <DialogContent title={category ? `Edit category: ${category.name}` : "New asset category"}>
         <div className="space-y-3">
           <div>
             <Label htmlFor="cat-name" required>Category name</Label>
@@ -91,22 +110,21 @@ export function CategoryDialog({
             <Label htmlFor="cat-description">Description</Label>
             <Textarea id="cat-description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </div>
-          {workflows.length > 0 ? (
-            <div>
-              <Label htmlFor="cat-workflow">Approval chain</Label>
-              <Select id="cat-workflow" value={form.workflowId}
-                onChange={(e) => setForm({ ...form, workflowId: e.target.value })}>
-                <option value="">Use the form&apos;s approval chain</option>
-                {workflows.map((workflow) => (
-                  <option key={workflow.id} value={workflow.id}>{workflow.name}</option>
-                ))}
-              </Select>
-              <HelperText>
-                Set this so requests for this kind of asset route to their own approvers, even from
-                an all-in-one form.
-              </HelperText>
-            </div>
-          ) : null}
+          <div>
+            <Label htmlFor="cat-workflow">Approval chain</Label>
+            <Select id="cat-workflow" value={form.workflowId}
+              onChange={(e) => setForm({ ...form, workflowId: e.target.value })}>
+              <option value="">Use the form&apos;s approval chain</option>
+              {workflows.map((workflow) => (
+                <option key={workflow.id} value={workflow.id}>{workflow.name}</option>
+              ))}
+            </Select>
+            <HelperText>
+              Set this so requests for this kind of asset route to their own approvers, even from
+              an all-in-one form. Choose a chain that actually contains the approval steps you
+              expect: a chain with only an implementation step sends requests straight to IT.
+            </HelperText>
+          </div>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={form.requireHandoverAcceptance}
               onChange={(e) => setForm({ ...form, requireHandoverAcceptance: e.target.checked })} className="h-4 w-4" />
@@ -121,21 +139,29 @@ export function CategoryDialog({
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button
               loading={loading}
-              onClick={() =>
+              onClick={() => {
+                const payload = {
+                  // Empty means "use the form's chain" and must be sent, not
+                  // omitted, so an existing override can be cleared.
+                  workflowId: form.workflowId || null,
+                  name: form.name,
+                  description: form.description || undefined,
+                  requireHandoverAcceptance: form.requireHandoverAcceptance,
+                  requireClearanceRecovery: form.requireClearanceRecovery,
+                };
                 run(
                   () =>
-                    createAssetCategoryAction({
-                      workflowId: form.workflowId || undefined,
-                      name: form.name,
-                      description: form.description || undefined,
-                      requireHandoverAcceptance: form.requireHandoverAcceptance,
-                      requireClearanceRecovery: form.requireClearanceRecovery,
-                    }),
-                  { successMessage: "Category created.", onSuccess: () => setOpen(false) },
-                )
-              }
+                    category
+                      ? updateAssetCategoryAction(category.id, payload)
+                      : createAssetCategoryAction(payload),
+                  {
+                    successMessage: category ? "Category updated." : "Category created.",
+                    onSuccess: () => setOpen(false),
+                  },
+                );
+              }}
             >
-              Create category
+              {category ? "Save changes" : "Create category"}
             </Button>
           </div>
         </div>

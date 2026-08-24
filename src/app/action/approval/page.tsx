@@ -6,6 +6,7 @@ import { StatusBadge } from "@/shared/ui/badge";
 import { formatDateTime } from "@/shared/utils";
 import { ApprovalActionForm } from "./approval-form";
 import { ActionShell, InvalidTokenNotice } from "../shell";
+import { loadRuntimeConfig } from "@/shared/settings/runtime";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,9 @@ export default async function ApprovalActionPage({
 }) {
   const { token } = await searchParams;
   if (!token) return <InvalidTokenNotice reason="malformed" flow="approval" />;
+  // Public pages skip the authorized-request warm-up, so load the org timezone
+  // before rendering any date, or timestamps here read as UTC.
+  await loadRuntimeConfig();
 
   const validation = await validateToken(token, "APPROVAL_ACTION");
   // A consumed token usually means this very page just submitted the decision:

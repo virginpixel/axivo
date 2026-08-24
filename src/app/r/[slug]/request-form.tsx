@@ -240,6 +240,7 @@ export function PublicRequestForm({
     },
   ]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [attested, setAttested] = useState(false);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState<{ requestNumber: string; message: string | null } | null>(null);
 
@@ -998,7 +999,20 @@ export function PublicRequestForm({
         </Card>
       ) : null}
 
-      <Button type="submit" size="lg" className="w-full" loading={loading}>
+      <label className="flex items-start gap-2 text-sm text-muted-foreground">
+        <input
+          type="checkbox"
+          checked={attested}
+          onChange={(event) => setAttested(event.target.checked)}
+          className="mt-0.5 h-4 w-4 accent-[hsl(var(--primary))]"
+        />
+        <span>
+          I confirm that the information provided above is accurate and complete. Submitting this
+          form serves as my electronic signature for this request.
+        </span>
+      </label>
+
+      <Button type="submit" size="lg" className="w-full" disabled={!attested} loading={loading}>
         Submit request
       </Button>
     </form>

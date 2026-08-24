@@ -58,6 +58,11 @@ export async function requirePermission(...permissions: Permission[]): Promise<A
 
 /** Anonymous audit context for public (unauthenticated) endpoints. */
 export async function publicAuditContext(actorLabel: string): Promise<AuditContext> {
+  // Public token flows (handover acknowledgement, emailed approvals, credential
+  // delivery) render timestamps and build links too, so they need the org
+  // timezone and base URL warmed just as an authorized request does. Without
+  // this they silently fall back to UTC.
+  await loadRuntimeConfig();
   const requestHeaders = await headers();
   return {
     actorLabel,

@@ -1,5 +1,6 @@
 import { db, type DbClient } from "@/shared/db";
 import { recordAudit, type AuditContext } from "@/shared/audit/audit";
+import { signatureHash } from "@/shared/audit/signature";
 import { BusinessRuleError, NotFoundError, RateLimitedError, ValidationError } from "@/shared/errors";
 import { nextRequestNumber } from "@/shared/counters";
 import { getSetting, SETTING_KEYS } from "@/shared/settings/settings";
@@ -285,6 +286,16 @@ export async function submitPublicRequest(
     checkoutDraft = outcome.draft;
   }
 
+  // Hash the exact submitted content so the submission signature relates to
+  // unchanged data (tamper-evidence for the requester's electronic submission).
+  const submissionHash = signatureHash({
+    formId: form.id,
+    requester: { name: input.requesterName, email: input.requesterEmail, employeeId: input.requesterEmployeeId ?? null },
+    requestedFor: { name: input.requestedForName, email: input.requestedForEmail, employeeId: input.requestedForEmployeeId ?? null },
+    items: input.items,
+    fieldData: values,
+  });
+
   const { requestId, requestNumber, instanceIds } = await db.$transaction(async (tx) => {
     const number = await nextRequestNumber(tx);
     const request = await tx.request.create({
@@ -311,6 +322,8 @@ export async function submitPublicRequest(
         requestedForCompanyId: requestedForCompany.id,
         fieldData: values as Prisma.InputJsonValue,
         sourceIp: context.ipAddress,
+        sourceUserAgent: context.userAgent,
+        submissionHash,
       },
     });
 

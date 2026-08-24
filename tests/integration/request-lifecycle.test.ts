@@ -365,7 +365,7 @@ describe("end-to-end request lifecycle", () => {
     const [personA, personB] = await db.person.findMany({ where: { companyId: company.id }, take: 2 });
 
     const category = await assetsService.createAssetCategory(actor, {
-      name: "Laptop", description: undefined,
+      name: "Laptop", description: undefined, workflowId: null,
       requireHandoverAcceptance: false, requireClearanceRecovery: true,
     });
     const asset = await assetsService.createAsset(actor, {

@@ -2,6 +2,8 @@ import { db, type DbClient } from "@/shared/db";
 import { emailButton } from "@/shared/email/template";
 import { formatDateTimeWithZone } from "@/shared/utils";
 import { recordAudit, diffRecords, type AuditContext } from "@/shared/audit/audit";
+import { signatureHash } from "@/shared/audit/signature";
+import { HANDOVER_TERMS, HANDOVER_TERMS_VERSION } from "./handover-terms";
 import { BusinessRuleError, NotFoundError, ValidationError } from "@/shared/errors";
 import { createGeneratedPdf } from "@/modules/documents/service";
 import { queueNotification } from "@/modules/notifications/service";
@@ -92,7 +94,7 @@ export async function updateAssetCategory(context: AuditContext, id: string, inp
         fieldChanges: diffRecords(
           existing as unknown as Record<string, unknown>,
           category as unknown as Record<string, unknown>,
-          ["name", "description", "requireHandoverAcceptance", "requireClearanceRecovery"],
+          ["name", "description", "requireHandoverAcceptance", "requireClearanceRecovery", "workflowId"],
         ),
       },
       tx,
@@ -454,15 +456,13 @@ async function generateHandoverDocument(
     where: { id: handoverId },
     include: {
       person: { include: { company: true, department: true, position: true } },
-      assets: { include: { assetAssignment: { include: { asset: true } } } },
+      assets: { include: { assetAssignment: { include: { asset: { include: { category: true } } } } } },
     },
   });
   const person = handover.person;
+  // Only the assets selected for this handover belong on the form; the employee's
+  // licences are a separate record and were never part of what is handed over.
   const assignments = handover.assets.map((entry) => entry.assetAssignment);
-  const licenseAssignments = await db.licenseAssignment.findMany({
-    where: { personId: person.id, status: { in: ["ACTIVE", "PENDING"] }, deletedAt: null },
-    include: { license: { include: { application: true } } },
-  });
 
   return createGeneratedPdf(context, {
     companyId: person.companyId,
@@ -492,9 +492,10 @@ async function generateHandoverDocument(
         {
           heading: "Assets",
           table: {
-            headers: ["Asset", "Tag", "Serial Number", "Model", "Assigned"],
+            headers: ["Asset", "Category", "Tag", "Serial Number", "Model", "Assigned"],
             rows: assignments.map((a) => [
               a.asset.name,
+              a.asset.category.name,
               a.asset.assetTag ?? "None",
               a.asset.serialNumber ?? "None",
               a.asset.model ?? "None",
@@ -502,43 +503,32 @@ async function generateHandoverDocument(
             ]),
           },
         },
-        ...(licenseAssignments.length > 0
-          ? [
-              {
-                heading: "Software Licenses",
-                table: {
-                  headers: ["License", "Application", "Assigned"],
-                  rows: licenseAssignments.map((la) => [
-                    la.license.name,
-                    la.license.application?.name ?? "None",
-                    la.assignedAt.toISOString().slice(0, 10),
-                  ]),
-                },
-              },
-            ]
-          : []),
         {
           heading: "Terms of Responsibility",
-          paragraphs: [
-            "I hereby acknowledge that I have received the above mentioned asset/s. I understand that this/these asset/s belong to Dream Islands Development 2 Pvt. Ltd and is/are under my possession for carrying out my office work. I hereby assure that I will take care of the assets of the company to the best possible extent. Also, I am bound to return the specific asset/s when required by the company or at the termination of my employment.",
-          ],
+          paragraphs: [HANDOVER_TERMS],
         },
         {
           // Filled in once the employee acknowledges through the secure link.
           // Present but blank beforehand, so a printed copy has a place for it.
+          // When signed it records the full electronic-signature evidence: who
+          // signed, when, from where, the terms version, and a verification hash
+          // of the exact signed content so any later change is detectable.
           heading: "Acknowledgement",
-          fields: [
-            {
-              label: "Acknowledged on",
-              value: handover.acknowledgedAt
-                ? formatDateTimeWithZone(handover.acknowledgedAt)
-                : "Not yet acknowledged",
-            },
-          ],
+          fields: handover.acknowledgedAt
+            ? [
+                { label: "Acknowledged by", value: `${person.firstName} ${person.lastName} (${person.employeeId})` },
+                { label: "Identity confirmed with", value: "Employee ID entered by signer" },
+                { label: "Acknowledged on", value: formatDateTimeWithZone(handover.acknowledgedAt) },
+                { label: "IP address", value: handover.acknowledgedIp ?? "Not recorded" },
+                { label: "Device", value: handover.acknowledgedUserAgent ?? "Not recorded" },
+                { label: "Terms version", value: handover.acknowledgedTermsVersion ?? "—" },
+                { label: "Verification hash (SHA-256)", value: handover.acknowledgedHash ?? "—" },
+              ]
+            : [{ label: "Acknowledged on", value: "Not yet acknowledged" }],
         },
       ],
       footerNote:
-        "Electronic acknowledgement is recorded with a timestamp and is legally binding within company policy.",
+        "Electronic acknowledgement is recorded with the signer's identity, timestamp, originating address and a verification hash of the signed content, and is binding within company policy.",
     },
   });
 }
@@ -676,17 +666,52 @@ export async function sendHandover(
 export async function acknowledgeHandover(context: AuditContext, handoverId: string) {
   const handover = await db.handover.findFirst({
     where: { id: handoverId },
-    include: { person: true, assets: true },
+    include: {
+      person: true,
+      assets: { include: { assetAssignment: { include: { asset: { include: { category: true } } } } } },
+    },
   });
   if (!handover) throw new NotFoundError("Handover not found.");
   if (handover.status === "ACKNOWLEDGED") {
     throw new BusinessRuleError("This handover has already been acknowledged.");
   }
   const now = new Date();
+  // Hash exactly what the employee agreed to — their identity, the assets, and
+  // the terms in force — so any later change to any of it is detectable.
+  const acknowledgedHash = signatureHash({
+    handoverId: handover.id,
+    termsVersion: HANDOVER_TERMS_VERSION,
+    terms: HANDOVER_TERMS,
+    person: {
+      id: handover.person.id,
+      employeeId: handover.person.employeeId,
+      name: `${handover.person.firstName} ${handover.person.lastName}`,
+      email: handover.person.email,
+    },
+    assets: handover.assets.map((entry) => {
+      const asset = entry.assetAssignment.asset;
+      return {
+        name: asset.name,
+        assetTag: asset.assetTag,
+        serialNumber: asset.serialNumber,
+        manufacturer: asset.manufacturer,
+        model: asset.model,
+        category: asset.category.name,
+        assignedAt: entry.assetAssignment.assignedAt.toISOString(),
+      };
+    }),
+  });
   await db.$transaction(async (tx) => {
     await tx.handover.update({
       where: { id: handoverId },
-      data: { status: "ACKNOWLEDGED", acknowledgedAt: now },
+      data: {
+        status: "ACKNOWLEDGED",
+        acknowledgedAt: now,
+        acknowledgedIp: context.ipAddress ?? null,
+        acknowledgedUserAgent: context.userAgent ?? null,
+        acknowledgedTermsVersion: HANDOVER_TERMS_VERSION,
+        acknowledgedHash,
+      },
     });
     await tx.assetAssignment.updateMany({
       where: { id: { in: handover.assets.map((a) => a.assetAssignmentId) } },

@@ -6,7 +6,8 @@ import { PageHeader } from "@/shared/ui/page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { StatusBadge, Badge } from "@/shared/ui/badge";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
-import { formatDate, formatDateTime, fullName } from "@/shared/utils";
+import { formatDate, formatDateTime, formatDateTimeWithZone, fullName } from "@/shared/utils";
+import { SignatureDetails } from "./signature-details";
 import { PersonDialog, EmploymentStatusSelect, CreateAccountDialog, AccountControls, TransferCompanyDialog } from "../person-dialogs";
 import { ReturnAssetButton, GenerateHandoverButton, ClearanceControl, PersonDocumentDelete, CheckInButton } from "./person-clearance";
 import { leaveTypeLabel } from "@/modules/assets/checkouts";
@@ -91,7 +92,17 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
     db.handover.findMany({
       where: { personId: person.id },
       orderBy: { createdAt: "desc" },
-      select: { id: true, status: true, documentId: true },
+      select: {
+        id: true,
+        status: true,
+        documentId: true,
+        // Electronic-signature evidence, shown through the Signature details dialog.
+        acknowledgedAt: true,
+        acknowledgedIp: true,
+        acknowledgedUserAgent: true,
+        acknowledgedTermsVersion: true,
+        acknowledgedHash: true,
+      },
     }),
     db.clearance.findMany({
       where: { personId: person.id },
@@ -647,6 +658,21 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                         <TD>{formatDate(document!.createdAt)}</TD>
                         <TD className="text-right">
                           <div className="flex items-center justify-end gap-1">
+                            {handover?.status === "ACKNOWLEDGED" ? (
+                              <SignatureDetails
+                                signature={{
+                                  signerName: fullName(person),
+                                  employeeId: person.employeeId,
+                                  acknowledgedAt: handover.acknowledgedAt
+                                    ? formatDateTimeWithZone(handover.acknowledgedAt)
+                                    : null,
+                                  ip: handover.acknowledgedIp,
+                                  userAgent: handover.acknowledgedUserAgent,
+                                  termsVersion: handover.acknowledgedTermsVersion,
+                                  hash: handover.acknowledgedHash,
+                                }}
+                              />
+                            ) : null}
                             {canManageAssets && resendableHandover ? (
                               <ResendAckButton kind="handover" targetId={handover!.id} defaultEmail={person.email} label="" />
                             ) : null}

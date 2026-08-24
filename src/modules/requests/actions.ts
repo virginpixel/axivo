@@ -62,11 +62,27 @@ export async function submitCorrectionAction(
 }
 
 /** Handover acknowledgement through the secure email token (Doc 11 Ch6). */
-export async function acknowledgeHandoverAction(token: string): Promise<ActionResult<undefined>> {
+export async function acknowledgeHandoverAction(
+  token: string,
+  employeeId: string,
+): Promise<ActionResult<undefined>> {
   try {
     const validation = await validateToken(token, "ASSET_HANDOVER");
     if (!validation.valid) {
       throw new BusinessRuleError("This handover link is no longer valid. Contact IT for assistance.");
+    }
+    // Confirm identity before recording the acknowledgement: the signer must
+    // enter their own employee ID, a lightweight second factor on top of the
+    // single-use emailed link.
+    const handoverPerson = await db.handover.findUnique({
+      where: { id: validation.record.targetId },
+      select: { person: { select: { employeeId: true } } },
+    });
+    const expected = handoverPerson?.person.employeeId?.trim().toLowerCase();
+    if (!expected || employeeId.trim().toLowerCase() !== expected) {
+      throw new BusinessRuleError(
+        "The employee ID you entered does not match this handover. Please check and try again.",
+      );
     }
     const context = await publicAuditContext(validation.record.email);
     await assetsService.acknowledgeHandover(context, validation.record.targetId);

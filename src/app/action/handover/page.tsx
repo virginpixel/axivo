@@ -5,6 +5,8 @@ import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
 import { formatDate } from "@/shared/utils";
 import { ActionShell, InvalidTokenNotice } from "../shell";
 import { HandoverAcknowledge } from "./handover-acknowledge";
+import { HANDOVER_TERMS } from "@/modules/assets/handover-terms";
+import { loadRuntimeConfig } from "@/shared/settings/runtime";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +18,9 @@ export default async function HandoverActionPage({
 }) {
   const { token } = await searchParams;
   if (!token) return <InvalidTokenNotice reason="malformed" flow="handover" />;
+  // Public pages skip the authorized-request warm-up, so load the org timezone
+  // before rendering any date, or timestamps here read as UTC.
+  await loadRuntimeConfig();
 
   const validation = await validateToken(token, "ASSET_HANDOVER");
   // Acknowledging consumes the token and re-renders this page; the acknowledged
@@ -42,6 +47,7 @@ export default async function HandoverActionPage({
   return (
     <ToastProvider>
       <ActionShell
+        wide
         title="Asset handover acknowledgement"
         subtitle={`For ${handover.person.firstName} ${handover.person.lastName}`}
       >
@@ -102,11 +108,7 @@ export default async function HandoverActionPage({
 
           <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
             <h3 className="mb-1 text-sm font-semibold text-foreground">Terms of responsibility</h3>
-            I hereby acknowledge that I have received the above mentioned asset/s. I understand that
-            this/these asset/s belong to Dream Islands Development 2 Pvt. Ltd and is/are under my
-            possession for carrying out my office work. I hereby assure that I will take care of the
-            assets of the company to the best possible extent. Also, I am bound to return the
-            specific asset/s when required by the company or at the termination of my employment.
+            {HANDOVER_TERMS}
           </div>
 
           {alreadyAcknowledged ? (
@@ -115,7 +117,7 @@ export default async function HandoverActionPage({
               {handover.acknowledgedAt?.toISOString().slice(0, 10)}. No further action is required.
             </p>
           ) : (
-            <HandoverAcknowledge token={token} />
+            <HandoverAcknowledge token={token} signerName={`${handover.person.firstName} ${handover.person.lastName}`} />
           )}
         </div>
       </ActionShell>

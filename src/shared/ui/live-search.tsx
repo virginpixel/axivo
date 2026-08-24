@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
+import { cn } from "@/shared/utils";
 
 /**
  * Debounced search box that updates the `q` (or a named) query param as the user
@@ -47,7 +48,10 @@ export function LiveSearch({
   }, [value]);
 
   return (
-    <div className={className ?? "relative w-full sm:w-72"}>
+    // `relative` must survive a caller-supplied className: the magnifier is
+    // positioned absolutely, and without a positioned wrapper it escapes to the
+    // nearest positioned ancestor and floats over the sidebar.
+    <div className={cn("relative", className ?? "w-full sm:w-72")}>
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
       <input
         type="search"
