@@ -1022,6 +1022,10 @@ model Asset {
   manufacturer   String?     @map("manufacturer")
   model          String?     @map("model")
   status         AssetStatus @default(AVAILABLE) @map("status")
+  /// Shared equipment (e.g. a department phone) may be held by several people
+  /// at once; each holder acknowledges their own handover and is responsible
+  /// for damage during their use. Normal assets keep the single-holder rule.
+  isShared       Boolean     @default(false) @map("is_shared")
   locationId     String?     @map("location_id") @db.Uuid
   /// Vendor the asset was purchased from (name sourced from the Vendor list).
   supplier       String?     @map("supplier")

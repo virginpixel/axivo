@@ -191,6 +191,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                 companyId: asset.companyId,
                 categoryId: asset.categoryId,
                 name: asset.name,
+                isShared: asset.isShared,
                 assetTag: asset.assetTag,
                 serialNumber: asset.serialNumber,
                 manufacturer: asset.manufacturer,

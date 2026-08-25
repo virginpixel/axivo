@@ -39,6 +39,8 @@ export const assetSchema = z
     warrantyExpiry: dateSchema.optional(),
     /** Custom field values keyed by CustomField id (from the model's fieldset). */
     customFields: z.record(z.string(), z.string()).optional(),
+    /** Shared equipment may be held by several employees at the same time. */
+    isShared: z.boolean().default(false),
     notes: optionalText(),
   })
   .strict();

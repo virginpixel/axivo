@@ -3,7 +3,7 @@ import { emailButton } from "@/shared/email/template";
 import { formatDateTimeWithZone } from "@/shared/utils";
 import { recordAudit, diffRecords, type AuditContext } from "@/shared/audit/audit";
 import { signatureHash } from "@/shared/audit/signature";
-import { HANDOVER_TERMS, HANDOVER_TERMS_VERSION } from "./handover-terms";
+import { handoverTerms, HANDOVER_TERMS_VERSION } from "./handover-terms";
 import { BusinessRuleError, NotFoundError, ValidationError } from "@/shared/errors";
 import { createGeneratedPdf } from "@/modules/documents/service";
 import { queueNotification } from "@/modules/notifications/service";
@@ -347,14 +347,29 @@ export async function assignAsset(
     if (!person.isActive) throw new BusinessRuleError("Only active employees may receive assets.");
     // Assets are not company-locked for assignment: an asset owned by one company
     // may be given to an employee of another (e.g. an HRH laptop to a CXR staff).
-    if (asset.status !== "AVAILABLE" && asset.status !== "RESERVED") {
+    // Shared equipment (a department phone used by every concierge) may be held
+    // by several people at once, so it stays assignable while already ASSIGNED.
+    // Everything else keeps the single-holder rule.
+    const assignableStatuses: AssetStatus[] = asset.isShared
+      ? ["AVAILABLE", "RESERVED", "ASSIGNED"]
+      : ["AVAILABLE", "RESERVED"];
+    if (!assignableStatuses.includes(asset.status)) {
       throw new BusinessRuleError(`Only Available assets may be assigned (current status: ${asset.status}).`);
     }
     const activeAssignment = await tx.assetAssignment.findFirst({
-      where: { assetId: input.assetId, status: { in: ["PENDING", "ASSIGNED"] }, deletedAt: null },
+      where: {
+        assetId: input.assetId,
+        status: { in: ["PENDING", "ASSIGNED"] },
+        deletedAt: null,
+        ...(asset.isShared ? { personId: input.personId } : {}),
+      },
     });
     if (activeAssignment) {
-      throw new BusinessRuleError("This asset already has an active assignment.");
+      throw new BusinessRuleError(
+        asset.isShared
+          ? "This person already holds this shared asset."
+          : "This asset already has an active assignment.",
+      );
     }
 
     const assignment = await tx.assetAssignment.create({
@@ -419,7 +434,19 @@ export async function returnAsset(context: AuditContext, assignmentId: string, n
       },
     });
     // Returning restores Available unless another operational status applies (Doc 11 Ch5).
-    await tx.asset.update({ where: { id: existing.assetId }, data: { status: "AVAILABLE" } });
+    // A shared asset stays Assigned while anyone else still holds it; only the
+    // last holder returning frees it.
+    const otherHolders = await tx.assetAssignment.count({
+      where: {
+        assetId: existing.assetId,
+        id: { not: assignmentId },
+        status: { in: ["PENDING", "ASSIGNED"] },
+        deletedAt: null,
+      },
+    });
+    if (otherHolders === 0) {
+      await tx.asset.update({ where: { id: existing.assetId }, data: { status: "AVAILABLE" } });
+    }
     await recordAudit(
       { ...context, companyId: existing.asset.companyId },
       {
@@ -505,7 +532,12 @@ async function generateHandoverDocument(
         },
         {
           heading: "Terms of Responsibility",
-          paragraphs: [HANDOVER_TERMS],
+          paragraphs: [
+            handoverTerms(
+              person.company.name,
+              assignments.some((a) => a.asset.isShared),
+            ),
+          ],
         },
         {
           // Filled in once the employee acknowledges through the secure link.
@@ -667,7 +699,7 @@ export async function acknowledgeHandover(context: AuditContext, handoverId: str
   const handover = await db.handover.findFirst({
     where: { id: handoverId },
     include: {
-      person: true,
+      person: { include: { company: true } },
       assets: { include: { assetAssignment: { include: { asset: { include: { category: true } } } } } },
     },
   });
@@ -681,7 +713,10 @@ export async function acknowledgeHandover(context: AuditContext, handoverId: str
   const acknowledgedHash = signatureHash({
     handoverId: handover.id,
     termsVersion: HANDOVER_TERMS_VERSION,
-    terms: HANDOVER_TERMS,
+    terms: handoverTerms(
+      handover.person.company.name,
+      handover.assets.some((entry) => entry.assetAssignment.asset.isShared),
+    ),
     person: {
       id: handover.person.id,
       employeeId: handover.person.employeeId,

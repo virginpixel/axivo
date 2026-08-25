@@ -184,6 +184,7 @@ export interface AssetFormRecord {
   warrantyExpiry: string | null;
   notes: string | null;
   status: string;
+  isShared: boolean;
   customFields: Record<string, string> | null;
 }
 
@@ -246,6 +247,7 @@ export function AssetDialog({
     supplier: base?.supplier ?? "",
     warrantyExpiry: base?.warrantyExpiry ?? "",
     notes: base?.notes ?? "",
+    isShared: base?.isShared ?? false,
   });
   const [customFields, setCustomFields] = useState<Record<string, string>>(asset?.customFields ?? {});
   const companyLocations = locations.filter((location) => location.companyId === form.companyId);
@@ -268,6 +270,7 @@ export function AssetDialog({
       supplier: form.supplier || undefined,
       warrantyExpiry: form.warrantyExpiry || undefined,
       notes: form.notes || undefined,
+      isShared: form.isShared,
       customFields: modelFields.length > 0 ? customFields : undefined,
     };
     if (asset) {
@@ -422,6 +425,20 @@ export function AssetDialog({
             <Input id="asset-warranty" type="date" value={form.warrantyExpiry} onChange={(e) => setForm({ ...form, warrantyExpiry: e.target.value })} />
           </div>
           <div className="sm:col-span-2">
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" checked={form.isShared}
+                onChange={(e) => setForm({ ...form, isShared: e.target.checked })} className="mt-0.5 h-4 w-4" />
+              <span>
+                Shared asset
+                <span className="block text-xs text-muted-foreground">
+                  Equipment used by several employees, such as a department phone. It can be
+                  assigned to more than one person at a time, and each holder acknowledges their
+                  own handover.
+                </span>
+              </span>
+            </label>
+          </div>
+          <div className="sm:col-span-2">
             <Label htmlFor="asset-notes">Notes</Label>
             <Textarea id="asset-notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
           </div>
@@ -499,6 +516,9 @@ export function AssetRowActions({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [personId, setPersonId] = useState("");
   const [maintForm, setMaintForm] = useState({ maintenanceType: "Repair", description: "", serviceProvider: "" });
+  // Shared equipment keeps accepting new holders while already assigned.
+  const canAssignNow =
+    asset.status === "AVAILABLE" || (asset.isShared && asset.status === "ASSIGNED");
 
   return (
     <>
@@ -509,7 +529,7 @@ export function AssetRowActions({
         {permissions.canManage ? (
           <ActionMenuItem icon={<Copy className="h-4 w-4" />} onClick={() => setCloneOpen(true)}>Clone</ActionMenuItem>
         ) : null}
-        {permissions.canAssign && asset.status === "AVAILABLE" ? (
+        {permissions.canAssign && canAssignNow ? (
           <ActionMenuItem icon={<UserPlus className="h-4 w-4" />} onClick={() => setAssignOpen(true)}>Assign</ActionMenuItem>
         ) : null}
         {permissions.canAssign && activeAssignmentId ? (
@@ -559,7 +579,7 @@ export function AssetRowActions({
         </>
       ) : null}
 
-      {permissions.canAssign && asset.status === "AVAILABLE" ? (
+      {permissions.canAssign && canAssignNow ? (
         <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
           <DialogContent title={`Assign ${asset.name}`} description="A handover acknowledgement email is sent automatically when the category requires it.">
             <Label htmlFor={`assign-person-${asset.id}`} required>Employee</Label>

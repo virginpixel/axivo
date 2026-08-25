@@ -8,6 +8,7 @@ import { Input, Select } from "@/shared/ui/input";
 import { LiveSearch } from "@/shared/ui/live-search";
 import { fullName, formatDate } from "@/shared/utils";
 import { AssetDialog, AssetRowActions } from "./asset-dialogs";
+import { HolderList } from "@/shared/ui/holder-list";
 import type { Prisma, AssetStatus } from "@prisma/client";
 
 export const metadata = { title: "Assets" };
@@ -64,10 +65,11 @@ export default async function AssetsPage({
           company: { select: { name: true } },
           category: true,
           location: { select: { name: true } },
+          // A shared asset can have several current holders, so take them all.
           assignments: {
             where: { status: { in: ["ASSIGNED", "PENDING"] }, deletedAt: null },
             include: { person: true },
-            take: 1,
+            orderBy: { assignedAt: "asc" },
           },
           maintenance: {
             where: { status: "IN_PROGRESS", deletedAt: null },
@@ -205,13 +207,18 @@ export default async function AssetsPage({
             </THead>
             <TBody>
               {assets.map((asset) => {
-                const activeAssignment = asset.assignments[0];
+                // Return-from-the-list only makes sense with a single holder; a
+                // shared asset with several is returned from each person's profile.
+                const soleAssignment = asset.assignments.length === 1 ? asset.assignments[0] : undefined;
                 return (
                   <TR key={asset.id}>
                     <TD>
                       <Link href={`/assets/${asset.id}`} className="font-medium text-foreground hover:underline">
                         {asset.name || asset.assetTag || "Unnamed asset"}
                       </Link>
+                      {asset.isShared ? (
+                        <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">Shared</span>
+                      ) : null}
                       {asset.assetTag ? (
                         <p className="font-register text-xs text-muted-foreground">{asset.assetTag}</p>
                       ) : null}
@@ -246,13 +253,12 @@ export default async function AssetsPage({
                     </TD>
                     <TD>{asset.serialNumber ?? "None"}</TD>
                     <TD>
-                      {activeAssignment ? (
-                        <Link href={`/people/${activeAssignment.person.id}`} className="hover:underline">
-                          {fullName(activeAssignment.person)}
-                        </Link>
-                      ) : (
-                        "None"
-                      )}
+                      <HolderList
+                        holders={asset.assignments.map((assignment) => ({
+                          id: assignment.person.id,
+                          name: fullName(assignment.person),
+                        }))}
+                      />
                     </TD>
                     <TD>{asset.warrantyExpiry ? formatDate(asset.warrantyExpiry) : "None"}</TD>
                     <TD><StatusBadge status={asset.status} /></TD>
@@ -272,9 +278,10 @@ export default async function AssetsPage({
                           warrantyExpiry: asset.warrantyExpiry?.toISOString().slice(0, 10) ?? null,
                           notes: asset.notes,
                           status: asset.status,
+                          isShared: asset.isShared,
                           customFields: (asset.customFields as Record<string, string> | null) ?? null,
                         }}
-                        activeAssignmentId={activeAssignment?.id ?? null}
+                        activeAssignmentId={soleAssignment?.id ?? null}
                         activeMaintenanceId={asset.maintenance[0]?.id ?? null}
                         companies={companies}
                         categories={categoryOptions}

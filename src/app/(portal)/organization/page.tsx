@@ -71,12 +71,22 @@ export default async function OrganizationPage({
   const people = await db.person.findMany({
     where: { deletedAt: null, isActive: true, companyId: { in: companyIds } },
     orderBy: { lastName: "asc" },
-    select: { id: true, firstName: true, lastName: true, companyId: true },
+    select: {
+      id: true, firstName: true, lastName: true, companyId: true,
+      company: { select: { name: true } },
+    },
   });
   const peopleByCompany: Record<string, { id: string; name: string }[]> = {};
   for (const person of people) {
     (peopleByCompany[person.companyId] ??= []).push({ id: person.id, name: fullName(person) });
   }
+  // Flat, company-labelled list for pickers whose choice is not company-bound,
+  // such as Department Heads (a manager may head a department in another company).
+  const allPeople = people.map((person) => ({
+    id: person.id,
+    name: fullName(person),
+    companyName: person.company.name,
+  }));
 
   return (
     <div>
@@ -176,7 +186,7 @@ export default async function OrganizationPage({
         <DepartmentsSection
           companies={companyOptions}
           companyIds={scopedCompanyIds}
-          peopleByCompany={peopleByCompany}
+          allPeople={allPeople}
           nameFilter={nameFilter}
           activeFilter={activeFilter}
           canManage={canManage}
@@ -213,14 +223,14 @@ export default async function OrganizationPage({
 async function DepartmentsSection({
   companies,
   companyIds,
-  peopleByCompany,
+  allPeople,
   nameFilter,
   activeFilter,
   canManage,
 }: {
   companies: { id: string; name: string }[];
   companyIds: string[];
-  peopleByCompany: Record<string, { id: string; name: string }[]>;
+  allPeople: { id: string; name: string; companyName: string }[];
   nameFilter: object;
   activeFilter: object;
   canManage: boolean;
@@ -241,7 +251,7 @@ async function DepartmentsSection({
   return (
     <section aria-label="Departments">
       <div className="mb-3 flex justify-end">
-        {canManage ? <DepartmentDialog companies={companies} peopleByCompany={peopleByCompany} /> : null}
+        {canManage ? <DepartmentDialog companies={companies} allPeople={allPeople} /> : null}
       </div>
       {departments.length === 0 ? (
         <EmptyState
@@ -283,7 +293,7 @@ async function DepartmentsSection({
                   <div className="flex justify-end gap-2">
                     <DepartmentDialog
                       companies={companies}
-                      peopleByCompany={peopleByCompany}
+                      allPeople={allPeople}
                       department={{
                         id: department.id,
                         companyId: department.companyId,

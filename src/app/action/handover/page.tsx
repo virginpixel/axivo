@@ -5,7 +5,7 @@ import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
 import { formatDate } from "@/shared/utils";
 import { ActionShell, InvalidTokenNotice } from "../shell";
 import { HandoverAcknowledge } from "./handover-acknowledge";
-import { HANDOVER_TERMS } from "@/modules/assets/handover-terms";
+import { handoverTerms } from "@/modules/assets/handover-terms";
 import { loadRuntimeConfig } from "@/shared/settings/runtime";
 
 export const dynamic = "force-dynamic";
@@ -36,13 +36,16 @@ export default async function HandoverActionPage({
   const handover = await db.handover.findUnique({
     where: { id: validation.valid ? validation.record.targetId : spent!.targetId },
     include: {
-      person: true,
+      person: { include: { company: true } },
       assets: { include: { assetAssignment: { include: { asset: { include: { category: true } } } } } },
     },
   });
   if (!handover) return <InvalidTokenNotice reason="not_found" flow="handover" />;
 
   const alreadyAcknowledged = handover.status === "ACKNOWLEDGED";
+  // Shared equipment carries an extra clause in the terms and is labelled in the
+  // list, so the signer knows others use it too.
+  const hasSharedAsset = handover.assets.some((entry) => entry.assetAssignment.asset.isShared);
 
   return (
     <ToastProvider>
@@ -69,7 +72,12 @@ export default async function HandoverActionPage({
               <TBody>
                 {handover.assets.map((entry) => (
                   <TR key={entry.id}>
-                    <TD className="font-medium">{entry.assetAssignment.asset.name || entry.assetAssignment.asset.assetTag || "Asset"}</TD>
+                    <TD className="font-medium">
+                      {entry.assetAssignment.asset.name || entry.assetAssignment.asset.assetTag || "Asset"}
+                      {entry.assetAssignment.asset.isShared ? (
+                        <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground">Shared</span>
+                      ) : null}
+                    </TD>
                     <TD>{entry.assetAssignment.asset.category.name}</TD>
                     <TD>{entry.assetAssignment.asset.serialNumber ?? "None"}</TD>
                     <TD>{entry.assetAssignment.asset.manufacturer ?? "None"}</TD>
@@ -92,7 +100,12 @@ export default async function HandoverActionPage({
               ];
               return (
                 <div key={entry.id} className="rounded-lg border bg-card p-4">
-                  <p className="font-medium">{asset.name || asset.assetTag || "Asset"}</p>
+                  <p className="font-medium">
+                    {asset.name || asset.assetTag || "Asset"}
+                    {asset.isShared ? (
+                      <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground">Shared</span>
+                    ) : null}
+                  </p>
                   <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                     {details.map((detail) => (
                       <div key={detail.label}>
@@ -108,7 +121,7 @@ export default async function HandoverActionPage({
 
           <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
             <h3 className="mb-1 text-sm font-semibold text-foreground">Terms of responsibility</h3>
-            {HANDOVER_TERMS}
+            {handoverTerms(handover.person.company.name, hasSharedAsset)}
           </div>
 
           {alreadyAcknowledged ? (

@@ -26,7 +26,8 @@ import {
 import { Combobox } from "@/shared/ui/combobox";
 import { useAction } from "@/shared/ui/use-action";
 import { Button } from "@/shared/ui/button";
-import { Input, Textarea, Select, Label, FieldError } from "@/shared/ui/input";
+import { Input, Textarea, Select, Label, FieldError, HelperText } from "@/shared/ui/input";
+import { MultiSelect } from "@/shared/ui/multi-select";
 import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
 
 // ---------------------------------------------------------------------------
@@ -104,11 +105,12 @@ export function CompanyDialog({
 
 export function DepartmentDialog({
   companies,
-  peopleByCompany,
+  allPeople,
   department,
 }: {
   companies: { id: string; name: string }[];
-  peopleByCompany: Record<string, { id: string; name: string }[]>;
+  /** Every active employee, company included: a head may sit in another company. */
+  allPeople: { id: string; name: string; companyName: string }[];
   department?: {
     id: string;
     companyId: string;
@@ -125,7 +127,13 @@ export function DepartmentDialog({
     description: department?.description ?? "",
     headPersonIds: department?.headPersonIds ?? [],
   });
-  const people = peopleByCompany[form.companyId] ?? [];
+  // Heads are picked from every company: one manager often heads the same
+  // function across properties (e.g. Saii's F&B manager heading Crossroads').
+  const headOptions = allPeople.map((person) => ({
+    value: person.id,
+    label: person.name,
+    hint: person.companyName,
+  }));
 
   async function submit() {
     const payload = {
@@ -167,7 +175,7 @@ export function DepartmentDialog({
               id="dept-company"
               value={form.companyId}
               disabled={!!department}
-              onChange={(e) => setForm({ ...form, companyId: e.target.value, headPersonIds: [] })}
+              onChange={(e) => setForm({ ...form, companyId: e.target.value })}
             >
               {companies.map((company) => (
                 <option key={company.id} value={company.id}>{company.name}</option>
@@ -184,33 +192,20 @@ export function DepartmentDialog({
             <Textarea id="dept-description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </div>
           <div>
-            <Label>Department Head(s)</Label>
-            {people.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Add employees to this company first, then assign heads here.
-              </p>
-            ) : (
-              <div className="mt-1 grid max-h-48 gap-1.5 overflow-y-auto rounded-md border bg-muted/30 p-3 sm:grid-cols-2">
-                {people.map((person) => (
-                  <label key={person.id} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={form.headPersonIds.includes(person.id)}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          headPersonIds: event.target.checked
-                            ? [...current.headPersonIds, person.id]
-                            : current.headPersonIds.filter((id) => id !== person.id),
-                        }))
-                      }
-                      className="h-4 w-4"
-                    />
-                    {person.name}
-                  </label>
-                ))}
-              </div>
-            )}
+            <Label htmlFor="dept-heads">Department Head(s)</Label>
+            <MultiSelect
+              id="dept-heads"
+              options={headOptions}
+              values={form.headPersonIds}
+              onChange={(values) => setForm((current) => ({ ...current, headPersonIds: values }))}
+              placeholder="Search employees..."
+              searchPlaceholder="Search by name or company..."
+              emptyMessage="No matching employees."
+            />
+            <HelperText>
+              Heads may be from any company, so a manager who covers more than one property can be
+              selected here.
+            </HelperText>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>

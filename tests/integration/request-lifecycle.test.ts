@@ -372,7 +372,7 @@ describe("end-to-end request lifecycle", () => {
       companyId: company.id, categoryId: category.id, name: "Test Laptop 1", assetTag: "LT-0001",
       serialNumber: undefined, manufacturer: undefined, model: undefined, locationId: undefined,
       supplier: undefined, purchaseDate: undefined, purchasePrice: undefined, currency: undefined,
-      warrantyExpiry: undefined, notes: undefined,
+      warrantyExpiry: undefined, notes: undefined, isShared: false,
     });
 
     const { assignment } = await assetsService.assignAsset(actor, {

@@ -235,13 +235,18 @@ async function assertCompanyActive(companyId: string): Promise<void> {
   }
 }
 
-async function assertHeadsInCompany(personIds: string[], companyId: string): Promise<void> {
+/**
+ * A Department Head may sit in another company: one manager commonly heads the
+ * same function across properties (e.g. Saii's F&B manager heading Crossroads'
+ * Kitchen), so only active employment is required, not shared company.
+ */
+async function assertHeadsAssignable(personIds: string[]): Promise<void> {
   if (personIds.length === 0) return;
   const count = await db.person.count({
-    where: { id: { in: personIds }, companyId, deletedAt: null, isActive: true },
+    where: { id: { in: personIds }, deletedAt: null, isActive: true },
   });
   if (count !== personIds.length) {
-    throw new BusinessRuleError("Department Heads must be active people of the same company.");
+    throw new BusinessRuleError("Department Heads must be active employees.");
   }
 }
 
@@ -279,7 +284,7 @@ async function syncDepartmentHeads(
 export async function createDepartment(context: AuditContext, input: DepartmentInput) {
   await assertCompanyActive(input.companyId);
   await assertUniqueInCompany("department", input.companyId, input.name);
-  await assertHeadsInCompany(input.headPersonIds, input.companyId);
+  await assertHeadsAssignable(input.headPersonIds);
   return db.$transaction(async (tx) => {
     const department = await tx.department.create({
       data: {
@@ -313,7 +318,7 @@ export async function updateDepartment(context: AuditContext, id: string, input:
     throw new BusinessRuleError("Departments cannot be moved between companies.");
   }
   await assertUniqueInCompany("department", input.companyId, input.name, id);
-  await assertHeadsInCompany(input.headPersonIds, input.companyId);
+  await assertHeadsAssignable(input.headPersonIds);
   return db.$transaction(async (tx) => {
     const department = await tx.department.update({
       where: { id },
