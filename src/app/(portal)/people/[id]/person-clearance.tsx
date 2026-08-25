@@ -3,7 +3,7 @@
 import { checkInAssetCheckoutAction } from "@/modules/assets/actions";
 
 import { useEffect, useState } from "react";
-import { ClipboardCheck, Undo2, FileText, Trash2 } from "lucide-react";
+import { ClipboardCheck, Undo2, FileText, Trash2, Unlink } from "lucide-react";
 import {
   startClearanceAction,
   returnAssetAction,
@@ -247,14 +247,14 @@ export function PersonDocumentDelete({ personId, documentId }: { personId: strin
       variant="ghost"
       size="icon"
       loading={loading}
-      aria-label="Remove document"
-      title="Remove from profile"
+      aria-label="Remove document from this profile"
+      title="Remove from this profile (keeps the document)"
       onClick={() => {
-        if (!window.confirm("Remove this document from the profile? The file stays in Documents.")) return;
+        if (!window.confirm("Remove this document from this profile? The document itself is kept — use Delete to remove it everywhere.")) return;
         run(() => removePersonDocumentAction(personId, documentId), { successMessage: "Document removed." });
       }}
     >
-      <Trash2 className="h-4 w-4 text-destructive" />
+      <Unlink className="h-4 w-4" />
     </Button>
   );
 }

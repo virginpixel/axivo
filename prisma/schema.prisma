@@ -1869,6 +1869,11 @@ model Document {
   createdById   String?        @map("created_by") @db.Uuid
   updatedAt     DateTime       @updatedAt @map("updated_at")
   updatedById   String?        @map("updated_by") @db.Uuid
+  /// Soft delete: the row is hidden everywhere but the stored file and the
+  /// records that reference it (handovers, clearances, disposals) survive, so
+  /// deleting evidence by mistake is recoverable and no reference is orphaned.
+  deletedAt     DateTime?      @map("deleted_at")
+  deletedById   String?        @map("deleted_by") @db.Uuid
 
   company  Company           @relation(fields: [companyId], references: [id])
   category DocumentCategory? @relation(fields: [categoryId], references: [id])

@@ -7,6 +7,7 @@ import { Badge, StatusBadge } from "@/shared/ui/badge";
 import { Input, Select } from "@/shared/ui/input";
 import { formatDateTime } from "@/shared/utils";
 import { UploadDocumentDialog, NewVersionDialog } from "./document-dialogs";
+import { DocumentDelete, DocumentRestore, DocumentPurge } from "./document-delete";
 import { Download, Eye } from "lucide-react";
 import { documentKindLabel } from "@/modules/documents/categories";
 import type { Prisma } from "@prisma/client";
@@ -18,7 +19,7 @@ export const dynamic = "force-dynamic";
 export default async function DocumentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; category?: string; kind?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; kind?: string; page?: string; deleted?: string }>;
 }) {
   const { user } = await requirePermission("documents.view");
   const params = await searchParams;
@@ -28,9 +29,13 @@ export default async function DocumentsPage({
   const isGlobalAdmin = user.systemRoleKey === "SYSTEM_ADMINISTRATOR";
   const canManage = user.permissions.has("documents.manage");
   const companyScope = isGlobalAdmin ? {} : { companyId: user.companyId };
+  // Deleted documents are hidden by default and reachable through this filter,
+  // which is what makes the soft delete recoverable.
+  const showDeleted = params.deleted === "1";
 
   const where: Prisma.DocumentWhereInput = {
     ...companyScope,
+    deletedAt: showDeleted ? { not: null } : null,
     ...(params.category ? { categoryId: params.category } : {}),
     ...(params.kind ? { kind: params.kind as never } : {}),
     ...(q ? { name: { contains: q, mode: "insensitive" } } : {}),
@@ -47,6 +52,11 @@ export default async function DocumentsPage({
         category: { select: { name: true } },
         versions: { orderBy: { versionNumber: "desc" }, take: 1 },
         links: { where: { removedAt: null } },
+        // Drives the delete dialog's warning: what signed evidence is at stake.
+        handovers: { select: { status: true } },
+        clearances: { select: { status: true } },
+        disposals: { select: { id: true } },
+        checkouts: { select: { id: true } },
       },
     }),
     db.document.count({ where }),
@@ -108,13 +118,21 @@ export default async function DocumentsPage({
           <option value="WORD_DOCUMENT">Word document</option>
           <option value="OTHER">Other</option>
         </Select>
+        <label className="flex h-9 items-center gap-2 text-sm">
+          <input type="checkbox" name="deleted" value="1" defaultChecked={showDeleted} className="h-4 w-4" />
+          Show deleted
+        </label>
         <button type="submit" className="h-9 rounded-full border border-input bg-card px-4 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">Filter</button>
       </form>
 
       {documents.length === 0 ? (
         <EmptyState
-          title="No documents"
-          description="Handover forms, clearance forms and uploads are stored here with full version history."
+          title={showDeleted ? "No deleted documents" : "No documents"}
+          description={
+            showDeleted
+              ? "Documents you delete appear here and can be restored."
+              : "Handover forms, clearance forms and uploads are stored here with full version history."
+          }
         />
       ) : (
         <>
@@ -170,8 +188,35 @@ export default async function DocumentsPage({
                         >
                           <Download className="h-4 w-4" />
                         </a>
-                        {canManage && !document.isGenerated ? (
+                        {canManage && !document.isGenerated && !showDeleted ? (
                           <NewVersionDialog documentId={document.id} documentName={document.name} />
+                        ) : null}
+                        {canManage && showDeleted ? (
+                          <>
+                            <DocumentRestore documentId={document.id} documentName={document.name} />
+                            <DocumentPurge
+                              documentId={document.id}
+                              documentName={document.name}
+                              evidence={{
+                                acknowledgedHandovers: document.handovers.filter((h) => h.status === "ACKNOWLEDGED").length,
+                                completedClearances: document.clearances.filter((c) => c.status === "COMPLETED").length,
+                                disposals: document.disposals.length,
+                                checkouts: document.checkouts.length,
+                              }}
+                            />
+                          </>
+                        ) : null}
+                        {canManage && !showDeleted ? (
+                          <DocumentDelete
+                            documentId={document.id}
+                            documentName={document.name}
+                            evidence={{
+                              acknowledgedHandovers: document.handovers.filter((h) => h.status === "ACKNOWLEDGED").length,
+                              completedClearances: document.clearances.filter((c) => c.status === "COMPLETED").length,
+                              disposals: document.disposals.length,
+                              checkouts: document.checkouts.length,
+                            }}
+                          />
                         ) : null}
                       </div>
                     </TD>
@@ -189,6 +234,7 @@ export default async function DocumentsPage({
               if (q) search.set("q", q);
               if (params.category) search.set("category", params.category);
               if (params.kind) search.set("kind", params.kind);
+              if (showDeleted) search.set("deleted", "1");
               search.set("page", String(p));
               return `/documents?${search.toString()}`;
             }}

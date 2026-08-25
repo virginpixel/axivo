@@ -118,3 +118,51 @@ export async function removeDocumentLinkAction(
     return toActionError(error);
   }
 }
+
+/**
+ * Delete a document everywhere. Soft: it disappears from Documents, profiles and
+ * asset pages, while the stored file and any signed evidence it carries are
+ * preserved and it can be restored from the Documents page.
+ */
+export async function deleteDocumentAction(documentId: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("documents.manage");
+    await service.deleteDocument(audit, documentId);
+    revalidatePath("/documents", "layout");
+    revalidatePath("/people", "layout");
+    revalidatePath("/assets", "layout");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function restoreDocumentAction(documentId: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("documents.manage");
+    await service.restoreDocument(audit, documentId);
+    revalidatePath("/documents", "layout");
+    revalidatePath("/people", "layout");
+    revalidatePath("/assets", "layout");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+/**
+ * Permanently destroy a soft-deleted document and its files. Irreversible;
+ * offered only from the deleted view.
+ */
+export async function purgeDocumentAction(documentId: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("documents.manage");
+    await service.purgeDocument(audit, documentId);
+    revalidatePath("/documents", "layout");
+    revalidatePath("/people", "layout");
+    revalidatePath("/assets", "layout");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}

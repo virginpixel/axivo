@@ -334,6 +334,158 @@ export async function removeDocumentLink(
   );
 }
 
+/**
+ * What signed or completed evidence a document carries, so the delete dialog can
+ * name exactly what is at stake rather than warning in the abstract.
+ */
+export interface DocumentEvidence {
+  acknowledgedHandovers: number;
+  completedClearances: number;
+  disposals: number;
+  checkouts: number;
+}
+
+export function evidenceWeight(evidence: DocumentEvidence): number {
+  return (
+    evidence.acknowledgedHandovers +
+    evidence.completedClearances +
+    evidence.disposals +
+    evidence.checkouts
+  );
+}
+
+/**
+ * Soft-delete a document: hidden from every screen, while the stored file, the
+ * version history and the records referencing it survive. Signed evidence is
+ * therefore never destroyed, nothing is orphaned, and a mistaken delete can be
+ * restored from the Documents page.
+ */
+export async function deleteDocument(context: AuditContext, id: string): Promise<void> {
+  const document = await db.document.findFirst({
+    where: { id, deletedAt: null },
+    include: {
+      handovers: { select: { status: true } },
+      clearances: { select: { status: true } },
+      disposals: { select: { id: true } },
+      checkouts: { select: { id: true } },
+    },
+  });
+  if (!document) throw new NotFoundError("Document not found.");
+
+  const evidence: DocumentEvidence = {
+    acknowledgedHandovers: document.handovers.filter((h) => h.status === "ACKNOWLEDGED").length,
+    completedClearances: document.clearances.filter((c) => c.status === "COMPLETED").length,
+    disposals: document.disposals.length,
+    checkouts: document.checkouts.length,
+  };
+
+  await db.document.update({
+    where: { id },
+    data: { deletedAt: new Date(), deletedById: context.actorUserId ?? null },
+  });
+  await recordAudit(
+    { ...context, companyId: document.companyId },
+    {
+      module: "documents",
+      eventType: "document.deleted",
+      action: `Deleted document "${document.name}"`,
+      targetType: "document",
+      targetId: id,
+      targetLabel: document.name,
+      details: { ...evidence, signedEvidence: evidenceWeight(evidence) > 0 },
+    },
+  );
+}
+
+/** Restore a soft-deleted document, putting it back on every screen. */
+export async function restoreDocument(context: AuditContext, id: string): Promise<void> {
+  const document = await db.document.findFirst({ where: { id, deletedAt: { not: null } } });
+  if (!document) throw new NotFoundError("Deleted document not found.");
+  await db.document.update({ where: { id }, data: { deletedAt: null, deletedById: null } });
+  await recordAudit(
+    { ...context, companyId: document.companyId },
+    {
+      module: "documents",
+      eventType: "document.restored",
+      action: `Restored document "${document.name}"`,
+      targetType: "document",
+      targetId: id,
+      targetLabel: document.name,
+    },
+  );
+}
+
+/**
+ * Permanently destroy a soft-deleted document: its stored files, version history
+ * and links. Irreversible, and offered only from the deleted view.
+ *
+ * References that merely point at the document are cleared first, so no record
+ * is left dangling. A disposal is the exception - its approval document is
+ * mandatory, so purging one would invalidate the disposal record itself and is
+ * refused.
+ */
+export async function purgeDocument(context: AuditContext, id: string): Promise<void> {
+  const document = await db.document.findFirst({
+    where: { id, deletedAt: { not: null } },
+    include: {
+      versions: true,
+      handovers: { select: { status: true } },
+      clearances: { select: { status: true } },
+      disposals: { select: { id: true } },
+      checkouts: { select: { id: true } },
+    },
+  });
+  if (!document) throw new NotFoundError("Deleted document not found.");
+  if (document.disposals.length > 0) {
+    throw new BusinessRuleError(
+      "This document is the approval a recorded asset disposal was made against and cannot be permanently deleted. Restore it, or delete the disposal record first.",
+    );
+  }
+
+  const evidence: DocumentEvidence = {
+    acknowledgedHandovers: document.handovers.filter((h) => h.status === "ACKNOWLEDGED").length,
+    completedClearances: document.clearances.filter((c) => c.status === "COMPLETED").length,
+    disposals: 0,
+    checkouts: document.checkouts.length,
+  };
+
+  await db.$transaction(async (tx) => {
+    // Clear every optional reference before the row goes, so nothing dangles.
+    await tx.handover.updateMany({ where: { documentId: id }, data: { documentId: null } });
+    await tx.clearance.updateMany({ where: { documentId: id }, data: { documentId: null } });
+    await tx.assetCheckout.updateMany({ where: { documentId: id }, data: { documentId: null } });
+    await tx.assignmentChange.updateMany({ where: { proofDocumentId: id }, data: { proofDocumentId: null } });
+    await tx.documentLink.deleteMany({ where: { documentId: id } });
+    await tx.documentVersion.deleteMany({ where: { documentId: id } });
+    await tx.document.delete({ where: { id } });
+    // The audit entry outlives the document, so what was destroyed is still on
+    // record even though the document itself is gone.
+    await recordAudit(
+      { ...context, companyId: document.companyId },
+      {
+        module: "documents",
+        eventType: "document.purged",
+        action: `Permanently deleted document "${document.name}"`,
+        targetType: "document",
+        targetId: id,
+        targetLabel: document.name,
+        details: { ...evidence, versions: document.versions.length, signedEvidence: evidenceWeight(evidence) > 0 },
+      },
+      tx,
+    );
+  });
+
+  // Files go after the transaction commits: a storage failure must not roll back
+  // a completed purge, and an orphaned file is the lesser problem.
+  for (const version of document.versions) {
+    try {
+      await storage.delete(version.filePath);
+    } catch (error) {
+      console.error(`[axivo] Purged document ${id} but file ${version.filePath} could not be removed:`, error);
+    }
+  }
+}
+
 function kindForExtension(extension: string): DocumentKind {
   if (["jpg", "jpeg", "png", "gif"].includes(extension)) return "IMAGE";
   if (["xlsx", "csv"].includes(extension)) return "SPREADSHEET";

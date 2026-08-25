@@ -3,14 +3,14 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Check, ChevronsUpDown, Search, X } from "lucide-react";
+import { ChevronsUpDown, Search, X } from "lucide-react";
 import { cn } from "@/shared/utils";
 
 /**
  * Searchable multi-select: the counterpart to Combobox for fields that take
  * several values (department heads, and any future list that outgrows a column
- * of checkboxes). Type to filter, click to toggle, chosen values appear as
- * removable chips.
+ * of checkboxes). Type to filter; clicking a row adds it as a chip and closes
+ * the list, and a chosen value is removed through its chip.
  *
  * Mirrors Combobox on phones, where an anchored popover would sit under the
  * on-screen keyboard: there it opens as a full-screen sheet instead.
@@ -71,20 +71,33 @@ export function MultiSelect({
     [values, options],
   );
 
+  // The list only ever adds: a chosen option leaves it and is removed via its
+  // chip instead, so a click always means "add this one".
+  const selectable = useMemo(
+    () => options.filter((option) => !values.includes(option.value)),
+    [options, values],
+  );
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter(
+    if (!q) return selectable;
+    return selectable.filter(
       (option) => option.label.toLowerCase().includes(q) || option.hint?.toLowerCase().includes(q),
     );
-  }, [options, query]);
+  }, [selectable, query]);
 
   useEffect(() => {
     if (open) setQuery("");
   }, [open]);
 
-  function toggle(value: string) {
-    onChange(values.includes(value) ? values.filter((entry) => entry !== value) : [...values, value]);
+  /** Add a value and close, so each pick lands as a chip without a second click. */
+  function add(value: string) {
+    if (!values.includes(value)) onChange([...values, value]);
+    setOpen(false);
+  }
+
+  function remove(value: string) {
+    onChange(values.filter((entry) => entry !== value));
   }
 
   const trigger = (
@@ -100,9 +113,7 @@ export function MultiSelect({
         className,
       )}
     >
-      <span className={cn("truncate", selected.length === 0 && "text-muted-foreground")}>
-        {selected.length === 0 ? placeholder : `${selected.length} selected`}
-      </span>
+      <span className="truncate text-muted-foreground">{placeholder}</span>
       <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
     </button>
   );
@@ -129,29 +140,27 @@ export function MultiSelect({
       {filtered.length === 0 ? (
         <li className="px-3 py-2 text-sm text-muted-foreground">{emptyMessage}</li>
       ) : (
-        filtered.map((option) => {
-          const checked = values.includes(option.value);
-          return (
-            <li key={option.value} role="option" aria-selected={checked}>
-              <button
-                type="button"
-                onClick={() => toggle(option.value)}
-                className={cn(
-                  "flex w-full items-center justify-between gap-2 rounded px-3 text-left text-sm hover:bg-accent hover:text-accent-foreground",
-                  isMobile ? "py-3" : "py-2",
-                )}
-              >
-                <span className="min-w-0">
-                  <span className="block truncate">{option.label}</span>
+        filtered.map((option) => (
+          <li key={option.value} role="option" aria-selected={false}>
+            <button
+              type="button"
+              onClick={() => add(option.value)}
+              className={cn(
+                "flex w-full items-center justify-between gap-2 rounded px-3 text-left text-sm hover:bg-accent hover:text-accent-foreground",
+                isMobile ? "py-3" : "py-2",
+              )}
+            >
+              <span className="min-w-0">
+                <span className="block truncate">
+                  {option.label}
                   {option.hint ? (
-                    <span className="block truncate text-xs text-muted-foreground">{option.hint}</span>
+                    <span className="text-muted-foreground"> · {option.hint}</span>
                   ) : null}
                 </span>
-                {checked ? <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden /> : null}
-              </button>
-            </li>
-          );
-        })
+              </span>
+            </button>
+          </li>
+        ))
       )}
     </ul>
   );
@@ -212,9 +221,10 @@ export function MultiSelect({
             <li key={option.value}>
               <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2.5 py-1 text-xs text-accent-foreground">
                 {option.label}
+                {option.hint ? <span className="text-muted-foreground"> · {option.hint}</span> : null}
                 <button
                   type="button"
-                  onClick={() => toggle(option.value)}
+                  onClick={() => remove(option.value)}
                   aria-label={`Remove ${option.label}`}
                   className="rounded-full hover:text-destructive"
                 >

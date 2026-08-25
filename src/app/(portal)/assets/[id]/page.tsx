@@ -13,6 +13,7 @@ import { AssetDialog, AssetRowActions } from "../asset-dialogs";
 import { AssetStatusControl } from "./asset-status-control";
 import { AssetTransferDialog } from "./asset-transfer-dialog";
 import { AssetImageControl } from "./asset-image-control";
+import { DocumentDelete } from "../../documents/document-delete";
 
 export const dynamic = "force-dynamic";
 
@@ -91,9 +92,21 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
     // Everything filed against this asset, including the discard form, which is
     // stored once and linked to every asset the same form covers.
     db.documentLink.findMany({
-      where: { entityType: "asset", entityId: id, removedAt: null },
+      // A document deleted from Documents disappears from the asset page too.
+      where: { entityType: "asset", entityId: id, removedAt: null, document: { deletedAt: null } },
       orderBy: { createdAt: "desc" },
-      include: { document: { select: { id: true, name: true, kind: true, createdAt: true } } },
+      include: {
+        document: {
+          select: {
+            id: true, name: true, kind: true, createdAt: true,
+            // Drives the delete dialog's signed-evidence warning.
+            handovers: { select: { status: true } },
+            clearances: { select: { status: true } },
+            disposals: { select: { id: true } },
+            checkouts: { select: { id: true } },
+          },
+        },
+      },
     }),
     // Candidates for a batch discard: one signed form often covers many assets.
     db.asset.findMany({
@@ -276,7 +289,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
         <CardContent>
           <PaginatedTable
             emptyMessage="No documents linked to this asset."
-            headers={<><TH>Document</TH><TH>Added</TH><TH className="text-right">File</TH></>}
+            headers={<><TH>Document</TH><TH>Added</TH><TH className="text-right">File</TH>{canManage ? <TH className="text-right">Actions</TH> : null}</>}
             rows={assetDocuments.map((link) => ({
               key: link.id,
               node: (
@@ -288,6 +301,20 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                       Open
                     </a>
                   </TD>
+                  {canManage ? (
+                    <TD className="text-right">
+                      <DocumentDelete
+                        documentId={link.document.id}
+                        documentName={link.document.name}
+                        evidence={{
+                          acknowledgedHandovers: link.document.handovers.filter((h) => h.status === "ACKNOWLEDGED").length,
+                          completedClearances: link.document.clearances.filter((c) => c.status === "COMPLETED").length,
+                          disposals: link.document.disposals.length,
+                          checkouts: link.document.checkouts.length,
+                        }}
+                      />
+                    </TD>
+                  ) : null}
                 </TR>
               ),
             }))}

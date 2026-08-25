@@ -8,6 +8,7 @@ import { StatusBadge, Badge } from "@/shared/ui/badge";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
 import { formatDate, formatDateTime, formatDateTimeWithZone, fullName } from "@/shared/utils";
 import { SignatureDetails } from "./signature-details";
+import { DocumentDelete } from "../../documents/document-delete";
 import { PersonDialog, EmploymentStatusSelect, CreateAccountDialog, AccountControls, TransferCompanyDialog } from "../person-dialogs";
 import { ReturnAssetButton, GenerateHandoverButton, ClearanceControl, PersonDocumentDelete, CheckInButton } from "./person-clearance";
 import { leaveTypeLabel } from "@/modules/assets/checkouts";
@@ -78,8 +79,20 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
 
   // Documents linked to this person (handover / clearance forms and any others).
   const personDocumentLinks = await db.documentLink.findMany({
-    where: { entityType: "person", entityId: person.id, removedAt: null },
-    include: { document: { select: { id: true, name: true, kind: true, currentVersion: true, createdAt: true } } },
+    // A document deleted from Documents disappears from the profile too.
+    where: { entityType: "person", entityId: person.id, removedAt: null, document: { deletedAt: null } },
+    include: {
+      document: {
+        select: {
+          id: true, name: true, kind: true, currentVersion: true, createdAt: true,
+          // Drives the delete dialog's warning about signed evidence.
+          handovers: { select: { status: true } },
+          clearances: { select: { status: true } },
+          disposals: { select: { id: true } },
+          checkouts: { select: { id: true } },
+        },
+      },
+    },
     orderBy: { createdAt: "desc" },
   });
   const personDocuments = personDocumentLinks
@@ -695,6 +708,18 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                               <Download className="h-4 w-4" />
                             </a>
                             {canManage ? <PersonDocumentDelete personId={person.id} documentId={document!.id} /> : null}
+                            {canManage ? (
+                              <DocumentDelete
+                                documentId={document!.id}
+                                documentName={document!.name}
+                                evidence={{
+                                  acknowledgedHandovers: document!.handovers.filter((h) => h.status === "ACKNOWLEDGED").length,
+                                  completedClearances: document!.clearances.filter((c) => c.status === "COMPLETED").length,
+                                  disposals: document!.disposals.length,
+                                  checkouts: document!.checkouts.length,
+                                }}
+                              />
+                            ) : null}
                           </div>
                         </TD>
                       </TR>
