@@ -33,8 +33,8 @@ const NOTIFICATION_TEMPLATES: { key: string; name: string; type: string; subject
     name: "Approval Required",
     type: "APPROVAL_REQUIRED",
     subject: "Approval required: {{itemLabel}} for {{requestedForName}} ({{requestNumber}})",
-    body: "Dear {{approverName}},<br/><br/>Your approval is required for request <strong>{{requestNumber}}</strong>.<br/>Item: <strong>{{itemLabel}}</strong><br/>Requested for: <strong>{{requestedForName}}</strong>{{itemDetails}}{{actionButton}}",
-    variables: ["approverName", "itemLabel", "requestedForName", "requestNumber", "itemDetails", "actionButton"],
+    body: "Dear {{approverName}},<br/><br/>Your approval is required for request <strong>{{requestNumber}}</strong>.<br/>Item: <strong>{{itemLabel}}</strong><br/>Requested by: <strong>{{requesterName}}</strong> ({{requesterDetails}})<br/>Requested for: <strong>{{requestedForName}}</strong> ({{requestedForDetails}}){{itemDetails}}{{actionButton}}",
+    variables: ["approverName", "itemLabel", "requestedForName", "requestedForDetails", "requesterName", "requesterDetails", "requestNumber", "itemDetails", "actionButton"],
   },
   {
     key: "request_rejected",

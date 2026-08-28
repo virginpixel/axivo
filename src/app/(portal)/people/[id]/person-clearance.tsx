@@ -7,8 +7,7 @@ import { ClipboardCheck, Undo2, FileText, Trash2, Unlink } from "lucide-react";
 import {
   startClearanceAction,
   returnAssetAction,
-  generateHandoverForAssetsAction,
-  sendHandoverAction,
+  sendHandoverForAssetsAction,
 } from "@/modules/assets/actions";
 import { removePersonDocumentAction } from "@/modules/people/actions";
 import { useAction } from "@/shared/ui/use-action";
@@ -102,7 +101,9 @@ export function GenerateHandoverButton({
   const { run: runSend, loading: sending } = useAction();
   const [picking, setPicking] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
-  const [preview, setPreview] = useState<{ handoverId: string; documentId: string | null } | null>(null);
+  // What is being reviewed: the chosen assignments, not a stored form. The
+  // handover is only created when it is sent.
+  const [preview, setPreview] = useState<string[] | null>(null);
 
   function openPicker() {
     setSelected(assets.map((asset) => asset.assignmentId));
@@ -161,19 +162,13 @@ export function GenerateHandoverButton({
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setPicking(false)}>Cancel</Button>
               <Button
-                loading={loading}
                 disabled={selected.length === 0}
-                onClick={() =>
-                  run(() => generateHandoverForAssetsAction(personId, selected), {
-                    successMessage: "Handover form generated. Review, then send.",
-                    onSuccess: (data) => {
-                      setPicking(false);
-                      setPreview({ handoverId: data.id, documentId: data.documentId });
-                    },
-                  })
-                }
+                onClick={() => {
+                  setPicking(false);
+                  setPreview(selected);
+                }}
               >
-                Generate form
+                Preview form
               </Button>
             </div>
           </div>
@@ -183,13 +178,14 @@ export function GenerateHandoverButton({
       <Dialog open={!!preview} onOpenChange={(next) => (next ? undefined : setPreview(null))}>
         <DialogContent title="Handover form preview" wide>
           <p className="mb-3 text-sm text-muted-foreground">
-            Review the generated handover form below. When ready, send it to the employee for acknowledgement.
+            Review the form below. Nothing is filed yet — it is added to Documents only when you send
+            it to the employee for acknowledgement.
           </p>
-          {preview?.documentId ? (
+          {preview && preview.length > 0 ? (
             <>
               <object
                 // Viewer chrome is hidden so only the page itself is shown.
-                data={`/api/documents/${preview.documentId}/download?inline=1#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+                data={`/api/people/${personId}/handover-preview?assignments=${preview.join(",")}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
                 type="application/pdf"
                 className="h-[60vh] w-full rounded-md border"
                 aria-label="Handover form preview"
@@ -197,7 +193,7 @@ export function GenerateHandoverButton({
                 <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
                   <p>The preview cannot be shown inline in this browser.</p>
                   <a
-                    href={`/api/documents/${preview.documentId}/download?inline=1`}
+                    href={`/api/people/${personId}/handover-preview?assignments=${preview.join(",")}`}
                     target="_blank"
                     rel="noreferrer"
                     className="text-primary underline"
@@ -207,7 +203,7 @@ export function GenerateHandoverButton({
                 </div>
               </object>
               <a
-                href={`/api/documents/${preview.documentId}/download?inline=1`}
+                href={`/api/people/${personId}/handover-preview?assignments=${preview.join(",")}`}
                 target="_blank"
                 rel="noreferrer"
                 className="mt-2 inline-block text-xs text-primary hover:underline"
@@ -219,13 +215,13 @@ export function GenerateHandoverButton({
             <p className="text-sm text-muted-foreground">Preview unavailable.</p>
           )}
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setPreview(null)}>Close without sending</Button>
+            <Button variant="outline" onClick={() => setPreview(null)}>Discard</Button>
             <Button
               loading={sending}
               onClick={() =>
                 preview &&
-                runSend(() => sendHandoverAction(preview.handoverId), {
-                  successMessage: "Handover sent for acknowledgement.",
+                runSend(() => sendHandoverForAssetsAction(personId, preview), {
+                  successMessage: "Handover recorded and sent for acknowledgement.",
                   onSuccess: () => setPreview(null),
                 })
               }

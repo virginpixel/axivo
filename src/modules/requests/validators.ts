@@ -63,14 +63,41 @@ export const publicSubmissionSchema = z
     requestedForEmployeeId: requiredText("Requested for employee ID", 50),
     /** Company of the requested-for employee; forms may be shared across companies. */
     requestedForCompanyId: uuidSchema,
-    requestedForDepartmentId: uuidSchema,
+    /**
+     * A third party has no department here, so the picker is replaced by their
+     * own employer as free text. requestedForCompanyId still names the property
+     * they work for, which is what company scoping runs on.
+     */
+    isThirdParty: z.boolean().default(false),
+    requestedForExternalCompany: optionalText(200),
+    /** Empty when the request is for a third party, who has no department here. */
+    requestedForDepartmentId: uuidSchema.optional().or(z.literal("").transform(() => undefined)),
     requestedForPositionTitle: requiredText("Requested for position", 150),
     items: z.array(requestItemInputSchema).min(1, "Select at least one item.").max(20),
     fieldValues: z.record(z.unknown()).default({}),
     /** Honeypot field - must remain empty (Doc 05 Ch7 bot protection). */
     website: z.string().max(0, "Invalid submission.").optional().or(z.literal("")),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    // Exactly one of the two shapes: an employee sits in a department here, a
+    // third party names the firm they actually work for.
+    if (value.isThirdParty) {
+      if (!value.requestedForExternalCompany) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["requestedForExternalCompany"],
+          message: "Enter the company or organisation this person works for.",
+        });
+      }
+    } else if (!value.requestedForDepartmentId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["requestedForDepartmentId"],
+        message: "Select the department.",
+      });
+    }
+  });
 
 /** Editable participant details on a correction: a typo in a name, email or
  * employee ID is exactly the kind of thing an approver sends a request back

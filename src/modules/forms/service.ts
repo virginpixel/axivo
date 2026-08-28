@@ -122,6 +122,8 @@ export async function createForm(context: AuditContext, input: FormInput) {
         applicationId: input.applicationId ?? null,
         assetCategoryId: input.assetCategoryId ?? null,
         allowsMixedItems: input.allowsMixedItems,
+        allowsThirdParty: input.allowsThirdParty,
+        thirdPartyWorkflowId: input.thirdPartyWorkflowId,
         slug,
         status: "DRAFT",
         createdById: context.actorUserId ?? null,
@@ -210,6 +212,8 @@ export async function updateForm(context: AuditContext, id: string, input: FormI
         applicationId: input.applicationId ?? null,
         assetCategoryId: input.assetCategoryId ?? null,
         allowsMixedItems: input.allowsMixedItems,
+        allowsThirdParty: input.allowsThirdParty,
+        thirdPartyWorkflowId: input.thirdPartyWorkflowId,
         updatedById: context.actorUserId ?? null,
       },
     });
@@ -440,7 +444,7 @@ export async function duplicateForm(context: AuditContext, id: string) {
 
 /** Load the live published form for the public request page. */
 export async function getPublicForm(slug: string) {
-  return db.form.findFirst({
+  const form = await db.form.findFirst({
     // An all-company form has no company (companyId null); a company-bound one
     // must belong to an active company.
     where: {
@@ -454,6 +458,18 @@ export async function getPublicForm(slug: string) {
       company: { select: { id: true, name: true } },
       requestType: true,
       currentVersion: { include: { fields: { orderBy: { displayOrder: "asc" } } } },
+      // Editing a published form makes a new draft the current version. Serving
+      // the newest *published* version keeps the live link working meanwhile,
+      // instead of taking the form offline the moment somebody opens it.
+      versions: {
+        where: { publishedAt: { not: null } },
+        orderBy: { versionNumber: "desc" },
+        take: 1,
+        include: { fields: { orderBy: { displayOrder: "asc" } } },
+      },
     },
   });
+  if (!form) return null;
+  const live = form.currentVersion?.publishedAt ? form.currentVersion : form.versions[0] ?? null;
+  return { ...form, currentVersion: live };
 }

@@ -282,6 +282,7 @@ export default async function AssetsPage({
                           customFields: (asset.customFields as Record<string, string> | null) ?? null,
                         }}
                         activeAssignmentId={soleAssignment?.id ?? null}
+                        currentHolderIds={asset.assignments.map((assignment) => assignment.person.id)}
                         activeMaintenanceId={asset.maintenance[0]?.id ?? null}
                         companies={companies}
                         categories={categoryOptions}

@@ -38,7 +38,16 @@ export function CopyLinkButton({ url }: { url: string }) {
   );
 }
 
-export function FormRowActions({ formId, status }: { formId: string; status: string }) {
+export function FormRowActions({
+  formId,
+  status,
+  hasUnpublishedChanges = false,
+}: {
+  formId: string;
+  status: string;
+  /** Current version is a draft: edits are saved but not yet live. */
+  hasUnpublishedChanges?: boolean;
+}) {
   const { run, loading } = useAction();
   return (
     <div className="flex justify-end gap-1">
@@ -49,7 +58,10 @@ export function FormRowActions({ formId, status }: { formId: string; status: str
           </Button>
         </Link>
       ) : null}
-      {status === "DRAFT" ? (
+      {/* Editing a published form makes a new draft version current, so the
+          publish action must stay reachable then too - otherwise the changes
+          can never go live. */}
+      {status === "DRAFT" || hasUnpublishedChanges ? (
         <Button
           variant="ghost"
           size="icon"

@@ -82,6 +82,19 @@ export default async function ApprovalActionPage({
 
   const item = stepInstance.workflowInstance.requestItem;
   const request = item.request;
+  // An approver needs to know which "Ahmed" this is and who he works for. For a
+  // third party that is the firm they actually work for, not the business unit.
+  const partyCompanyIds = [request.requesterCompanyId, request.requestedForCompanyId]
+    .filter((id): id is string => !!id);
+  const partyCompanies = partyCompanyIds.length
+    ? await db.company.findMany({ where: { id: { in: partyCompanyIds } }, select: { id: true, name: true } })
+    : [];
+  const companyNameOf = (id: string | null) =>
+    id ? partyCompanies.find((company) => company.id === id)?.name ?? null : null;
+  const requesterCompanyName = companyNameOf(request.requesterCompanyId);
+  const requestedForCompanyName = request.isThirdParty
+    ? request.requestedForExternalCompany ?? null
+    : companyNameOf(request.requestedForCompanyId);
   const itemLabel =
     item.application?.name ?? item.assetCategory?.name ?? item.description ?? item.itemType;
   const alreadyDone = stepInstance.status !== "ACTIVE";
@@ -112,8 +125,8 @@ export default async function ApprovalActionPage({
             <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
               <Detail label="Request number" value={request.requestNumber} />
               <Detail label="Submitted" value={formatDateTime(request.submittedAt)} />
-              <Detail label="Requested by" value={`${request.requesterName} (${request.requesterEmail})`} />
-              <Detail label="Requested for" value={`${request.requestedForName} (${request.requestedForEmail})`} />
+              <Detail label="Requested by" value={describeParty(request.requesterName, request.requesterEmployeeId, requesterCompanyName, request.requesterEmail)} />
+              <Detail label="Requested for" value={describeParty(request.requestedForName, request.requestedForEmployeeId, requestedForCompanyName, request.requestedForEmail)} />
               {item.applicationRole ? <Detail label="Access role" value={item.applicationRole.name} /> : null}
               {item.description ? <Detail label="Notes" value={item.description} /> : null}
               <Detail label="Approval step" value={stepInstance.stepName} />
@@ -182,6 +195,17 @@ export default async function ApprovalActionPage({
       </ActionShell>
     </ToastProvider>
   );
+}
+
+/** "Ahmed Hasin (CM0894, Crossroads) — ahmed@…", skipping whatever is unknown. */
+function describeParty(
+  name: string,
+  employeeId: string | null,
+  company: string | null,
+  email: string,
+): string {
+  const qualifiers = [employeeId, company].filter((part): part is string => !!part && part.trim().length > 0);
+  return `${name}${qualifiers.length > 0 ? ` (${qualifiers.join(", ")})` : ""} — ${email}`;
 }
 
 function Detail({ label, value }: { label: string; value: string }) {

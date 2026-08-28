@@ -147,10 +147,26 @@ export default async function PeoplePage({
                     <Link href={`/people/${person.id}`} className="font-medium text-foreground hover:underline">
                       {fullName(person)}
                     </Link>
+                    {person.isThirdParty ? (
+                      <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                        Third party
+                      </span>
+                    ) : null}
                     <p className="text-xs text-muted-foreground">{person.email}</p>
                   </TD>
                   <TD className="font-register text-muted-foreground">{person.employeeId}</TD>
-                  <TD>{person.company.name}</TD>
+                  <TD>
+                    {/* A third party works at this property but for their own
+                        employer, which is no company of ours. */}
+                    {person.isThirdParty && person.externalCompanyName ? (
+                      <>
+                        {person.externalCompanyName}
+                        <p className="text-xs text-muted-foreground">at {person.company.name}</p>
+                      </>
+                    ) : (
+                      person.company.name
+                    )}
+                  </TD>
                   <TD>{person.department?.name ?? "None"}</TD>
                   <TD>{person.position?.name ?? "None"}</TD>
                   <TD>

@@ -6,6 +6,7 @@ import { signatureHash } from "@/shared/audit/signature";
 import { handoverTerms, HANDOVER_TERMS_VERSION } from "./handover-terms";
 import { BusinessRuleError, NotFoundError, ValidationError } from "@/shared/errors";
 import { createGeneratedPdf } from "@/modules/documents/service";
+import { renderPdf } from "@/shared/pdf/pdf";
 import { queueNotification } from "@/modules/notifications/service";
 import { issueToken, tokenActionUrl, revokeTokensForTarget } from "@/shared/tokens/secure-tokens";
 import { validateCustomFieldValue, type CustomFieldFormat } from "@/modules/catalogs/format";
@@ -396,6 +397,10 @@ export async function assignAsset(
       },
       tx,
     );
+    // skipHandover means this assignment raises no handover at all: completing a
+    // request is not the same as handing the equipment over. The form is
+    // generated later from the employee's profile, when they actually collect
+    // it, so the acknowledgement is signed against a real handover.
     return { assignment, requiresHandover: asset.category.requireHandoverAcceptance && !options.skipHandover };
   };
 
@@ -474,34 +479,22 @@ export async function returnAsset(context: AuditContext, assignmentId: string, n
  * employee acknowledges, the single form on file is replaced by the signed
  * version so no stale "Not yet acknowledged" copy is left behind.
  */
-async function generateHandoverDocument(
-  context: AuditContext,
-  handoverId: string,
-  existingDocumentId?: string,
+/**
+ * The handover form itself, independent of whether it is being previewed or
+ * filed. Preview renders this straight to a PDF and stores nothing: a form is
+ * only recorded in Documents once it is actually sent.
+ */
+function handoverPdfDefinition(
+  person: { firstName: string; lastName: string; employeeId: string; email: string;
+    company: { name: string }; department: { name: string } | null; position: { name: string } | null },
+  assignments: { assignedAt: Date; asset: { name: string; assetTag: string | null; serialNumber: string | null;
+    model: string | null; isShared: boolean; category: { name: string } } }[],
+  acknowledgement: {
+    acknowledgedAt: Date | null; acknowledgedIp: string | null; acknowledgedUserAgent: string | null;
+    acknowledgedTermsVersion: string | null; acknowledgedHash: string | null;
+  },
 ) {
-  const handover = await db.handover.findFirstOrThrow({
-    where: { id: handoverId },
-    include: {
-      person: { include: { company: true, department: true, position: true } },
-      assets: { include: { assetAssignment: { include: { asset: { include: { category: true } } } } } },
-    },
-  });
-  const person = handover.person;
-  // Only the assets selected for this handover belong on the form; the employee's
-  // licences are a separate record and were never part of what is handed over.
-  const assignments = handover.assets.map((entry) => entry.assetAssignment);
-
-  return createGeneratedPdf(context, {
-    companyId: person.companyId,
-    ...(existingDocumentId ? { existingDocumentId, changeSummary: "Acknowledged" } : {}),
-    name: `Asset Handover - ${person.firstName} ${person.lastName} - ${new Date().toISOString().slice(0, 10)}`,
-    categoryName: "Asset Handover",
-    links: [
-      { entityType: "handover", entityId: handover.id },
-      { entityType: "person", entityId: person.id },
-      ...assignments.map((a) => ({ entityType: "asset", entityId: a.assetId })),
-    ],
-    definition: {
+  return {
       title: "Asset Handover Form",
       branding: { systemName: "Axivo", companyName: person.company.name },
       sections: [
@@ -546,22 +539,78 @@ async function generateHandoverDocument(
           // signed, when, from where, the terms version, and a verification hash
           // of the exact signed content so any later change is detectable.
           heading: "Acknowledgement",
-          fields: handover.acknowledgedAt
+          fields: acknowledgement.acknowledgedAt
             ? [
                 { label: "Acknowledged by", value: `${person.firstName} ${person.lastName} (${person.employeeId})` },
                 { label: "Identity confirmed with", value: "Employee ID entered by signer" },
-                { label: "Acknowledged on", value: formatDateTimeWithZone(handover.acknowledgedAt) },
-                { label: "IP address", value: handover.acknowledgedIp ?? "Not recorded" },
-                { label: "Device", value: handover.acknowledgedUserAgent ?? "Not recorded" },
-                { label: "Terms version", value: handover.acknowledgedTermsVersion ?? "—" },
-                { label: "Verification hash (SHA-256)", value: handover.acknowledgedHash ?? "—" },
+                { label: "Acknowledged on", value: formatDateTimeWithZone(acknowledgement.acknowledgedAt) },
+                { label: "IP address", value: acknowledgement.acknowledgedIp ?? "Not recorded" },
+                { label: "Device", value: acknowledgement.acknowledgedUserAgent ?? "Not recorded" },
+                { label: "Terms version", value: acknowledgement.acknowledgedTermsVersion ?? "—" },
+                { label: "Verification hash (SHA-256)", value: acknowledgement.acknowledgedHash ?? "—" },
               ]
             : [{ label: "Acknowledged on", value: "Not yet acknowledged" }],
         },
       ],
-      footerNote:
-        "Electronic acknowledgement is recorded with the signer's identity, timestamp, originating address and a verification hash of the signed content, and is binding within company policy.",
-    },
+    footerNote:
+      "Electronic acknowledgement is recorded with the signer's identity, timestamp, originating address and a verification hash of the signed content, and is binding within company policy.",
+  };
+}
+
+/** The people/assets a handover form covers, loaded the same way for both paths. */
+const handoverFormInclude = {
+  person: { include: { company: true, department: true, position: true } },
+  assets: { include: { assetAssignment: { include: { asset: { include: { category: true } } } } } },
+} as const;
+
+/**
+ * Render the form for a set of assignments without recording anything, so it can
+ * be reviewed before the decision to send it is taken.
+ */
+export async function renderHandoverPreview(personId: string, assignmentIds: string[]): Promise<Buffer> {
+  const person = await db.person.findFirstOrThrow({
+    where: { id: personId, deletedAt: null },
+    include: { company: true, department: true, position: true },
+  });
+  const assignments = await db.assetAssignment.findMany({
+    where: { id: { in: assignmentIds }, personId, status: "ASSIGNED", deletedAt: null },
+    include: { asset: { include: { category: true } } },
+    orderBy: { assignedAt: "asc" },
+  });
+  if (assignments.length === 0) throw new BusinessRuleError("No eligible assignments for handover.");
+  return renderPdf(
+    handoverPdfDefinition(person, assignments, {
+      acknowledgedAt: null, acknowledgedIp: null, acknowledgedUserAgent: null,
+      acknowledgedTermsVersion: null, acknowledgedHash: null,
+    }),
+  );
+}
+
+async function generateHandoverDocument(
+  context: AuditContext,
+  handoverId: string,
+  existingDocumentId?: string,
+) {
+  const handover = await db.handover.findFirstOrThrow({
+    where: { id: handoverId },
+    include: handoverFormInclude,
+  });
+  const person = handover.person;
+  // Only the assets selected for this handover belong on the form; the employee's
+  // licences are a separate record and were never part of what is handed over.
+  const assignments = handover.assets.map((entry) => entry.assetAssignment);
+
+  return createGeneratedPdf(context, {
+    companyId: person.companyId,
+    ...(existingDocumentId ? { existingDocumentId, changeSummary: "Acknowledged" } : {}),
+    name: `Asset Handover - ${person.firstName} ${person.lastName} - ${new Date().toISOString().slice(0, 10)}`,
+    categoryName: "Asset Handover",
+    links: [
+      { entityType: "handover", entityId: handover.id },
+      { entityType: "person", entityId: person.id },
+      ...assignments.map((a) => ({ entityType: "asset", entityId: a.assetId })),
+    ],
+    definition: handoverPdfDefinition(person, assignments, handover),
   });
 }
 

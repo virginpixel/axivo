@@ -526,6 +526,11 @@ model Person {
   phone            String?          @map("phone")
   extension        String?          @map("extension")
   employmentStatus EmploymentStatus @default(ACTIVE) @map("employment_status")
+  /// A contractor or tenant rather than an employee. companyId still holds the
+  /// property they work for, which is what company scoping runs on; their
+  /// actual employer has no record here and is kept as text.
+  isThirdParty     Boolean          @default(false) @map("is_third_party")
+  externalCompanyName String?       @map("external_company_name")
   isActive         Boolean          @default(true) @map("is_active")
   createdAt        DateTime         @default(now()) @map("created_at")
   createdById      String?          @map("created_by") @db.Uuid
@@ -1400,7 +1405,8 @@ model Workflow {
 
   company  Company           @relation(fields: [companyId], references: [id])
   versions WorkflowVersion[]
-  forms    Form[]
+  forms    Form[] @relation("form_workflow")
+  thirdPartyForms Form[] @relation("form_third_party_workflow")
   applications    Application[]
   assetCategories AssetCategory[]
 
@@ -1608,6 +1614,11 @@ model Form {
   /// All-in-one form: item rows choose Application or Asset per row, so a new
   /// joiner asks for everything at once instead of one request per system.
   allowsMixedItems    Boolean    @default(false) @map("allows_mixed_items")
+  /// Third parties (contractors, tenants) may be requested for through this
+  /// form. They belong to no department here, so department-head approval
+  /// cannot resolve for them and such requests run thirdPartyWorkflow instead.
+  allowsThirdParty    Boolean    @default(false) @map("allows_third_party")
+  thirdPartyWorkflowId String?   @map("third_party_workflow_id") @db.Uuid
   currentVersionId    String?    @unique @map("current_version_id") @db.Uuid
   isActive            Boolean    @default(true) @map("is_active")
   createdAt           DateTime   @default(now()) @map("created_at")
@@ -1619,7 +1630,8 @@ model Form {
 
   company        Company?       @relation(fields: [companyId], references: [id])
   requestType    RequestType    @relation(fields: [requestTypeId], references: [id])
-  workflow       Workflow       @relation(fields: [workflowId], references: [id])
+  workflow       Workflow       @relation("form_workflow", fields: [workflowId], references: [id])
+  thirdPartyWorkflow Workflow?  @relation("form_third_party_workflow", fields: [thirdPartyWorkflowId], references: [id])
   application    Application?   @relation(fields: [applicationId], references: [id])
   assetCategory  AssetCategory? @relation(fields: [assetCategoryId], references: [id])
   currentVersion FormVersion?  @relation("form_current_version", fields: [currentVersionId], references: [id])
@@ -1707,6 +1719,10 @@ model Request {
   /// Company the requested-for employee belongs to. Forms can be shared across
   /// companies, so this (with the employee ID) resolves the People record.
   requestedForCompanyId String? @map("requested_for_company_id") @db.Uuid
+  /// Third-party request: the requested-for person's own employer, which is not
+  /// a company in Axivo, snapshotted as text.
+  isThirdParty          Boolean @default(false) @map("is_third_party")
+  requestedForExternalCompany String? @map("requested_for_external_company")
 
   /// Immutable snapshot of the submitted custom field values
   fieldData     Json      @map("field_data")

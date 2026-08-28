@@ -98,6 +98,16 @@ export const formSchema = z
     assetCategoryId: uuidSchema.optional().or(z.literal("").transform(() => undefined)),
     /** All-in-one form: each item row chooses Application or Asset. */
     allowsMixedItems: z.boolean().default(false),
+    /**
+     * Third parties may be requested for through this form. They have no
+     * department here, so those requests run thirdPartyWorkflowId instead of
+     * the normal chain.
+     */
+    allowsThirdParty: z.boolean().default(false),
+    thirdPartyWorkflowId: z
+      .union([uuidSchema, z.literal("")])
+      .nullish()
+      .transform((value) => value || null),
     fields: z.array(formFieldSchema).max(200),
   })
   .strict()
@@ -107,6 +117,14 @@ export const formSchema = z
         code: z.ZodIssueCode.custom,
         path: ["applicationId"],
         message: "A form targets either one application or one asset category, not both.",
+      });
+    }
+    if (form.allowsThirdParty && !form.thirdPartyWorkflowId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["thirdPartyWorkflowId"],
+        message:
+          "Choose the approval chain for third-party requests. A third party has no department head, so the normal chain cannot route them.",
       });
     }
     if (form.allowsMixedItems && (form.applicationId || form.assetCategoryId)) {

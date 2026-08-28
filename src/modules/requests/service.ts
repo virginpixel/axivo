@@ -87,16 +87,29 @@ export async function submitPublicRequest(
 
   // Departments and positions are stored as immutable name snapshots; the
   // Requested For department drives Department Head routing (Doc 06 Ch3).
-  const [requesterDepartment, requestedForDepartment] =
-    await Promise.all([
-      db.department.findFirst({
-        where: { id: input.requesterDepartmentId, companyId: requesterCompany.id, deletedAt: null },
-      }),
-      db.department.findFirst({
-        where: { id: input.requestedForDepartmentId, companyId: requestedForCompany.id, deletedAt: null },
-      }),
-    ]);
-  if (!requesterDepartment || !requestedForDepartment) {
+  // A third party belongs to no department here - that is precisely why the
+  // Department Head step cannot resolve for them - so only the requester's
+  // department is looked up and the form's third-party chain is used instead.
+  const isThirdParty = input.isThirdParty && form.allowsThirdParty;
+  if (input.isThirdParty && !form.allowsThirdParty) {
+    throw new BusinessRuleError("This form does not accept third-party requests.");
+  }
+  if (isThirdParty && !form.thirdPartyWorkflowId) {
+    throw new BusinessRuleError(
+      "This form accepts third-party requests but has no third-party approval chain configured. Contact IT.",
+    );
+  }
+  const [requesterDepartment, requestedForDepartment] = await Promise.all([
+    db.department.findFirst({
+      where: { id: input.requesterDepartmentId, companyId: requesterCompany.id, deletedAt: null },
+    }),
+    isThirdParty
+      ? Promise.resolve(null)
+      : db.department.findFirst({
+          where: { id: input.requestedForDepartmentId, companyId: requestedForCompany.id, deletedAt: null },
+        }),
+  ]);
+  if (!requesterDepartment || (!isThirdParty && !requestedForDepartment)) {
     throw new ValidationError(undefined, {
       requestedForDepartmentId: "Please select a valid department.",
     });
@@ -245,6 +258,10 @@ export async function submitPublicRequest(
     const fieldLabels = targetFields.length
       ? Object.fromEntries(targetFields.map((field) => [field.fieldKey, field.label]))
       : null;
+    // A third-party request overrides even the application's or category's own
+    // chain: those route to a Department Head, which cannot resolve for someone
+    // who has no department here.
+    if (isThirdParty && form.thirdPartyWorkflowId) workflowId = form.thirdPartyWorkflowId;
     itemPayloads.push({ itemData, workflowId, targetName, roleName, fieldLabels });
   }
   if (Object.keys(itemFieldErrors).length > 0) {
@@ -263,10 +280,44 @@ export async function submitPublicRequest(
     matchByEmployeeId(requesterCompany.id, input.requesterEmployeeId),
     matchByEmployeeId(requestedForCompany.id, input.requestedForEmployeeId),
   ]);
-  const [requesterMatch, requestedForMatch] = await Promise.all([
+  const [requesterMatch, requestedForMatchExisting] = await Promise.all([
     requesterById ?? matchPersonByEmail(requesterCompany.id, input.requesterEmail),
     requestedForById ?? matchPersonByEmail(requestedForCompany.id, input.requestedForEmail),
   ]);
+
+  /*
+   * A third party is created here rather than left as a name on the request, so
+   * they can hold the access being asked for and sign their own handovers like
+   * anybody else. They sit in the property they work for - company scoping runs
+   * on that - and their real employer, which is no company of ours, is text.
+   */
+  let requestedForMatch = requestedForMatchExisting;
+  if (isThirdParty && !requestedForMatch) {
+    const [firstName, ...restName] = input.requestedForName.trim().split(/\s+/);
+    requestedForMatch = await db.person.create({
+      data: {
+        companyId: requestedForCompany.id,
+        employeeId: input.requestedForEmployeeId.trim(),
+        firstName: firstName ?? input.requestedForName.trim(),
+        lastName: restName.join(" ") || "-",
+        email: input.requestedForEmail.trim(),
+        isThirdParty: true,
+        externalCompanyName: input.requestedForExternalCompany ?? null,
+        departmentId: null,
+      },
+    });
+    await recordAudit(
+      { ...context, companyId: requestedForCompany.id },
+      {
+        module: "people",
+        eventType: "person.created",
+        action: `Created third-party contact "${input.requestedForName}" (${input.requestedForExternalCompany ?? "external"}) from a request submission`,
+        targetType: "person",
+        targetId: requestedForMatch.id,
+        targetLabel: input.requestedForName,
+      },
+    );
+  }
 
   // Asset checkout carries built-in answers rather than admin-defined request
   // fields: which of the employee's own assets is going off site, why, and for
@@ -316,10 +367,12 @@ export async function submitPublicRequest(
         requestedForName: input.requestedForName,
         requestedForEmail: input.requestedForEmail,
         requestedForEmployeeId: input.requestedForEmployeeId,
-        requestedForDepartment: requestedForDepartment.name,
+        requestedForDepartment: requestedForDepartment?.name ?? null,
         requestedForPosition: input.requestedForPositionTitle,
-        requestedForDepartmentId: requestedForDepartment.id,
+        requestedForDepartmentId: requestedForDepartment?.id ?? null,
         requestedForCompanyId: requestedForCompany.id,
+        isThirdParty,
+        requestedForExternalCompany: isThirdParty ? input.requestedForExternalCompany ?? null : null,
         fieldData: values as Prisma.InputJsonValue,
         sourceIp: context.ipAddress,
         sourceUserAgent: context.userAgent,

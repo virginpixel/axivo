@@ -35,6 +35,7 @@ import { Button } from "@/shared/ui/button";
 import { Input, Select, Textarea, Label, FieldError, HelperText } from "@/shared/ui/input";
 import { Combobox } from "@/shared/ui/combobox";
 import { PersonPicker } from "@/shared/ui/person-picker";
+import { PersonMultiPicker } from "@/shared/ui/person-multi-picker";
 import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
 import { StatusBadge } from "@/shared/ui/badge";
 import { CUSTOM_FIELD_PLACEHOLDERS, type CustomFieldFormat } from "@/modules/catalogs/format";
@@ -495,9 +496,12 @@ export function AssetRowActions({
   locations,
   catalogs,
   people,
+  currentHolderIds = [],
   permissions,
 }: {
   asset: AssetFormRecord;
+  /** Already holding this asset: offering them again would only error. */
+  currentHolderIds?: string[];
   activeAssignmentId: string | null;
   activeMaintenanceId: string | null;
   companies: Company[];
@@ -515,6 +519,7 @@ export function AssetRowActions({
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [personId, setPersonId] = useState("");
+  const [personIds, setPersonIds] = useState<string[]>([]);
   const [maintForm, setMaintForm] = useState({ maintenanceType: "Repair", description: "", serviceProvider: "" });
   // Shared equipment keeps accepting new holders while already assigned.
   const canAssignNow =
@@ -581,29 +586,62 @@ export function AssetRowActions({
 
       {permissions.canAssign && canAssignNow ? (
         <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
-          <DialogContent title={`Assign ${asset.name}`} description="A handover acknowledgement email is sent automatically when the category requires it.">
-            <Label htmlFor={`assign-person-${asset.id}`} required>Employee</Label>
-            <PersonPicker
-              id={`assign-person-${asset.id}`} value={personId}
-              companyId={asset.companyId}
-              placeholder="Select employee…"
-              people={people}
-              onChange={setPersonId}
-            />
+          <DialogContent title={`Assign ${asset.name}`} description="Assigning does not send anything. Once the employee collects the equipment, generate the handover form from their profile to get it acknowledged.">
+            {/* Shared equipment usually goes to a whole shift at once, so all of
+                its holders are chosen in one pass rather than a dialog each. */}
+            <Label htmlFor={`assign-person-${asset.id}`} required>
+              {asset.isShared ? "Employees" : "Employee"}
+            </Label>
+            {asset.isShared ? (
+              <PersonMultiPicker
+                id={`assign-person-${asset.id}`}
+                values={personIds}
+                companyId={asset.companyId}
+                placeholder="Search employees…"
+                people={people.filter((person) => !currentHolderIds.includes(person.id))}
+                onChange={setPersonIds}
+              />
+            ) : (
+              <PersonPicker
+                id={`assign-person-${asset.id}`} value={personId}
+                companyId={asset.companyId}
+                placeholder="Select employee…"
+                people={people}
+                onChange={setPersonId}
+              />
+            )}
             <HelperText>Not on the list yet? Add a new person with the button.</HelperText>
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setAssignOpen(false)}>Cancel</Button>
               <Button
                 loading={loading}
-                disabled={!personId}
+                disabled={asset.isShared ? personIds.length === 0 : !personId}
                 onClick={() =>
-                  run(() => assignAssetAction({ assetId: asset.id, personId }), {
-                    successMessage: "Asset assigned.",
-                    onSuccess: () => setAssignOpen(false),
-                  })
+                  run(
+                    async () => {
+                      const targets = asset.isShared ? personIds : [personId];
+                      let last;
+                      for (const target of targets) {
+                        last = await assignAssetAction({ assetId: asset.id, personId: target });
+                        if (!last.ok) return last;
+                      }
+                      return last!;
+                    },
+                    {
+                      successMessage:
+                        asset.isShared && personIds.length > 1
+                          ? `Asset assigned to ${personIds.length} employees.`
+                          : "Asset assigned.",
+                      onSuccess: () => {
+                        setPersonIds([]);
+                        setPersonId("");
+                        setAssignOpen(false);
+                      },
+                    },
+                  )
                 }
               >
-                Assign asset
+                {asset.isShared && personIds.length > 1 ? "Assign to all" : "Assign asset"}
               </Button>
             </div>
           </DialogContent>
@@ -706,6 +744,7 @@ export function StartClearanceDialog({
   const [open, setOpen] = useState(false);
   const [companyId, setCompanyId] = useState(companies[0]?.id ?? "");
   const [personId, setPersonId] = useState("");
+  const [personIds, setPersonIds] = useState<string[]>([]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

@@ -231,21 +231,23 @@ export async function generatePersonHandoverAction(
 }
 
 /**
- * Generate a handover form for a chosen subset of the person's assigned assets.
- * Created but NOT sent: the UI previews it, then calls sendHandoverAction.
+ * Record and send the handover form for a chosen subset of the person's assigned
+ * assets. Nothing is created until this point: the form is previewed straight
+ * from the assignments, so abandoning a review leaves no document behind.
  */
-export async function generateHandoverForAssetsAction(
+export async function sendHandoverForAssetsAction(
   personId: string,
   assignmentIds: string[],
-): Promise<ActionResult<{ id: string; documentId: string | null }>> {
+): Promise<ActionResult<{ id: string }>> {
   try {
     const { audit } = await requirePermission("assets.assignments.manage");
     if (assignmentIds.length === 0) {
       throw new BusinessRuleError("Select at least one asset to include on the handover form.");
     }
-    const handover = await service.createHandoverForAssignments(audit, personId, assignmentIds, false);
+    const handover = await service.createHandoverForAssignments(audit, personId, assignmentIds, true);
     revalidatePath(`/people/${personId}`);
-    return ok({ id: handover.id, documentId: handover.documentId });
+    revalidatePath("/documents", "layout");
+    return ok({ id: handover.id });
   } catch (error) {
     return toActionError(error);
   }

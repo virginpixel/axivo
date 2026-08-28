@@ -139,7 +139,13 @@ export default async function FormsPage({
                 <TD>{form._count.requests}</TD>
                 <TD><StatusBadge status={form.status} /></TD>
                 <TD className="text-right">
-                  {canManage ? <FormRowActions formId={form.id} status={form.status} /> : null}
+                  {canManage ? (
+                    <FormRowActions
+                      formId={form.id}
+                      status={form.status}
+                      hasUnpublishedChanges={!!form.currentVersion && !form.currentVersion.publishedAt}
+                    />
+                  ) : null}
                 </TD>
               </TR>
             ))}

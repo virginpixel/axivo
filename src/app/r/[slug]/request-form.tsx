@@ -97,6 +97,7 @@ export function PublicRequestForm({
   departments,
   positions,
   companies,
+  allowsThirdParty = false,
   formCompanyId,
   requestFieldsByTarget,
   allowsMixedItems,
@@ -111,6 +112,8 @@ export function PublicRequestForm({
   departments: { id: string; name: string; companyId: string }[];
   positions: { id: string; name: string; companyId: string }[];
   companies: { id: string; name: string }[];
+  /** Form accepts contractors/tenants who are not employees. */
+  allowsThirdParty?: boolean;
   formCompanyId: string | null;
   /** Extra questions keyed by application id or asset category id (Doc 08/11). */
   requestFieldsByTarget: Record<string, PublicField[]>;
@@ -241,6 +244,9 @@ export function PublicRequestForm({
   ]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [attested, setAttested] = useState(false);
+  // A third party has no department here; they name their own employer instead.
+  const [isThirdParty, setIsThirdParty] = useState(false);
+  const [externalCompany, setExternalCompany] = useState("");
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState<{ requestNumber: string; message: string | null } | null>(null);
 
@@ -300,15 +306,21 @@ export function PublicRequestForm({
       }
     }
     const effectiveRequestedFor = isSelfService ? requester : requestedFor;
-    const checkParticipant = (prefix: string, participant: ParticipantDraft) => {
+    const checkParticipant = (prefix: string, participant: ParticipantDraft, skipDepartment = false) => {
       if (!participant.name.trim()) nextErrors[`${prefix}Name`] = "Name is required.";
       if (!EMAIL_PATTERN.test(participant.email)) nextErrors[`${prefix}Email`] = "Enter a valid email address.";
-      if (!participant.employeeId.trim()) nextErrors[`${prefix}EmployeeId`] = "Employee ID is required.";
-      if (!participant.departmentId) nextErrors[`${prefix}DepartmentId`] = "Select a department.";
+      if (!participant.employeeId.trim()) nextErrors[`${prefix}EmployeeId`] = "An ID is required.";
+      if (!skipDepartment && !participant.departmentId) {
+        nextErrors[`${prefix}DepartmentId`] = "Select a department.";
+      }
       if (!participant.positionTitle.trim()) nextErrors[`${prefix}PositionTitle`] = "Enter a position.";
     };
     checkParticipant("requester", requester);
-    checkParticipant("requestedFor", effectiveRequestedFor);
+    // A third party has no department here; they give their own employer instead.
+    checkParticipant("requestedFor", effectiveRequestedFor, isThirdParty);
+    if (isThirdParty && !externalCompany.trim()) {
+      nextErrors.requestedForExternalCompany = "Enter the company this person works for.";
+    }
     for (const field of visibleFields) {
       const value = values[field.fieldKey];
       const empty = value === undefined || value === "" || (Array.isArray(value) && value.length === 0);
@@ -378,7 +390,9 @@ export function PublicRequestForm({
         requestedForEmployeeId: effectiveRequestedFor.employeeId.trim(),
         requesterCompanyId,
         requestedForCompanyId: isSelfService ? requesterCompanyId : requestedForCompanyId,
-        requestedForDepartmentId: effectiveRequestedFor.departmentId,
+        isThirdParty,
+        requestedForExternalCompany: isThirdParty ? externalCompany.trim() : undefined,
+        requestedForDepartmentId: isThirdParty ? undefined : effectiveRequestedFor.departmentId,
         requestedForPositionTitle: effectiveRequestedFor.positionTitle.trim(),
         fieldValues: values,
         website: "",
@@ -509,7 +523,9 @@ export function PublicRequestForm({
         </CardHeader>
         <CardContent className="space-y-3">
             <div>
-              <Label htmlFor="requestedFor-company" required>Company</Label>
+              <Label htmlFor="requestedFor-company" required>
+                {isThirdParty ? "Business Unit" : "Company"}
+              </Label>
               <Combobox
               id="requestedFor-company"
               value={requestedForCompanyId}
@@ -522,6 +538,38 @@ export function PublicRequestForm({
             />
               <FieldError message={errors.requestedForCompanyId} />
             </div>
+            {allowsThirdParty ? (
+              <label className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4"
+                  checked={isThirdParty}
+                  onChange={(event) => setIsThirdParty(event.target.checked)}
+                />
+                <span>
+                  This request is for a third party
+                  <span className="block text-xs text-muted-foreground">
+                    Tick this for a contractor or tenant who is not an employee. They belong to no
+                    department here, so name the company they work for instead.
+                  </span>
+                </span>
+              </label>
+            ) : null}
+            {isThirdParty ? (
+              <div>
+                <Label htmlFor="requestedFor-external-company" required>Company or organisation</Label>
+                <Input
+                  id="requestedFor-external-company"
+                  value={externalCompany}
+                  onChange={(event) => setExternalCompany(event.target.value)}
+                  placeholder="The company this person actually works for"
+                />
+                <FieldError message={errors.requestedForExternalCompany} />
+                <HelperText>
+                  The business unit above is where they work; this is their own employer.
+                </HelperText>
+              </div>
+            ) : null}
             <ParticipantFields
               prefix="requestedFor"
               participant={requestedFor}
@@ -529,6 +577,7 @@ export function PublicRequestForm({
               departments={requestedForDepartments}
               positions={requestedForPositions}
               errors={errors}
+              hideDepartment={isThirdParty}
             />
         </CardContent>
       </Card>
@@ -1066,6 +1115,7 @@ function ParticipantFields({
   departments,
   positions,
   errors,
+  hideDepartment = false,
 }: {
   prefix: string;
   participant: ParticipantDraft;
@@ -1073,6 +1123,8 @@ function ParticipantFields({
   departments: { id: string; name: string }[];
   positions: { id: string; name: string }[];
   errors: Record<string, string>;
+  /** A third party sits in no department of ours, so the picker is dropped. */
+  hideDepartment?: boolean;
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -1087,7 +1139,9 @@ function ParticipantFields({
         <FieldError message={errors[`${prefix}Name`]} />
       </div>
       <div>
-        <Label htmlFor={`field-${prefix}EmployeeId`} required>Employee ID</Label>
+        <Label htmlFor={`field-${prefix}EmployeeId`} required>
+          Employee ID
+        </Label>
         <Input
           id={`field-${prefix}EmployeeId`}
           value={participant.employeeId}
@@ -1107,18 +1161,20 @@ function ParticipantFields({
         />
         <FieldError message={errors[`${prefix}Email`]} />
       </div>
-      <div>
-        <Label htmlFor={`field-${prefix}DepartmentId`} required>Department</Label>
-        <Combobox
-          id={`field-${prefix}DepartmentId`}
-          value={participant.departmentId}
-          placeholder="Select…"
-          aria-invalid={!!errors[`${prefix}DepartmentId`]}
-          options={departments.map((department) => ({ value: department.id, label: department.name }))}
-          onChange={(value) => onChange({ ...participant, departmentId: value })}
-        />
-        <FieldError message={errors[`${prefix}DepartmentId`]} />
-      </div>
+      {hideDepartment ? null : (
+        <div>
+          <Label htmlFor={`field-${prefix}DepartmentId`} required>Department</Label>
+          <Combobox
+            id={`field-${prefix}DepartmentId`}
+            value={participant.departmentId}
+            placeholder="Select…"
+            aria-invalid={!!errors[`${prefix}DepartmentId`]}
+            options={departments.map((department) => ({ value: department.id, label: department.name }))}
+            onChange={(value) => onChange({ ...participant, departmentId: value })}
+          />
+          <FieldError message={errors[`${prefix}DepartmentId`]} />
+        </div>
+      )}
       <div>
         <Label htmlFor={`field-${prefix}PositionTitle`} required>Position</Label>
         {/* Free text with suggestions: a new joiner may need a position that is

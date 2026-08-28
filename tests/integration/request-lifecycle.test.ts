@@ -124,7 +124,7 @@ describe("end-to-end request lifecycle", () => {
       name: "IT Access Request",
       description: undefined,
       confirmationMessage: "Thank you!",
-      allowedAssetCategoryIds: [], allowsMixedItems: false,
+      allowedAssetCategoryIds: [], allowsMixedItems: false, allowsThirdParty: false, thirdPartyWorkflowId: null,
       fields: [
         { fieldKey: "justification", label: "Justification", fieldType: "TEXT", isRequired: true, placeholder: undefined, helpText: undefined, defaultValue: undefined, options: undefined, validation: undefined, visibilityRules: undefined },
       ],
@@ -151,7 +151,7 @@ describe("end-to-end request lifecycle", () => {
         requestedForEmployeeId: "E-200",
         requestedForCompanyId: company.id,
         requestedForDepartmentId: department.id,
-        requestedForPositionTitle: position.name,
+        requestedForPositionTitle: position.name, isThirdParty: false,
         fieldValues: { justification: "New hire" },
         items: [{ itemType: "APPLICATION", applicationId: application.id, applicationRoleId: undefined, assetCategoryId: undefined, description: undefined, fieldValues: {} }],
         website: "",
@@ -286,7 +286,7 @@ describe("end-to-end request lifecycle", () => {
         requestedForEmployeeId: "E-200",
         requestedForCompanyId: company.id,
         requestedForDepartmentId: department.id,
-        requestedForPositionTitle: position.name,
+        requestedForPositionTitle: position.name, isThirdParty: false,
         fieldValues: { justification: "Two items" },
         items: [
           { itemType: "APPLICATION", applicationId: application.id, applicationRoleId: undefined, assetCategoryId: undefined, description: undefined, fieldValues: {} },
@@ -494,7 +494,7 @@ describe("corrections return an item to its approver (Doc 09 Ch6)", () => {
         requestedForEmployeeId: "E-200",
         requestedForCompanyId: company.id,
         requestedForDepartmentId: department.id,
-        requestedForPositionTitle: position.name,
+        requestedForPositionTitle: position.name, isThirdParty: false,
         fieldValues: { justification: "Original reason" },
         items: [
           { itemType: "APPLICATION", applicationId: application.id, applicationRoleId: undefined, assetCategoryId: undefined, description: undefined, fieldValues: {} },

@@ -181,6 +181,7 @@ export default async function PublicFormPage({ params }: { params: Promise<{ slu
             formCompanyId={form.companyId}
             requestFieldsByTarget={requestFieldsByTarget}
             allowsMixedItems={form.allowsMixedItems}
+            allowsThirdParty={form.allowsThirdParty}
             fixedApplicationId={form.applicationId}
             fixedAssetCategoryId={form.assetCategoryId}
           />

@@ -172,6 +172,13 @@ interface InstanceContext {
     requesterName: string;
     requesterEmail: string;
     requestedForDepartmentId: string | null;
+    /**
+     * Who each party is, beyond a bare name: an approver needs the employee ID
+     * to be sure which "Ahmed" this is, and the company - for a third party,
+     * the firm they actually work for rather than the business unit.
+     */
+    requesterDetails: string | null;
+    requestedForDetails: string | null;
   };
 }
 
@@ -211,6 +218,16 @@ async function loadInstanceContext(client: DbClient, instanceId: string): Promis
       value: Array.isArray(value) ? value.join(", ") : String(value),
     }));
 
+  // requesterCompanyId / requestedForCompanyId are bare ids with no relation,
+  // so the names are resolved here in one query.
+  const companyIds = [item.request.requesterCompanyId, item.request.requestedForCompanyId]
+    .filter((id): id is string => !!id);
+  const companies = companyIds.length
+    ? await client.company.findMany({ where: { id: { in: companyIds } }, select: { id: true, name: true } })
+    : [];
+  const companyName = (id: string | null) =>
+    id ? companies.find((company) => company.id === id)?.name ?? null : null;
+
   return {
     instanceId,
     requestItem: {
@@ -229,8 +246,23 @@ async function loadInstanceContext(client: DbClient, instanceId: string): Promis
       requesterName: item.request.requesterName,
       requesterEmail: item.request.requesterEmail,
       requestedForDepartmentId: item.request.requestedForDepartmentId,
+      requesterDetails: describe(item.request.requesterEmployeeId, companyName(item.request.requesterCompanyId)),
+      requestedForDetails: describe(
+        item.request.requestedForEmployeeId,
+        // A third party works at the business unit but for their own firm, and
+        // that firm is what identifies them to an approver.
+        item.request.isThirdParty
+          ? item.request.requestedForExternalCompany
+          : companyName(item.request.requestedForCompanyId),
+      ),
     },
   };
+}
+
+/** "OC0993, Crossroads" - whichever parts are known. */
+function describe(employeeId: string | null, company: string | null): string | null {
+  const parts = [employeeId, company].filter((part): part is string => !!part && part.trim().length > 0);
+  return parts.length > 0 ? parts.join(", ") : null;
 }
 
 /**
@@ -461,6 +493,10 @@ export async function sendApprovalEmails(
         approverName: assignment.person.firstName,
         itemLabel: ic.requestItem.label,
         requestedForName: ic.request.requestedForName,
+        // Kept separate from the names so the subject line stays short.
+        requestedForDetails: ic.request.requestedForDetails ?? "",
+        requesterName: ic.request.requesterName,
+        requesterDetails: ic.request.requesterDetails ?? "",
         requestNumber: ic.request.requestNumber,
         itemDetails,
         actionButton: emailButton(url, "Review request"),
@@ -479,8 +515,8 @@ export async function sendApprovalEmails(
              ...ic.requestItem.details.map((detail) => `${detail.label}: ${detail.value}`)]
           : []),
         ``,
-        `Requested for: <strong>${ic.request.requestedForName}</strong> (${ic.request.requestedForEmail})`,
-        `Requested by: ${ic.request.requesterName} (${ic.request.requesterEmail})`,
+        `Requested for: <strong>${ic.request.requestedForName}</strong>${ic.request.requestedForDetails ? ` (${ic.request.requestedForDetails})` : ""} — ${ic.request.requestedForEmail}`,
+        `Requested by: ${ic.request.requesterName}${ic.request.requesterDetails ? ` (${ic.request.requesterDetails})` : ""} — ${ic.request.requesterEmail}`,
         ``,
         emailButton(url, "Review request"),
         ``,
@@ -978,7 +1014,12 @@ export async function rollupRequestStatus(context: AuditContext, requestId: stri
         completedAt: allTerminal && !request.completedAt ? new Date() : request.completedAt,
       },
     });
-    if (next === "COMPLETED") {
+    // The requester is told as soon as IT has done the work. Waiting for the
+    // employee to acknowledge their credentials or handover would leave the
+    // person who raised the request in the dark for as long as that took; the
+    // acknowledgement is still tracked separately through
+    // PENDING_ACKNOWLEDGEMENT. The dedupe key keeps it to one email either way.
+    if (next === "COMPLETED" || next === "PENDING_ACKNOWLEDGEMENT") {
       const { getSetting, SETTING_KEYS } = await import("@/shared/settings/settings");
       const notify = await getSetting<boolean>(
         SETTING_KEYS.NOTIFY_REQUESTER_ON_FINAL_APPROVAL,
@@ -988,7 +1029,7 @@ export async function rollupRequestStatus(context: AuditContext, requestId: stri
         const grantedSummary =
           `<strong>Granted for ${request.requestedForName}:</strong><ul>` +
           request.items
-            .filter((item) => item.status === "COMPLETED")
+            .filter((item) => item.status === "COMPLETED" || item.status === "IMPLEMENTED")
             .map((item) => {
               const target =
                 item.application?.name ?? item.assetCategory?.name ?? item.description ?? "Item";
@@ -1016,7 +1057,7 @@ export async function rollupRequestStatus(context: AuditContext, requestId: stri
             `<strong>Granted for ${request.requestedForName}:</strong>`,
             "<ul>",
             ...request.items
-              .filter((item) => item.status === "COMPLETED")
+              .filter((item) => item.status === "COMPLETED" || item.status === "IMPLEMENTED")
               .map((item) => {
                 const target =
                   item.application?.name ?? item.assetCategory?.name ?? item.description ?? "Item";

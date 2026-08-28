@@ -73,6 +73,8 @@ export default async function FormBuilderPage({
       applicationId: form.applicationId,
       assetCategoryId: form.assetCategoryId,
       allowsMixedItems: form.allowsMixedItems,
+      allowsThirdParty: form.allowsThirdParty,
+      thirdPartyWorkflowId: form.thirdPartyWorkflowId,
       status: form.status,
       fields: (form.currentVersion?.fields ?? []).map((field) => ({
         fieldKey: field.fieldKey,

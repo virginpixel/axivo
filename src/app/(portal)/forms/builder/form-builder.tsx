@@ -56,6 +56,8 @@ export interface ExistingForm {
   applicationId: string | null;
   assetCategoryId: string | null;
   allowsMixedItems: boolean;
+  allowsThirdParty: boolean;
+  thirdPartyWorkflowId: string | null;
   status: string;
   fields: FieldDraft[];
 }
@@ -91,6 +93,8 @@ export function FormBuilder({
   const [applicationId, setApplicationId] = useState(existing?.applicationId ?? "");
   const [assetCategoryId, setAssetCategoryId] = useState(existing?.assetCategoryId ?? "");
   const [allowsMixedItems, setAllowsMixedItems] = useState(existing?.allowsMixedItems ?? false);
+  const [allowsThirdParty, setAllowsThirdParty] = useState(existing?.allowsThirdParty ?? false);
+  const [thirdPartyWorkflowId, setThirdPartyWorkflowId] = useState(existing?.thirdPartyWorkflowId ?? "");
   const [allowedCategoryIds, setAllowedCategoryIds] = useState<string[]>(
     existing?.allowedAssetCategoryIds ?? [],
   );
@@ -163,6 +167,8 @@ export function FormBuilder({
       applicationId: allowsMixedItems || selectedKind !== "APPLICATION_ACCESS" ? undefined : applicationId || undefined,
       assetCategoryId: allowsMixedItems || selectedKind !== "ASSET_REQUEST" ? undefined : assetCategoryId || undefined,
       allowsMixedItems,
+      allowsThirdParty,
+      thirdPartyWorkflowId: allowsThirdParty ? thirdPartyWorkflowId || null : null,
       fields: fields.map((field) => ({
         fieldKey: field.fieldKey,
         label: field.label,
@@ -270,6 +276,47 @@ export function FormBuilder({
               </span>
             </label>
           </div>
+
+          {/* A third party has no department here, so a Department Head step can
+              never resolve for them: those requests need a chain of their own. */}
+          <div className="sm:col-span-2">
+            <label className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4"
+                checked={allowsThirdParty}
+                onChange={(event) => setAllowsThirdParty(event.target.checked)}
+              />
+              <span>
+                Allow third-party requests
+                <span className="block text-xs text-muted-foreground">
+                  Adds a &quot;this is for a third party&quot; option to the form, for contractors and
+                  tenants who are not your employees. They name the company they work for instead of
+                  picking a department, and their requests follow the chain chosen below.
+                </span>
+              </span>
+            </label>
+          </div>
+          {allowsThirdParty ? (
+            <div className="sm:col-span-2">
+              <Label htmlFor="fb-tp-workflow" required>Third-party approval chain</Label>
+              <Select
+                id="fb-tp-workflow"
+                value={thirdPartyWorkflowId}
+                onChange={(e) => setThirdPartyWorkflowId(e.target.value)}
+              >
+                <option value="">Select a chain…</option>
+                {companyWorkflows.map((workflow) => (
+                  <option key={workflow.id} value={workflow.id}>{workflow.name}</option>
+                ))}
+              </Select>
+              <HelperText>
+                Used only for third-party requests, in place of the chain above and of any chain set
+                on the application or asset itself. It must not contain a Department Head step: pick
+                one that approves through a company-wide role, such as a Tenant Manager.
+              </HelperText>
+            </div>
+          ) : null}
 
           {!allowsMixedItems && selectedKind === "APPLICATION_ACCESS" ? (
             <div className="sm:col-span-2">

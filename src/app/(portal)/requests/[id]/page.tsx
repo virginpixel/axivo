@@ -63,9 +63,13 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
   const canDeliver = user.permissions.has("applications.credentials.deliver");
 
   // Company of the requested-for employee (forms may be shared across companies).
-  const requestedForCompanyName = request.requestedForCompanyId
-    ? (await db.company.findUnique({ where: { id: request.requestedForCompanyId }, select: { name: true } }))?.name ?? null
-    : request.company.name;
+  // For a third party this is the firm they actually work for, not the business
+  // unit they work at: that is what identifies them on this screen.
+  const requestedForCompanyName = request.isThirdParty
+    ? request.requestedForExternalCompany ?? null
+    : request.requestedForCompanyId
+      ? (await db.company.findUnique({ where: { id: request.requestedForCompanyId }, select: { name: true } }))?.name ?? null
+      : request.company.name;
   const canAdmin = user.permissions.has("requests.admin");
   const canWorkflowAdmin = user.permissions.has("workflows.admin");
   const fieldData = (request.fieldData ?? {}) as Record<string, unknown>;

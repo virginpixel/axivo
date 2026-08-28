@@ -217,6 +217,9 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                 customFields: assetCustomFields,
               }}
               activeAssignmentId={activeAssignment?.id ?? null}
+              currentHolderIds={asset.assignments
+                .filter((assignment) => assignment.status === "ASSIGNED" || assignment.status === "PENDING")
+                .map((assignment) => assignment.personId)}
               activeMaintenanceId={activeMaintenance?.id ?? null}
               companies={companies}
               categories={categories}
