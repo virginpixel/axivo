@@ -10,7 +10,8 @@ import { formatDate, formatDateTime, formatDateTimeWithZone, fullName } from "@/
 import { SignatureDetails } from "./signature-details";
 import { DocumentDelete } from "../../documents/document-delete";
 import { PersonDialog, EmploymentStatusSelect, CreateAccountDialog, AccountControls, TransferCompanyDialog } from "../person-dialogs";
-import { ReturnAssetButton, GenerateHandoverButton, ClearanceControl, PersonDocumentDelete, CheckInButton } from "./person-clearance";
+import { GenerateHandoverButton, ClearanceControl, PersonDocumentDelete, CheckInButton } from "./person-clearance";
+import { PersonAssets, type PersonAssetRow } from "./person-assets";
 import { leaveTypeLabel } from "@/modules/assets/checkouts";
 import { ChangeAccessDialog } from "./access-change";
 import { ResendAckButton } from "@/shared/ui/resend-ack-button";
@@ -130,14 +131,79 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
     personClearances.filter((c) => c.documentId).map((c) => [c.documentId!, c]),
   );
 
-  // Assets currently assigned to this person, offered when generating a handover.
-  const assignedAssets = person.assetAssignments
-    .filter((assignment) => assignment.status === "ASSIGNED")
-    .map((assignment) => ({
-      assignmentId: assignment.id,
-      label: assignment.asset.name || assignment.asset.assetTag || "Asset",
-      reference: assignment.asset.assetTag ?? assignment.asset.model ?? null,
-    }));
+  // Equipment held by the departments this person heads. Nobody holds it
+  // personally, so it never reaches their clearance, but the head is who signs
+  // for it - which is why it is listed and offered for handover here.
+  const headships = await db.departmentHead.findMany({
+    where: { personId: person.id, isActive: true, deletedAt: null, department: { deletedAt: null } },
+    select: { departmentId: true },
+  });
+  const departmentAssignments = headships.length
+    ? await db.assetAssignment.findMany({
+        where: {
+          departmentId: { in: headships.map((head) => head.departmentId) },
+          status: { in: ["ASSIGNED", "PENDING"] },
+          deletedAt: null,
+        },
+        include: { asset: true, department: { select: { name: true, company: { select: { name: true } } } } },
+        orderBy: { assignedAt: "desc" },
+      })
+    : [];
+
+  const assetRow = (assignment: {
+    id: string;
+    status: string;
+    assignedAt: Date;
+    assignedByLabel: string | null;
+    returnedAt: Date | null;
+    asset: { id: string; name: string; assetTag: string | null; model: string | null };
+    department?: { name: string; company: { name: string } } | null;
+  }): PersonAssetRow => ({
+    assignmentId: assignment.id,
+    assetId: assignment.asset.id,
+    name: assignment.asset.name || assignment.asset.assetTag || "Asset",
+    reference: [assignment.asset.assetTag, assignment.asset.model].filter(Boolean).join(" · ") || null,
+    // Nothing else on the row names a company, and a head may hold equipment
+    // for a department in another company, so both are shown.
+    heldBy: assignment.department
+      ? `${assignment.department.name} · ${assignment.department.company.name}`
+      : null,
+    assignedAt: formatDate(assignment.assignedAt),
+    assignedBy: assignment.assignedByLabel ?? "-",
+    returnedAt: assignment.returnedAt ? formatDate(assignment.returnedAt) : null,
+    status: assignment.status,
+  });
+  const currentAssetRows = [
+    ...person.assetAssignments
+      .filter((assignment) => assignment.status === "ASSIGNED" || assignment.status === "PENDING")
+      .map((assignment) => assetRow(assignment)),
+    ...departmentAssignments.map((assignment) => assetRow(assignment)),
+  ];
+  const returnedAssetRows = person.assetAssignments
+    .filter((assignment) => assignment.status !== "ASSIGNED" && assignment.status !== "PENDING")
+    .map((assignment) => assetRow(assignment));
+
+  // Assets this person can sign a handover for: their own, plus their
+  // departments'. Offered when generating the form.
+  const assignedAssets = [
+    ...person.assetAssignments
+      .filter((assignment) => assignment.status === "ASSIGNED")
+      .map((assignment) => ({
+        assignmentId: assignment.id,
+        label: assignment.asset.name || assignment.asset.assetTag || "Asset",
+        reference: assignment.asset.assetTag ?? assignment.asset.model ?? null,
+      })),
+    ...departmentAssignments
+      .filter((assignment) => assignment.status === "ASSIGNED")
+      .map((assignment) => ({
+        assignmentId: assignment.id,
+        label: assignment.asset.name || assignment.asset.assetTag || "Asset",
+        reference: assignment.asset.assetTag ?? assignment.asset.model ?? null,
+        heldBy: assignment.department
+          ? `${assignment.department.name} · ${assignment.department.company.name}`
+          : null,
+      })),
+  ];
 
   const clearanceItems = (openClearance?.items ?? []).map((item) => ({
     id: item.id,
@@ -479,43 +545,11 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
             ) : null}
           </CardHeader>
           <CardContent>
-            {person.assetAssignments.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No asset assignments.</p>
-            ) : (
-              <Table>
-                <THead>
-                  <TR>
-                    <TH>Asset</TH><TH>Assigned</TH><TH>Assigned by</TH><TH>Returned</TH><TH>Status</TH>
-                    {canManageAssets ? <TH /> : null}
-                  </TR>
-                </THead>
-                <TBody>
-                  {person.assetAssignments.map((assignment) => (
-                    <TR key={assignment.id}>
-                      <TD>
-                        <Link href={`/assets/${assignment.asset.id}`} className="font-medium text-foreground hover:underline">
-                          {assignment.asset.name || assignment.asset.assetTag}
-                        </Link>
-                        <p className="text-xs text-muted-foreground">
-                          {[assignment.asset.assetTag, assignment.asset.model].filter(Boolean).join(" · ")}
-                        </p>
-                      </TD>
-                      <TD>{formatDate(assignment.assignedAt)}</TD>
-                      <TD>{assignment.assignedByLabel ?? "-"}</TD>
-                      <TD>{assignment.returnedAt ? formatDate(assignment.returnedAt) : "-"}</TD>
-                      <TD><StatusBadge status={assignment.status} /></TD>
-                      {canManageAssets ? (
-                        <TD className="text-right">
-                          {assignment.status === "ASSIGNED" ? (
-                            <ReturnAssetButton assignmentId={assignment.id} />
-                          ) : null}
-                        </TD>
-                      ) : null}
-                    </TR>
-                  ))}
-                </TBody>
-              </Table>
-            )}
+            <PersonAssets
+              current={currentAssetRows}
+              history={returnedAssetRows}
+              canManage={canManageAssets}
+            />
           </CardContent>
         </Card>
 

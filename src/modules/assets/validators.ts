@@ -57,10 +57,21 @@ export const assetStatusSchema = z.enum([
 export const assetAssignmentSchema = z
   .object({
     assetId: uuidSchema,
-    personId: uuidSchema,
+    personId: uuidSchema.optional(),
+    departmentId: uuidSchema.optional(),
     notes: optionalText(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    // An assignment has exactly one holder: an employee or a department.
+    if (!value.personId === !value.departmentId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["personId"],
+        message: "Choose either an employee or a department to hold this asset.",
+      });
+    }
+  });
 
 export const maintenanceSchema = z
   .object({

@@ -71,7 +71,7 @@ export default async function LicenseDetailPage({
         // Shared licenses can be assigned to anyone; company-scoped ones stay put.
         where: { ...(license.isShared ? {} : { companyId: license.companyId }), deletedAt: null, isActive: true },
         orderBy: { lastName: "asc" },
-        select: { id: true, firstName: true, lastName: true },
+        select: { id: true, firstName: true, lastName: true, employeeId: true },
       })
     : [];
   const vendorNames = canManage
@@ -115,7 +115,7 @@ export default async function LicenseDetailPage({
             {canAssign ? (
               <LicenseAssignDialog
                 licenseId={license.id}
-                people={people.map((person) => ({ id: person.id, name: fullName(person) }))}
+                people={people.map((person) => ({ id: person.id, name: fullName(person), hint: person.employeeId }))}
                 available={availability.available}
               />
             ) : null}

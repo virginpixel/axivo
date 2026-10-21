@@ -117,7 +117,7 @@ export function StepAdminControls({
   people,
 }: {
   stepInstanceId: string;
-  people: { id: string; name: string }[];
+  people: { id: string; name: string; hint?: string }[];
 }) {
   const { run, loading } = useAction();
   const [transferOpen, setTransferOpen] = useState(false);

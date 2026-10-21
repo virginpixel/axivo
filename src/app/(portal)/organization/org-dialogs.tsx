@@ -110,7 +110,7 @@ export function DepartmentDialog({
 }: {
   companies: { id: string; name: string }[];
   /** Every active employee, company included: a head may sit in another company. */
-  allPeople: { id: string; name: string; companyName: string }[];
+  allPeople: { id: string; name: string; employeeId: string; companyName: string }[];
   department?: {
     id: string;
     companyId: string;
@@ -132,7 +132,7 @@ export function DepartmentDialog({
   const headOptions = allPeople.map((person) => ({
     value: person.id,
     label: person.name,
-    hint: person.companyName,
+    hint: `${person.employeeId} · ${person.companyName}`,
   }));
 
   async function submit() {
@@ -446,7 +446,7 @@ export function AssignRoleDialog({
 }: {
   companies: { id: string; name: string }[];
   roles: { id: string; name: string }[];
-  peopleByCompany: Record<string, { id: string; name: string }[]>;
+  peopleByCompany: Record<string, { id: string; name: string; hint?: string }[]>;
 }) {
   const { run, loading } = useAction();
   const [open, setOpen] = useState(false);
@@ -569,7 +569,7 @@ export function AssignHeadDialog({
 }: {
   companies: { id: string; name: string }[];
   departmentsByCompany: Record<string, { id: string; name: string }[]>;
-  peopleByCompany: Record<string, { id: string; name: string }[]>;
+  peopleByCompany: Record<string, { id: string; name: string; hint?: string }[]>;
 }) {
   const { run, loading } = useAction();
   const [open, setOpen] = useState(false);

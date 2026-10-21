@@ -86,7 +86,7 @@ function NewPersonDialog({ companyId, onCreated }: { companyId: string; onCreate
       {
         successMessage: "Person created.",
         onSuccess: (data) => {
-          onCreated({ id: data.value, name: data.label });
+          onCreated({ id: data.value, name: data.label, hint: form.employeeId });
           setForm({ firstName: "", lastName: "", email: "", employeeId: "" });
           setOpen(false);
         },

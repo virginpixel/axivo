@@ -54,7 +54,7 @@ export default async function AssetsPage({
       : {}),
   };
 
-  const [assets, total, categories, companies, locations, people, statusCounts, catalogItems] =
+  const [assets, total, categories, companies, locations, people, departments, statusCounts, catalogItems] =
     await Promise.all([
       db.asset.findMany({
         where,
@@ -68,7 +68,7 @@ export default async function AssetsPage({
           // A shared asset can have several current holders, so take them all.
           assignments: {
             where: { status: { in: ["ASSIGNED", "PENDING"] }, deletedAt: null },
-            include: { person: true },
+            include: { person: true, department: { select: { id: true, name: true, companyId: true, company: { select: { name: true } } } } },
             orderBy: { assignedAt: "asc" },
           },
           maintenance: {
@@ -96,7 +96,13 @@ export default async function AssetsPage({
       }),
       db.person.findMany({
         where: { deletedAt: null, isActive: true, ...companyScope },
-        orderBy: { lastName: "asc" }, select: { id: true, firstName: true, lastName: true, companyId: true },
+        orderBy: { lastName: "asc" },
+        select: { id: true, firstName: true, lastName: true, companyId: true, employeeId: true },
+      }),
+      db.department.findMany({
+        where: { deletedAt: null, isActive: true, ...companyScope },
+        orderBy: [{ company: { name: "asc" } }, { name: "asc" }],
+        select: { id: true, name: true, companyId: true, company: { select: { name: true } } },
       }),
       db.asset.groupBy({ by: ["status"], where: { deletedAt: null, ...companyScope }, _count: true }),
       db.assetModel.findMany({
@@ -122,10 +128,23 @@ export default async function AssetsPage({
   }));
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const counts = Object.fromEntries(statusCounts.map((entry) => [entry.status, entry._count]));
-  const peopleByCompany: Record<string, { id: string; name: string }[]> = {};
+  const peopleByCompany: Record<string, { id: string; name: string; hint?: string }[]> = {};
   for (const person of people) {
-    (peopleByCompany[person.companyId] ??= []).push({ id: person.id, name: fullName(person) });
+    (peopleByCompany[person.companyId] ??= []).push({
+      id: person.id,
+      name: fullName(person),
+      hint: person.employeeId,
+    });
   }
+  // A department of any company may hold an asset, just as an employee of
+  // another company may. Department names repeat across companies ("IT" exists
+  // in each), so every option names its owning company.
+  const departmentOptions = departments.map((department) => ({
+    id: department.id,
+    name: department.name,
+    companyId: department.companyId,
+    companyName: department.company.name,
+  }));
   const catalogs = {
     manufacturers: manufacturerList.map((m) => ({ name: m.name })),
     models: catalogItems.map((m) => ({
@@ -161,7 +180,13 @@ export default async function AssetsPage({
               categories={categoryOptions}
               locations={locationOptions}
               catalogs={catalogs}
-              people={people.map((person) => ({ id: person.id, name: fullName(person), companyId: person.companyId }))}
+              people={people.map((person) => ({
+                id: person.id,
+                name: fullName(person),
+                hint: person.employeeId,
+                companyId: person.companyId,
+              }))}
+              departments={departmentOptions}
             />
           ) : undefined
         }
@@ -254,10 +279,21 @@ export default async function AssetsPage({
                     <TD>{asset.serialNumber ?? "None"}</TD>
                     <TD>
                       <HolderList
-                        holders={asset.assignments.map((assignment) => ({
-                          id: assignment.person.id,
-                          name: fullName(assignment.person),
-                        }))}
+                        holders={asset.assignments.map((assignment) =>
+                          assignment.department
+                            ? {
+                                id: assignment.department.id,
+                                // A department of another company may hold it, so
+                                // its own company is named when it is not this
+                                // asset's - "IT" exists in every property.
+                                name:
+                                  assignment.department.companyId === asset.companyId
+                                    ? assignment.department.name
+                                    : `${assignment.department.name} (${assignment.department.company.name})`,
+                                kind: "department" as const,
+                              }
+                            : { id: assignment.person!.id, name: fullName(assignment.person!) },
+                        )}
                       />
                     </TD>
                     <TD>{asset.warrantyExpiry ? formatDate(asset.warrantyExpiry) : "None"}</TD>
@@ -282,13 +318,23 @@ export default async function AssetsPage({
                           customFields: (asset.customFields as Record<string, string> | null) ?? null,
                         }}
                         activeAssignmentId={soleAssignment?.id ?? null}
-                        currentHolderIds={asset.assignments.map((assignment) => assignment.person.id)}
+                        currentHolderIds={asset.assignments
+                          .map((assignment) => assignment.personId)
+                          .filter((id): id is string => !!id)}
+                        heldByDepartment={(() => {
+                          const holder = asset.assignments.find((assignment) => assignment.department)?.department;
+                          if (!holder) return null;
+                          return holder.companyId === asset.companyId
+                            ? holder.name
+                            : `${holder.name} (${holder.company.name})`;
+                        })()}
                         activeMaintenanceId={asset.maintenance[0]?.id ?? null}
                         companies={companies}
                         categories={categoryOptions}
                         locations={locationOptions}
                         catalogs={catalogs}
                         people={peopleByCompany[asset.companyId] ?? []}
+                        departments={departmentOptions}
                         permissions={{ canManage, canAssign, canMaintain, canDispose }}
                       />
                     </TD>

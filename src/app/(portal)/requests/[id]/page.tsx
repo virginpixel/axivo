@@ -79,10 +79,14 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
     ? await db.person.findMany({
         where: { companyId: request.companyId, deletedAt: null, isActive: true },
         orderBy: { lastName: "asc" },
-        select: { id: true, firstName: true, lastName: true },
+        select: { id: true, firstName: true, lastName: true, employeeId: true },
       })
     : [];
-  const transferOptions = companyPeople.map((person) => ({ id: person.id, name: fullName(person) }));
+  const transferOptions = companyPeople.map((person) => ({
+    id: person.id,
+    name: fullName(person),
+    hint: person.employeeId,
+  }));
 
   // Licenses selectable during implementation for applications that need one.
   const activeLicenses = await db.license.findMany({

@@ -68,13 +68,17 @@ export default async function WorkflowsPage({
     db.person.findMany({
       where: { deletedAt: null, isActive: true, ...(isGlobalAdmin ? {} : { companyId: user.companyId }) },
       orderBy: { lastName: "asc" },
-      select: { id: true, firstName: true, lastName: true, companyId: true },
+      select: { id: true, firstName: true, lastName: true, companyId: true, employeeId: true },
     }),
   ]);
 
-  const peopleByCompany: Record<string, { id: string; name: string }[]> = {};
+  const peopleByCompany: Record<string, { id: string; name: string; hint?: string }[]> = {};
   for (const person of people) {
-    (peopleByCompany[person.companyId] ??= []).push({ id: person.id, name: fullName(person) });
+    (peopleByCompany[person.companyId] ??= []).push({
+      id: person.id,
+      name: fullName(person),
+      hint: person.employeeId,
+    });
   }
 
   return (

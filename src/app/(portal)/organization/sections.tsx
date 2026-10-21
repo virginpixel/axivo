@@ -32,11 +32,12 @@ export async function AssignmentManager({
     }),
   ]);
 
-  const peopleByCompany: Record<string, { id: string; name: string }[]> = {};
+  const peopleByCompany: Record<string, { id: string; name: string; hint?: string }[]> = {};
   for (const person of people) {
     (peopleByCompany[person.companyId] ??= []).push({
       id: person.id,
-      name: `${fullName(person)} · ${person.employeeId}`,
+      name: fullName(person),
+      hint: person.employeeId,
     });
   }
 

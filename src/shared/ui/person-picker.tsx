@@ -12,6 +12,8 @@ import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
 export interface PersonOption {
   id: string;
   name: string;
+  /** Secondary text, e.g. employee ID or company. */
+  hint?: string;
 }
 
 /**
@@ -46,7 +48,11 @@ export function PersonPicker({
           value={value}
           placeholder={placeholder}
           emptyLabel={emptyLabel}
-          options={all.map((person) => ({ value: person.id, label: person.name }))}
+          options={all.map((person) => ({
+          value: person.id,
+          label: person.name,
+          ...(person.hint ? { hint: person.hint } : {}),
+        }))}
           onChange={onChange}
         />
       </div>
@@ -79,7 +85,7 @@ function NewPersonDialog({ companyId, onCreated }: { companyId: string; onCreate
       {
         successMessage: "Person created.",
         onSuccess: (data) => {
-          onCreated({ id: data.value, name: data.label });
+          onCreated({ id: data.value, name: data.label, hint: form.employeeId });
           setForm({ firstName: "", lastName: "", email: "", employeeId: "" });
           setOpen(false);
         },

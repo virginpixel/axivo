@@ -292,7 +292,7 @@ export function LicenseAssignDialog({
   available,
 }: {
   licenseId: string;
-  people: { id: string; name: string }[];
+  people: { id: string; name: string; hint?: string }[];
   available: number;
 }) {
   const { run, loading } = useAction();

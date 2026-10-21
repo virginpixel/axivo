@@ -83,7 +83,7 @@ export default async function ApplicationsPage({
     db.person.findMany({
       where: { deletedAt: null, isActive: true, ...companyScope },
       orderBy: { lastName: "asc" },
-      select: { id: true, firstName: true, lastName: true, companyId: true },
+      select: { id: true, firstName: true, lastName: true, companyId: true, employeeId: true },
     }),
     db.applicationAssignment.findMany({
       where: assignmentWhere,
@@ -104,9 +104,13 @@ export default async function ApplicationsPage({
     }),
   ]);
 
-  const peopleByCompany: Record<string, { id: string; name: string }[]> = {};
+  const peopleByCompany: Record<string, { id: string; name: string; hint?: string }[]> = {};
   for (const person of people) {
-    (peopleByCompany[person.companyId] ??= []).push({ id: person.id, name: fullName(person) });
+    (peopleByCompany[person.companyId] ??= []).push({
+      id: person.id,
+      name: fullName(person),
+      hint: person.employeeId,
+    });
   }
 
   return (
@@ -221,7 +225,7 @@ export default async function ApplicationsPage({
                 roles: application.roles.filter((role) => role.isActive).map((role) => ({ id: role.id, name: role.name })),
               }))}
               peopleByCompany={peopleByCompany}
-              allPeople={people.map((person) => ({ id: person.id, name: fullName(person) }))}
+              allPeople={people.map((person) => ({ id: person.id, name: fullName(person), hint: person.employeeId }))}
             />
           ) : null}
           </div>

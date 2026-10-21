@@ -70,7 +70,7 @@ export default async function ContractsPage({
     }),
     db.person.findMany({
       where: { deletedAt: null, isActive: true, ...companyScope },
-      orderBy: { lastName: "asc" }, select: { id: true, firstName: true, lastName: true, companyId: true },
+      orderBy: { lastName: "asc" }, select: { id: true, firstName: true, lastName: true, companyId: true, employeeId: true },
     }),
     db.contract.count({ where: { deletedAt: null, ...companyScope, status: { in: ["ACTIVE", "EXPIRING", "RENEWED"] } } }),
     db.contract.count({
@@ -110,9 +110,13 @@ export default async function ContractsPage({
     currencies: currencyItems.map((c) => ({ code: c.code, name: c.name })),
   };
 
-  const peopleByCompany: Record<string, { id: string; name: string }[]> = {};
+  const peopleByCompany: Record<string, { id: string; name: string; hint?: string }[]> = {};
   for (const person of people) {
-    (peopleByCompany[person.companyId] ??= []).push({ id: person.id, name: fullName(person) });
+    (peopleByCompany[person.companyId] ??= []).push({
+      id: person.id,
+      name: fullName(person),
+      hint: person.employeeId,
+    });
   }
 
   return (

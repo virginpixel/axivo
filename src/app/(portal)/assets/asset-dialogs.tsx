@@ -39,6 +39,7 @@ import { PersonMultiPicker } from "@/shared/ui/person-multi-picker";
 import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
 import { StatusBadge } from "@/shared/ui/badge";
 import { CUSTOM_FIELD_PLACEHOLDERS, type CustomFieldFormat } from "@/modules/catalogs/format";
+import { cn } from "@/shared/utils";
 import type { ActionResult } from "@/shared/errors";
 
 /** Wrap a quick-create action into the Combobox onCreate contract, toasting failures. */
@@ -57,7 +58,44 @@ function useCreateHandler() {
 interface Company { id: string; name: string }
 interface Category { id: string; name: string }
 interface LocationOption { id: string; name: string; companyId: string }
-interface PersonOption { id: string; name: string }
+interface PersonOption { id: string; name: string; hint?: string }
+interface DepartmentOption { id: string; name: string; companyId: string; companyName: string }
+
+/**
+ * Equipment used by a whole team (a back-office printer, a department phone) is
+ * held by the department itself, so it is not tied to whoever happens to use it.
+ * Both choices lead to one assignment, so they share one control.
+ */
+function HolderKindToggle({
+  value,
+  onChange,
+  departmentDisabledReason,
+}: {
+  value: "person" | "department";
+  onChange: (value: "person" | "department") => void;
+  departmentDisabledReason?: string;
+}) {
+  return (
+    <div className="mb-2 inline-flex rounded-full border bg-muted/40 p-0.5 text-sm">
+      {(["person", "department"] as const).map((kind) => (
+        <button
+          key={kind}
+          type="button"
+          onClick={() => onChange(kind)}
+          disabled={kind === "department" && !!departmentDisabledReason}
+          title={kind === "department" ? departmentDisabledReason : undefined}
+          aria-pressed={value === kind}
+          className={cn(
+            "rounded-full px-3 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+            value === kind ? "bg-card font-medium shadow-sm" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {kind === "person" ? "Employee" : "Department"}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export interface AssetCategoryRecord {
   id: string;
@@ -207,6 +245,7 @@ export function AssetDialog({
   locations,
   catalogs,
   people = [],
+  departments = [],
   asset,
   cloneFrom,
   triggerIcon,
@@ -218,7 +257,8 @@ export function AssetDialog({
   categories: Category[];
   locations: LocationOption[];
   catalogs: AssetCatalogs;
-  people?: { id: string; name: string; companyId: string }[];
+  people?: { id: string; name: string; hint?: string; companyId: string }[];
+  departments?: DepartmentOption[];
   asset?: AssetFormRecord;
   cloneFrom?: AssetFormRecord;
   triggerIcon?: boolean;
@@ -232,6 +272,8 @@ export function AssetDialog({
   const open = controlledOpen ?? uncontrolledOpen;
   const setOpen = onOpenChange ?? setUncontrolledOpen;
   const [assignPersonId, setAssignPersonId] = useState("");
+  const [assignDepartmentId, setAssignDepartmentId] = useState("");
+  const [assignHolderKind, setAssignHolderKind] = useState<"person" | "department">("person");
   // Clone reuses the shared fields (company/category/manufacturer/model/vendor/
   // location/warranty/notes) but leaves the per-unit ones (name, serial, tag,
   // model fields) blank so each new record gets its own.
@@ -278,13 +320,18 @@ export function AssetDialog({
       await run(() => updateAssetAction(asset.id, payload), { successMessage: "Asset updated.", onSuccess: () => setOpen(false) });
       return;
     }
+    const assignTo =
+      assignHolderKind === "department"
+        ? assignDepartmentId && { departmentId: assignDepartmentId }
+        : assignPersonId && { personId: assignPersonId };
     await run(() => createAssetAction(payload), {
-      successMessage: assignPersonId ? "Asset created and assigned." : "Asset created.",
+      successMessage: assignTo ? "Asset created and assigned." : "Asset created.",
       onSuccess: async (data) => {
-        if (assignPersonId) {
-          await assignAssetAction({ assetId: data.id, personId: assignPersonId });
+        if (assignTo) {
+          await assignAssetAction({ assetId: data.id, ...assignTo });
         }
         setAssignPersonId("");
+        setAssignDepartmentId("");
         if (addAnother) {
           // Keep the shared fields; clear the per-unit ones for the next unit.
           setForm((current) => ({ ...current, name: "", assetTag: "", serialNumber: "" }));
@@ -409,16 +456,40 @@ export function AssetDialog({
           </div>
           {!asset && !cloneFrom ? (
             <div className="sm:col-span-2">
-              <Label htmlFor="asset-assign">Assign to (optional)</Label>
-              <PersonPicker
-                id="asset-assign"
-                value={assignPersonId}
-                companyId={form.companyId}
-                people={people.filter((person) => person.companyId === form.companyId).map((person) => ({ id: person.id, name: person.name }))}
-                placeholder="Leave unassigned"
-                onChange={setAssignPersonId}
-              />
-              <HelperText>The asset will be assigned to this employee after creation. Create a new person with the button if needed.</HelperText>
+              <HolderKindToggle value={assignHolderKind} onChange={setAssignHolderKind} />
+              <Label htmlFor="asset-assign">
+                {assignHolderKind === "department" ? "Department (optional)" : "Assign to (optional)"}
+              </Label>
+              {assignHolderKind === "person" ? (
+                <>
+                  <PersonPicker
+                    id="asset-assign"
+                    value={assignPersonId}
+                    companyId={form.companyId}
+                    people={people
+                      .filter((person) => person.companyId === form.companyId)
+                      .map((person) => ({ id: person.id, name: person.name, ...(person.hint ? { hint: person.hint } : {}) }))}
+                    placeholder="Leave unassigned"
+                    onChange={setAssignPersonId}
+                  />
+                  <HelperText>The asset will be assigned to this employee after creation. Create a new person with the button if needed.</HelperText>
+                </>
+              ) : (
+                <>
+                  <Combobox
+                    id="asset-assign"
+                    value={assignDepartmentId}
+                    placeholder="Leave unassigned"
+                    emptyLabel="Leave unassigned"
+                    options={departments.map((department) => ({
+                      value: department.id,
+                      label: `${department.name} · ${department.companyName}`,
+                    }))}
+                    onChange={setAssignDepartmentId}
+                  />
+                  <HelperText>For equipment the whole team uses. No individual signs for it; its department head acknowledges the handover. Departments of any company may be chosen.</HelperText>
+                </>
+              )}
             </div>
           ) : null}
           <div>
@@ -496,12 +567,16 @@ export function AssetRowActions({
   locations,
   catalogs,
   people,
+  departments = [],
   currentHolderIds = [],
+  heldByDepartment = null,
   permissions,
 }: {
   asset: AssetFormRecord;
   /** Already holding this asset: offering them again would only error. */
   currentHolderIds?: string[];
+  /** Name of the department currently holding it, if any; blocks other holders. */
+  heldByDepartment?: string | null;
   activeAssignmentId: string | null;
   activeMaintenanceId: string | null;
   companies: Company[];
@@ -509,6 +584,7 @@ export function AssetRowActions({
   locations: LocationOption[];
   catalogs: AssetCatalogs;
   people: PersonOption[];
+  departments?: DepartmentOption[];
   permissions: { canManage: boolean; canAssign: boolean; canMaintain: boolean; canDispose: boolean };
 }) {
   const router = useRouter();
@@ -520,6 +596,16 @@ export function AssetRowActions({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [personId, setPersonId] = useState("");
   const [personIds, setPersonIds] = useState<string[]>([]);
+  const [departmentId, setDepartmentId] = useState("");
+  const [holderKind, setHolderKind] = useState<"person" | "department">("person");
+  // A department holds an asset on its own: it can only take one that is free,
+  // and while it holds one, nobody else may be added - not even to shared kit.
+  const departmentDisabledReason = heldByDepartment
+    ? `The ${heldByDepartment} department already holds this asset.`
+    : currentHolderIds.length > 0
+      ? "Return this asset from its current holder before giving it to a department."
+      : undefined;
+  const assignToDepartment = holderKind === "department" && !departmentDisabledReason;
   const [maintForm, setMaintForm] = useState({ maintenanceType: "Repair", description: "", serviceProvider: "" });
   // Shared equipment keeps accepting new holders while already assigned.
   const canAssignNow =
@@ -586,13 +672,36 @@ export function AssetRowActions({
 
       {permissions.canAssign && canAssignNow ? (
         <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
-          <DialogContent title={`Assign ${asset.name}`} description="Assigning does not send anything. Once the employee collects the equipment, generate the handover form from their profile to get it acknowledged.">
+          <DialogContent title={`Assign ${asset.name}`} description="Assigning does not send anything. Once the equipment is collected, generate the handover form from the holder's profile to get it acknowledged.">
             {/* Shared equipment usually goes to a whole shift at once, so all of
                 its holders are chosen in one pass rather than a dialog each. */}
+            <HolderKindToggle
+              value={holderKind}
+              onChange={setHolderKind}
+              {...(departmentDisabledReason ? { departmentDisabledReason } : {})}
+            />
             <Label htmlFor={`assign-person-${asset.id}`} required>
-              {asset.isShared ? "Employees" : "Employee"}
+              {assignToDepartment ? "Department" : asset.isShared ? "Employees" : "Employee"}
             </Label>
-            {asset.isShared ? (
+            {assignToDepartment ? (
+              <>
+                <Combobox
+                  id={`assign-person-${asset.id}`}
+                  value={departmentId}
+                  placeholder="Select department…"
+                  options={departments.map((department) => ({
+                    value: department.id,
+                    label: `${department.name} · ${department.companyName}`,
+                  }))}
+                  onChange={setDepartmentId}
+                />
+                <HelperText>
+                  The department holds it on its own — no individual may hold it at the same time. Its
+                  head acknowledges the handover from their own profile. A department of another
+                  company may hold it, the same way an employee of another company may.
+                </HelperText>
+              </>
+            ) : asset.isShared ? (
               <PersonMultiPicker
                 id={`assign-person-${asset.id}`}
                 values={personIds}
@@ -610,15 +719,29 @@ export function AssetRowActions({
                 onChange={setPersonId}
               />
             )}
-            <HelperText>Not on the list yet? Add a new person with the button.</HelperText>
+            {assignToDepartment ? null : (
+              <HelperText>Not on the list yet? Add a new person with the button.</HelperText>
+            )}
+            {heldByDepartment ? (
+              <p className="mt-2 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+                The {heldByDepartment} department holds this asset. Return it from the department
+                before assigning it to anyone else.
+              </p>
+            ) : null}
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setAssignOpen(false)}>Cancel</Button>
               <Button
                 loading={loading}
-                disabled={asset.isShared ? personIds.length === 0 : !personId}
+                disabled={
+                  !!heldByDepartment ||
+                  (assignToDepartment ? !departmentId : asset.isShared ? personIds.length === 0 : !personId)
+                }
                 onClick={() =>
                   run(
                     async () => {
+                      if (assignToDepartment) {
+                        return assignAssetAction({ assetId: asset.id, departmentId });
+                      }
                       const targets = asset.isShared ? personIds : [personId];
                       let last;
                       for (const target of targets) {
@@ -629,19 +752,22 @@ export function AssetRowActions({
                     },
                     {
                       successMessage:
-                        asset.isShared && personIds.length > 1
+                        !assignToDepartment && asset.isShared && personIds.length > 1
                           ? `Asset assigned to ${personIds.length} employees.`
                           : "Asset assigned.",
                       onSuccess: () => {
                         setPersonIds([]);
                         setPersonId("");
+                        setDepartmentId("");
                         setAssignOpen(false);
                       },
                     },
                   )
                 }
               >
-                {asset.isShared && personIds.length > 1 ? "Assign to all" : "Assign asset"}
+                {!assignToDepartment && asset.isShared && personIds.length > 1
+                  ? "Assign to all"
+                  : "Assign asset"}
               </Button>
             </div>
           </DialogContent>

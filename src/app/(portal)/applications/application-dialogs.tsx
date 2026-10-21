@@ -474,8 +474,8 @@ export function AssignmentDialog({
   allPeople,
 }: {
   applications: { id: string; name: string; companyId: string; isShared: boolean; roles: { id: string; name: string }[] }[];
-  peopleByCompany: Record<string, { id: string; name: string }[]>;
-  allPeople: { id: string; name: string }[];
+  peopleByCompany: Record<string, { id: string; name: string; hint?: string }[]>;
+  allPeople: { id: string; name: string; hint?: string }[];
 }) {
   const { run, loading, fieldErrors } = useAction();
   const [open, setOpen] = useState(false);

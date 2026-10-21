@@ -147,6 +147,16 @@ export async function deleteDepartment(context: AuditContext, id: string) {
       `"${department.name}" still has ${people} employee(s). Reassign them before deleting it.`,
     );
   }
+  // A department can hold equipment of its own; that has to go back before the
+  // department disappears, or the asset is left with a holder nobody can see.
+  const heldAssets = await db.assetAssignment.count({
+    where: { departmentId: id, status: { in: ["PENDING", "ASSIGNED"] }, deletedAt: null },
+  });
+  if (heldAssets > 0) {
+    throw new BusinessRuleError(
+      `"${department.name}" still holds ${heldAssets} asset(s). Return them before deleting it.`,
+    );
+  }
   return db.$transaction(async (tx) => {
     await tx.department.update({
       where: { id },

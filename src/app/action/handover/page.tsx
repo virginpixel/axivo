@@ -37,7 +37,16 @@ export default async function HandoverActionPage({
     where: { id: validation.valid ? validation.record.targetId : spent!.targetId },
     include: {
       person: { include: { company: true } },
-      assets: { include: { assetAssignment: { include: { asset: { include: { category: true } } } } } },
+      assets: {
+        include: {
+          assetAssignment: {
+            include: {
+              asset: { include: { category: true } },
+              department: { select: { name: true, company: { select: { name: true } } } },
+            },
+          },
+        },
+      },
     },
   });
   if (!handover) return <InvalidTokenNotice reason="not_found" flow="handover" />;
@@ -46,6 +55,9 @@ export default async function HandoverActionPage({
   // Shared equipment carries an extra clause in the terms and is labelled in the
   // list, so the signer knows others use it too.
   const hasSharedAsset = handover.assets.some((entry) => entry.assetAssignment.asset.isShared);
+  // Equipment held by a department is signed for by its head on the
+  // department's behalf, so it is labelled and carries its own clause.
+  const departmentHolders = handover.assets.some((entry) => !!entry.assetAssignment.department);
 
   return (
     <ToastProvider>
@@ -62,6 +74,7 @@ export default async function HandoverActionPage({
               <THead>
                 <TR>
                   <TH>Asset</TH>
+                  {departmentHolders ? <TH>Held by</TH> : null}
                   <TH>Category</TH>
                   <TH>Serial number</TH>
                   <TH>Manufacturer</TH>
@@ -78,6 +91,13 @@ export default async function HandoverActionPage({
                         <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground">Shared</span>
                       ) : null}
                     </TD>
+                    {departmentHolders ? (
+                      <TD>
+                        {entry.assetAssignment.department
+                          ? `${entry.assetAssignment.department.name} department (${entry.assetAssignment.department.company.name})`
+                          : `${handover.person.firstName} ${handover.person.lastName}`}
+                      </TD>
+                    ) : null}
                     <TD>{entry.assetAssignment.asset.category.name}</TD>
                     <TD>{entry.assetAssignment.asset.serialNumber ?? "None"}</TD>
                     <TD>{entry.assetAssignment.asset.manufacturer ?? "None"}</TD>
@@ -92,6 +112,16 @@ export default async function HandoverActionPage({
             {handover.assets.map((entry) => {
               const asset = entry.assetAssignment.asset;
               const details: { label: string; value: string }[] = [
+                ...(departmentHolders
+                  ? [
+                      {
+                        label: "Held by",
+                        value: entry.assetAssignment.department
+                          ? `${entry.assetAssignment.department.name} department (${entry.assetAssignment.department.company.name})`
+                          : `${handover.person.firstName} ${handover.person.lastName}`,
+                      },
+                    ]
+                  : []),
                 { label: "Category", value: asset.category.name },
                 { label: "Serial number", value: asset.serialNumber ?? "None" },
                 { label: "Manufacturer", value: asset.manufacturer ?? "None" },
@@ -121,7 +151,7 @@ export default async function HandoverActionPage({
 
           <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
             <h3 className="mb-1 text-sm font-semibold text-foreground">Terms of responsibility</h3>
-            {handoverTerms(handover.person.company.name, hasSharedAsset)}
+            {handoverTerms(handover.person.company.name, hasSharedAsset, departmentHolders)}
           </div>
 
           {alreadyAcknowledged ? (

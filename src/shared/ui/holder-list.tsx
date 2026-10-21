@@ -7,6 +7,26 @@ import * as PopoverPrimitive from "@radix-ui/react-popover";
 export interface Holder {
   id: string;
   name: string;
+  /** A whole team can hold equipment, in which case there is no person to link to. */
+  kind?: "person" | "department";
+}
+
+function HolderLink({ holder, className }: { holder: Holder; className?: string }) {
+  if (holder.kind === "department") {
+    return (
+      <span className={className}>
+        {holder.name}
+        <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
+          Dept
+        </span>
+      </span>
+    );
+  }
+  return (
+    <Link href={`/people/${holder.id}`} className={className ? `${className} hover:underline` : "hover:underline"}>
+      {holder.name}
+    </Link>
+  );
 }
 
 /**
@@ -38,9 +58,7 @@ export function HolderList({ holders }: { holders: Holder[] }) {
 
   return (
     <span className="flex items-center gap-1.5">
-      <Link href={`/people/${first!.id}`} className="hover:underline">
-        {first!.name}
-      </Link>
+      <HolderLink holder={first!} />
       {rest.length > 0 ? (
         <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
           <PopoverPrimitive.Trigger asChild>
@@ -78,12 +96,10 @@ export function HolderList({ holders }: { holders: Holder[] }) {
               <ul>
                 {rest.map((holder) => (
                   <li key={holder.id}>
-                    <Link
-                      href={`/people/${holder.id}`}
+                    <HolderLink
+                      holder={holder}
                       className="block rounded px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
-                    >
-                      {holder.name}
-                    </Link>
+                    />
                   </li>
                 ))}
               </ul>

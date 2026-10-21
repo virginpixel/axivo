@@ -339,19 +339,31 @@ export async function assignAsset(
   client?: DbClient,
 ) {
   const run = async (tx: DbClient) => {
-    const [asset, person] = await Promise.all([
+    const [asset, person, department] = await Promise.all([
       tx.asset.findFirst({ where: { id: input.assetId, deletedAt: null }, include: { category: true } }),
-      tx.person.findFirst({ where: { id: input.personId, deletedAt: null } }),
+      input.personId
+        ? tx.person.findFirst({ where: { id: input.personId, deletedAt: null } })
+        : Promise.resolve(null),
+      input.departmentId
+        ? tx.department.findFirst({ where: { id: input.departmentId, deletedAt: null }, include: { company: true } })
+        : Promise.resolve(null),
     ]);
     if (!asset) throw new NotFoundError("Asset not found.");
-    if (!person) throw new NotFoundError("Employee not found.");
-    if (!person.isActive) throw new BusinessRuleError("Only active employees may receive assets.");
+    if (input.personId && !person) throw new NotFoundError("Employee not found.");
+    if (person && !person.isActive) throw new BusinessRuleError("Only active employees may receive assets.");
+    if (input.departmentId && !department) throw new NotFoundError("Department not found.");
+    if (department && !department.isActive) {
+      throw new BusinessRuleError("Only active departments may hold assets.");
+    }
     // Assets are not company-locked for assignment: an asset owned by one company
-    // may be given to an employee of another (e.g. an HRH laptop to a CXR staff).
+    // may be given to an employee - or a department - of another (e.g. an HRH
+    // laptop to a CXR staff member, or a CXR phone to the HRH IT department).
     // Shared equipment (a department phone used by every concierge) may be held
     // by several people at once, so it stays assignable while already ASSIGNED.
-    // Everything else keeps the single-holder rule.
-    const assignableStatuses: AssetStatus[] = asset.isShared
+    // A department holds an asset on its own: nobody else may hold it at the same
+    // time, shared or not, because the department is already the collective
+    // holder. So department assignment needs a free asset.
+    const assignableStatuses: AssetStatus[] = asset.isShared && !department
       ? ["AVAILABLE", "RESERVED", "ASSIGNED"]
       : ["AVAILABLE", "RESERVED"];
     if (!assignableStatuses.includes(asset.status)) {
@@ -362,21 +374,25 @@ export async function assignAsset(
         assetId: input.assetId,
         status: { in: ["PENDING", "ASSIGNED"] },
         deletedAt: null,
-        ...(asset.isShared ? { personId: input.personId } : {}),
+        ...(asset.isShared && !department ? { personId: input.personId } : {}),
       },
+      include: { department: true },
     });
     if (activeAssignment) {
       throw new BusinessRuleError(
-        asset.isShared
-          ? "This person already holds this shared asset."
-          : "This asset already has an active assignment.",
+        activeAssignment.department
+          ? `This asset is held by the ${activeAssignment.department.name} department. Return it before assigning it to anyone else.`
+          : asset.isShared && !department
+            ? "This person already holds this shared asset."
+            : "This asset already has an active assignment.",
       );
     }
 
     const assignment = await tx.assetAssignment.create({
       data: {
         assetId: input.assetId,
-        personId: input.personId,
+        personId: input.personId ?? null,
+        departmentId: input.departmentId ?? null,
         requestItemId: options.requestItemId ?? null,
         status: "ASSIGNED",
         assignedById: context.actorUserId ?? null,
@@ -390,7 +406,9 @@ export async function assignAsset(
       {
         module: MODULE,
         eventType: "asset.assigned",
-        action: `Assigned asset "${asset.name}" to ${person.firstName} ${person.lastName}`,
+        action: department
+          ? `Assigned asset "${asset.name}" to the ${department.name} department (${department.company.name})`
+          : `Assigned asset "${asset.name}" to ${person!.firstName} ${person!.lastName}`,
         targetType: "asset_assignment",
         targetId: assignment.id,
         targetLabel: asset.name,
@@ -401,7 +419,13 @@ export async function assignAsset(
     // request is not the same as handing the equipment over. The form is
     // generated later from the employee's profile, when they actually collect
     // it, so the acknowledgement is signed against a real handover.
-    return { assignment, requiresHandover: asset.category.requireHandoverAcceptance && !options.skipHandover };
+    // A department has nobody to sign, so its form is raised by a department
+    // head from their own profile instead.
+    return {
+      assignment,
+      requiresHandover:
+        !!input.personId && asset.category.requireHandoverAcceptance && !options.skipHandover,
+    };
   };
 
   if (client) return run(client);
@@ -411,7 +435,7 @@ export async function assignAsset(
   // here must not surface as an error - the assignment already succeeded.
   if (result.requiresHandover) {
     try {
-      await createHandoverForAssignments(context, result.assignment.personId, [result.assignment.id]);
+      await createHandoverForAssignments(context, result.assignment.personId!, [result.assignment.id]);
     } catch (error) {
       console.error("[axivo] Asset assigned but handover generation failed:", error);
     }
@@ -422,7 +446,7 @@ export async function assignAsset(
 export async function returnAsset(context: AuditContext, assignmentId: string, notes?: string) {
   const existing = await db.assetAssignment.findFirst({
     where: { id: assignmentId, deletedAt: null },
-    include: { asset: true, person: true },
+    include: { asset: true, person: true, department: { include: { company: true } } },
   });
   if (!existing) throw new NotFoundError("Asset assignment not found.");
   if (existing.status !== "ASSIGNED" && existing.status !== "PENDING") {
@@ -457,7 +481,9 @@ export async function returnAsset(context: AuditContext, assignmentId: string, n
       {
         module: MODULE,
         eventType: "asset.returned",
-        action: `Returned asset "${existing.asset.name}" from ${existing.person.firstName} ${existing.person.lastName}`,
+        action: existing.department
+          ? `Returned asset "${existing.asset.name}" from the ${existing.department.name} department (${existing.department.company.name})`
+          : `Returned asset "${existing.asset.name}" from ${existing.person!.firstName} ${existing.person!.lastName}`,
         targetType: "asset_assignment",
         targetId: assignmentId,
         targetLabel: existing.asset.name,
@@ -487,13 +513,18 @@ export async function returnAsset(context: AuditContext, assignmentId: string, n
 function handoverPdfDefinition(
   person: { firstName: string; lastName: string; employeeId: string; email: string;
     company: { name: string }; department: { name: string } | null; position: { name: string } | null },
-  assignments: { assignedAt: Date; asset: { name: string; assetTag: string | null; serialNumber: string | null;
+  assignments: { assignedAt: Date; department: { name: string; company: { name: string } } | null;
+    asset: { name: string; assetTag: string | null; serialNumber: string | null;
     model: string | null; isShared: boolean; category: { name: string } } }[],
   acknowledgement: {
     acknowledgedAt: Date | null; acknowledgedIp: string | null; acknowledgedUserAgent: string | null;
     acknowledgedTermsVersion: string | null; acknowledgedHash: string | null;
   },
 ) {
+  // A department head signs for their own equipment and for their department's
+  // on one form, so the holder is spelled out per row whenever both appear.
+  const departmentAssets = assignments.filter((a) => a.department);
+  const showHolder = departmentAssets.length > 0;
   return {
       title: "Asset Handover Form",
       branding: { systemName: "Axivo", companyName: person.company.name },
@@ -512,9 +543,24 @@ function handoverPdfDefinition(
         {
           heading: "Assets",
           table: {
-            headers: ["Asset", "Category", "Tag", "Serial Number", "Model", "Assigned"],
+            headers: [
+              "Asset",
+              ...(showHolder ? ["Held By"] : []),
+              "Category",
+              "Tag",
+              "Serial Number",
+              "Model",
+              "Assigned",
+            ],
             rows: assignments.map((a) => [
               a.asset.name,
+              ...(showHolder
+                ? [
+                    a.department
+                      ? `${a.department.name} department (${a.department.company.name})`
+                      : `${person.firstName} ${person.lastName}`,
+                  ]
+                : []),
               a.asset.category.name,
               a.asset.assetTag ?? "None",
               a.asset.serialNumber ?? "None",
@@ -529,6 +575,7 @@ function handoverPdfDefinition(
             handoverTerms(
               person.company.name,
               assignments.some((a) => a.asset.isShared),
+              showHolder,
             ),
           ],
         },
@@ -560,8 +607,38 @@ function handoverPdfDefinition(
 /** The people/assets a handover form covers, loaded the same way for both paths. */
 const handoverFormInclude = {
   person: { include: { company: true, department: true, position: true } },
-  assets: { include: { assetAssignment: { include: { asset: { include: { category: true } } } } } },
+  assets: {
+    include: {
+      assetAssignment: {
+        include: {
+          asset: { include: { category: true } },
+          department: { select: { name: true, company: { select: { name: true } } } },
+        },
+      },
+    },
+  },
 } as const;
+
+/**
+ * The departments this person is an active head of. Equipment held by a
+ * department is signed for by its head, so those assignments are offered on the
+ * head's own profile alongside their personal ones.
+ */
+export async function headedDepartmentIds(personId: string): Promise<string[]> {
+  const heads = await db.departmentHead.findMany({
+    where: { personId, isActive: true, deletedAt: null, department: { deletedAt: null } },
+    select: { departmentId: true },
+  });
+  return heads.map((head) => head.departmentId);
+}
+
+/** Assignments a given person may sign a handover for: their own, plus their departments'. */
+async function handoverHolderFilter(personId: string) {
+  const departmentIds = await headedDepartmentIds(personId);
+  return departmentIds.length > 0
+    ? { OR: [{ personId }, { departmentId: { in: departmentIds } }] }
+    : { personId };
+}
 
 /**
  * Render the form for a set of assignments without recording anything, so it can
@@ -573,8 +650,16 @@ export async function renderHandoverPreview(personId: string, assignmentIds: str
     include: { company: true, department: true, position: true },
   });
   const assignments = await db.assetAssignment.findMany({
-    where: { id: { in: assignmentIds }, personId, status: "ASSIGNED", deletedAt: null },
-    include: { asset: { include: { category: true } } },
+    where: {
+      id: { in: assignmentIds },
+      status: "ASSIGNED",
+      deletedAt: null,
+      ...(await handoverHolderFilter(personId)),
+    },
+    include: {
+      asset: { include: { category: true } },
+      department: { select: { name: true, company: { select: { name: true } } } },
+    },
     orderBy: { assignedAt: "asc" },
   });
   if (assignments.length === 0) throw new BusinessRuleError("No eligible assignments for handover.");
@@ -629,7 +714,12 @@ export async function createHandoverForAssignments(
   });
   if (!person) throw new NotFoundError("Employee not found.");
   const assignments = await db.assetAssignment.findMany({
-    where: { id: { in: assignmentIds }, personId, status: "ASSIGNED", deletedAt: null },
+    where: {
+      id: { in: assignmentIds },
+      status: "ASSIGNED",
+      deletedAt: null,
+      ...(await handoverHolderFilter(personId)),
+    },
   });
   if (assignments.length === 0) {
     throw new BusinessRuleError("No eligible assignments for handover.");
@@ -681,7 +771,16 @@ export async function sendHandover(
     where: { id: handoverId },
     include: {
       person: true,
-      assets: { include: { assetAssignment: { include: { asset: { include: { category: true } } } } } },
+      assets: {
+        include: {
+          assetAssignment: {
+            include: {
+              asset: { include: { category: true } },
+              department: { select: { name: true, company: { select: { name: true } } } },
+            },
+          },
+        },
+      },
     },
   });
   if (!handover) throw new NotFoundError("Handover not found.");
@@ -706,7 +805,16 @@ export async function sendHandover(
   const assetLines = handover.assets.map((entry) => {
     const asset = entry.assetAssignment.asset;
     const name = asset.name || asset.assetTag || "Asset";
-    return `${name} · ${asset.category.name}`;
+    const department = entry.assetAssignment.department;
+    // Department equipment is signed for as its head, not for personal use, so
+    // the email says which rows those are.
+    return [
+      name,
+      asset.category.name,
+      department ? `${department.name} department (${department.company.name})` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
   });
   const assetList =
     assetLines.length > 0
@@ -749,7 +857,16 @@ export async function acknowledgeHandover(context: AuditContext, handoverId: str
     where: { id: handoverId },
     include: {
       person: { include: { company: true } },
-      assets: { include: { assetAssignment: { include: { asset: { include: { category: true } } } } } },
+      assets: {
+        include: {
+          assetAssignment: {
+            include: {
+              asset: { include: { category: true } },
+              department: { select: { name: true, company: { select: { name: true } } } },
+            },
+          },
+        },
+      },
     },
   });
   if (!handover) throw new NotFoundError("Handover not found.");
@@ -765,6 +882,7 @@ export async function acknowledgeHandover(context: AuditContext, handoverId: str
     terms: handoverTerms(
       handover.person.company.name,
       handover.assets.some((entry) => entry.assetAssignment.asset.isShared),
+      handover.assets.some((entry) => !!entry.assetAssignment.departmentId),
     ),
     person: {
       id: handover.person.id,
@@ -781,6 +899,8 @@ export async function acknowledgeHandover(context: AuditContext, handoverId: str
         manufacturer: asset.manufacturer,
         model: asset.model,
         category: asset.category.name,
+        heldByDepartment: entry.assetAssignment.department?.name ?? null,
+        heldByDepartmentCompany: entry.assetAssignment.department?.company.name ?? null,
         assignedAt: entry.assetAssignment.assignedAt.toISOString(),
       };
     }),

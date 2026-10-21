@@ -184,6 +184,28 @@ async function companyFilterOptions(user: AuthenticatedUser): Promise<{ value: s
   return companies.map((company) => ({ value: company.id, label: company.name }));
 }
 
+/**
+ * "Ahmed Hasin" or "Housekeeping (department)" for a report's holder column.
+ * A department of another company may hold the asset, and department names
+ * recur across companies, so an outside holder is named with its own company.
+ */
+function assignmentHolder(
+  assignment?: {
+    person: { firstName: string; lastName: string } | null;
+    department: { name: string; companyId: string; company: { name: string } } | null;
+  },
+  assetCompanyId?: string,
+): string {
+  if (!assignment) return "None";
+  if (assignment.department) {
+    const own = assignment.department.companyId === assetCompanyId;
+    return own
+      ? `${assignment.department.name} (department)`
+      : `${assignment.department.name} (department, ${assignment.department.company.name})`;
+  }
+  return assignment.person ? fullName(assignment.person) : "None";
+}
+
 export const STANDARD_REPORTS: ReportDefinition[] = [
   {
     key: "requests-by-application",
@@ -983,7 +1005,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           category: true,
           assignments: {
             where: { status: "ASSIGNED", deletedAt: null },
-            include: { person: true },
+            include: { person: true, department: { select: { id: true, name: true, companyId: true, company: { select: { name: true } } } } },
             take: 1,
           },
         },
@@ -998,7 +1020,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           [asset.manufacturer, asset.model].filter(Boolean).join(" ") || "None",
           asset.serialNumber ?? "None",
           readableEnum(asset.status),
-          asset.assignments[0] ? fullName(asset.assignments[0].person) : "None",
+          assignmentHolder(asset.assignments[0], asset.companyId),
           asset.warrantyExpiry ? formatDate(asset.warrantyExpiry) : "None",
         ]),
       };

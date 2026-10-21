@@ -380,10 +380,11 @@ model Department {
   deletedAt         DateTime? @map("deleted_at")
   deletedById       String?   @map("deleted_by") @db.Uuid
 
-  company         Company          @relation(fields: [companyId], references: [id])
-  defaultLocation Location?        @relation("department_default_location", fields: [defaultLocationId], references: [id])
-  people          Person[]
-  departmentHeads DepartmentHead[]
+  company          Company           @relation(fields: [companyId], references: [id])
+  defaultLocation  Location?         @relation("department_default_location", fields: [defaultLocationId], references: [id])
+  people           Person[]
+  departmentHeads  DepartmentHead[]
+  assetAssignments AssetAssignment[]
 
   @@unique([companyId, name])
   @@index([companyId, isActive])
@@ -1065,10 +1066,15 @@ model Asset {
   @@map("assets")
 }
 
+/// Who holds an asset. Exactly one of personId / departmentId is set: equipment
+/// used by a whole team (a department phone, a back-office printer) is held by
+/// the department itself, so it is not tied to whoever happens to use it, and
+/// never appears in an individual's clearance when they leave.
 model AssetAssignment {
   id             String                @id @default(uuid()) @db.Uuid
   assetId        String                @map("asset_id") @db.Uuid
-  personId       String                @map("person_id") @db.Uuid
+  personId       String?               @map("person_id") @db.Uuid
+  departmentId   String?               @map("department_id") @db.Uuid
   requestItemId  String?               @map("request_item_id") @db.Uuid
   status         AssetAssignmentStatus @default(ASSIGNED) @map("status")
   assignedAt     DateTime              @default(now()) @map("assigned_at")
@@ -1084,7 +1090,8 @@ model AssetAssignment {
   deletedAt      DateTime?             @map("deleted_at")
 
   asset          Asset           @relation(fields: [assetId], references: [id])
-  person         Person          @relation(fields: [personId], references: [id])
+  person         Person?         @relation(fields: [personId], references: [id])
+  department     Department?     @relation(fields: [departmentId], references: [id])
   requestItem    RequestItem?    @relation(fields: [requestItemId], references: [id])
   handoverAssets HandoverAsset[]
   clearanceItems ClearanceItem[]
@@ -1092,6 +1099,7 @@ model AssetAssignment {
 
   @@index([assetId, status])
   @@index([personId, status])
+  @@index([departmentId, status])
   @@map("asset_assignments")
 }
 

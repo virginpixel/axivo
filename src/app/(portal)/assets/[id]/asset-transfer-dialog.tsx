@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
 export interface TransferPerson {
   id: string;
   name: string;
+  employeeId: string;
   companyId: string;
   companyName: string;
 }
@@ -97,7 +98,7 @@ export function AssetTransferDialog({
               options={people.map((person) => ({
                 value: person.id,
                 label: person.name,
-                hint: person.companyName,
+                hint: `${person.employeeId} · ${person.companyName}`,
               }))}
               onChange={setPersonId}
             />

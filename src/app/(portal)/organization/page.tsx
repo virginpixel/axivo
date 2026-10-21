@@ -72,19 +72,24 @@ export default async function OrganizationPage({
     where: { deletedAt: null, isActive: true, companyId: { in: companyIds } },
     orderBy: { lastName: "asc" },
     select: {
-      id: true, firstName: true, lastName: true, companyId: true,
+      id: true, firstName: true, lastName: true, companyId: true, employeeId: true,
       company: { select: { name: true } },
     },
   });
-  const peopleByCompany: Record<string, { id: string; name: string }[]> = {};
+  const peopleByCompany: Record<string, { id: string; name: string; hint?: string }[]> = {};
   for (const person of people) {
-    (peopleByCompany[person.companyId] ??= []).push({ id: person.id, name: fullName(person) });
+    (peopleByCompany[person.companyId] ??= []).push({
+      id: person.id,
+      name: fullName(person),
+      hint: person.employeeId,
+    });
   }
   // Flat, company-labelled list for pickers whose choice is not company-bound,
   // such as Department Heads (a manager may head a department in another company).
   const allPeople = people.map((person) => ({
     id: person.id,
     name: fullName(person),
+    employeeId: person.employeeId,
     companyName: person.company.name,
   }));
 
@@ -230,7 +235,7 @@ async function DepartmentsSection({
 }: {
   companies: { id: string; name: string }[];
   companyIds: string[];
-  allPeople: { id: string; name: string; companyName: string }[];
+  allPeople: { id: string; name: string; employeeId: string; companyName: string }[];
   nameFilter: object;
   activeFilter: object;
   canManage: boolean;

@@ -38,7 +38,7 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
     }),
     db.person.findMany({
       where: { deletedAt: null, isActive: true, companyId: contract.companyId },
-      orderBy: { lastName: "asc" }, select: { id: true, firstName: true, lastName: true, companyId: true },
+      orderBy: { lastName: "asc" }, select: { id: true, firstName: true, lastName: true, companyId: true, employeeId: true },
     }),
     db.documentLink.findMany({
       where: { entityType: "contract", entityId: contract.id, removedAt: null },
@@ -50,9 +50,13 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
   ]);
   const currencyItems = await db.currency.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { code: "asc" }, select: { code: true, name: true } });
 
-  const peopleByCompany: Record<string, { id: string; name: string }[]> = {};
+  const peopleByCompany: Record<string, { id: string; name: string; hint?: string }[]> = {};
   for (const person of people) {
-    (peopleByCompany[person.companyId] ??= []).push({ id: person.id, name: fullName(person) });
+    (peopleByCompany[person.companyId] ??= []).push({
+      id: person.id,
+      name: fullName(person),
+      hint: person.employeeId,
+    });
   }
   const catalogs = { vendors: vendorItems, categories: categoryItems, currencies: currencyItems };
   const documents = docLinks

@@ -363,7 +363,7 @@ export function DelegationDialog({
   peopleByCompany,
 }: {
   companies: { id: string; name: string }[];
-  peopleByCompany: Record<string, { id: string; name: string }[]>;
+  peopleByCompany: Record<string, { id: string; name: string; hint?: string }[]>;
 }) {
   const { run, loading, fieldErrors } = useAction();
   const [open, setOpen] = useState(false);

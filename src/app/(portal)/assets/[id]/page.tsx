@@ -30,7 +30,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
       location: true,
       assignments: {
         where: { deletedAt: null },
-        include: { person: true },
+        include: { person: true, department: { select: { id: true, name: true, companyId: true, company: { select: { name: true } } } } },
         orderBy: { assignedAt: "desc" },
       },
       maintenance: { where: { deletedAt: null }, orderBy: { startDate: "desc" } },
@@ -51,7 +51,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
   const isGlobalAdmin = user.systemRoleKey === "SYSTEM_ADMINISTRATOR";
   const companyScope = isGlobalAdmin ? {} : { companyId: user.companyId };
 
-  const [companies, categories, locations, people, manufacturers, models, vendors, documents, assetDocuments, otherAssets] =
+  const [companies, categories, locations, people, departments, manufacturers, models, vendors, documents, assetDocuments, otherAssets] =
     await Promise.all([
     db.company.findMany({
       where: { deletedAt: null, isActive: true, ...(isGlobalAdmin ? {} : { id: user.companyId }) },
@@ -69,7 +69,15 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
     db.person.findMany({
       where: { deletedAt: null, isActive: true, ...companyScope },
       orderBy: { lastName: "asc" },
-      select: { id: true, firstName: true, lastName: true, companyId: true, company: { select: { name: true } } },
+      select: {
+        id: true, firstName: true, lastName: true, companyId: true, employeeId: true,
+        company: { select: { name: true } },
+      },
+    }),
+    db.department.findMany({
+      where: { deletedAt: null, isActive: true, ...companyScope },
+      orderBy: [{ company: { name: "asc" } }, { name: "asc" }],
+      select: { id: true, name: true, companyId: true, company: { select: { name: true } } },
     }),
     db.manufacturer.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { name: "asc" }, select: { name: true } }),
     db.assetModel.findMany({
@@ -149,9 +157,18 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
     ["ASSIGNED", "PENDING"].includes(assignment.status),
   );
   const activeMaintenance = asset.maintenance.find((entry) => entry.status === "IN_PROGRESS");
+  // A department of any company may hold an asset, so each option names its
+  // owning company - "IT" alone exists in every property.
+  const departmentOptions = departments.map((department) => ({
+    id: department.id,
+    name: department.name,
+    companyId: department.companyId,
+    companyName: department.company.name,
+  }));
   const peopleOptions = people.map((person) => ({
     id: person.id,
     name: fullName(person),
+    employeeId: person.employeeId,
     companyId: person.companyId,
     companyName: person.company.name,
   }));
@@ -193,7 +210,12 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                 people={peopleOptions}
                 currentHolder={
                   activeAssignment
-                    ? { assignmentId: activeAssignment.id, name: fullName(activeAssignment.person) }
+                    ? {
+                        assignmentId: activeAssignment.id,
+                        name: activeAssignment.department
+                          ? `${activeAssignment.department.name} department (${activeAssignment.department.company.name})`
+                          : fullName(activeAssignment.person!),
+                      }
                     : null
                 }
               />
@@ -219,13 +241,26 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
               activeAssignmentId={activeAssignment?.id ?? null}
               currentHolderIds={asset.assignments
                 .filter((assignment) => assignment.status === "ASSIGNED" || assignment.status === "PENDING")
-                .map((assignment) => assignment.personId)}
+                .map((assignment) => assignment.personId)
+                .filter((id): id is string => !!id)}
+              heldByDepartment={
+                activeAssignment?.department
+                  ? activeAssignment.department.companyId === asset.companyId
+                    ? activeAssignment.department.name
+                    : `${activeAssignment.department.name} (${activeAssignment.department.company.name})`
+                  : null
+              }
               activeMaintenanceId={activeMaintenance?.id ?? null}
               companies={companies}
               categories={categories}
               locations={locationOptions}
               catalogs={catalogs}
-              people={peopleOptions.map((person) => ({ id: person.id, name: person.name }))}
+              people={peopleOptions.map((person) => ({
+                id: person.id,
+                name: person.name,
+                hint: person.employeeId,
+              }))}
+              departments={departmentOptions}
               permissions={{ canManage, canAssign, canMaintain, canDispose }}
             />
           </div>
@@ -330,15 +365,26 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
         <CardContent>
           <PaginatedTable
             emptyMessage="Never assigned."
-            headers={<><TH>Employee</TH><TH>Assigned</TH><TH>Assigned by</TH><TH>Returned</TH><TH>Acknowledged</TH><TH>Status</TH></>}
+            headers={<><TH>Held by</TH><TH>Assigned</TH><TH>Assigned by</TH><TH>Returned</TH><TH>Acknowledged</TH><TH>Status</TH></>}
             rows={asset.assignments.map((assignment) => ({
               key: assignment.id,
               node: (
                 <TR>
                   <TD>
-                    <Link href={`/people/${assignment.personId}`} className="font-medium text-foreground hover:underline">
-                      {fullName(assignment.person)}
-                    </Link>
+                    {assignment.department ? (
+                      <span className="font-medium text-foreground">
+                        {assignment.department.companyId === asset.companyId
+                          ? assignment.department.name
+                          : `${assignment.department.name} (${assignment.department.company.name})`}
+                        <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
+                          Dept
+                        </span>
+                      </span>
+                    ) : (
+                      <Link href={`/people/${assignment.personId}`} className="font-medium text-foreground hover:underline">
+                        {fullName(assignment.person!)}
+                      </Link>
+                    )}
                   </TD>
                   <TD>{formatDate(assignment.assignedAt)}</TD>
                   <TD>{assignment.assignedByLabel ?? "None"}</TD>

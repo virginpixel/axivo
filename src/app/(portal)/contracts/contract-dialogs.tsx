@@ -63,7 +63,7 @@ export function ContractDialog({
   contract,
 }: {
   companies: { id: string; name: string }[];
-  peopleByCompany: Record<string, { id: string; name: string }[]>;
+  peopleByCompany: Record<string, { id: string; name: string; hint?: string }[]>;
   catalogs: ContractCatalogs;
   contract?: ContractRecord;
 }) {
@@ -282,7 +282,7 @@ export function ContractRowActions({
 }: {
   contract: ContractRecord;
   companies: { id: string; name: string }[];
-  peopleByCompany: Record<string, { id: string; name: string }[]>;
+  peopleByCompany: Record<string, { id: string; name: string; hint?: string }[]>;
   catalogs: ContractCatalogs;
   hideView?: boolean;
 }) {

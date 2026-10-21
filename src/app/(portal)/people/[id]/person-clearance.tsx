@@ -19,6 +19,8 @@ export interface AssignedAsset {
   assignmentId: string;
   label: string;
   reference: string | null;
+  /** Department this asset belongs to, when it is held by the team, not the person. */
+  heldBy?: string | null;
 }
 
 /**
@@ -125,7 +127,8 @@ export function GenerateHandoverButton({
       <Dialog open={picking} onOpenChange={setPicking}>
         <DialogContent title="Select assets for the handover form">
           <p className="mb-3 text-sm text-muted-foreground">
-            Choose which of the assets currently assigned to this employee should appear on the form.
+            Choose which of the assets this employee signs for should appear on the form - their own,
+            and any held by a department they head.
           </p>
           {assets.length === 0 ? (
             <p className="text-sm text-muted-foreground">This employee has no assigned assets.</p>
@@ -141,6 +144,11 @@ export function GenerateHandoverButton({
                       onChange={() => toggle(asset.assignmentId)}
                     />
                     <span className="font-medium">{asset.label}</span>
+                    {asset.heldBy ? (
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                        {asset.heldBy} · Dept
+                      </span>
+                    ) : null}
                     {asset.reference ? (
                       <span className="text-xs text-muted-foreground">{asset.reference}</span>
                     ) : null}

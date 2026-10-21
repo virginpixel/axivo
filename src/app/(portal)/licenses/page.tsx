@@ -54,7 +54,8 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
     }),
     db.person.findMany({
       where: { deletedAt: null, isActive: true, ...companyScope },
-      orderBy: { lastName: "asc" }, select: { id: true, firstName: true, lastName: true, companyId: true },
+      orderBy: { lastName: "asc" },
+      select: { id: true, firstName: true, lastName: true, companyId: true, employeeId: true },
     }),
     db.contract.findMany({
       where: { deletedAt: null, ...companyScope },
@@ -84,12 +85,16 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
     license.purchases.some((purchase) => purchase.expiryDate && purchase.expiryDate <= soon && purchase.expiryDate >= new Date()),
   ).length;
 
-  const peopleByCompany: Record<string, { id: string; name: string }[]> = {};
+  const peopleByCompany: Record<string, { id: string; name: string; hint?: string }[]> = {};
   for (const person of people) {
-    (peopleByCompany[person.companyId] ??= []).push({ id: person.id, name: fullName(person) });
+    (peopleByCompany[person.companyId] ??= []).push({
+      id: person.id,
+      name: fullName(person),
+      hint: person.employeeId,
+    });
   }
   // Shared licenses can be assigned to anyone, so they draw from the full list.
-  const allPeople = people.map((person) => ({ id: person.id, name: fullName(person) }));
+  const allPeople = people.map((person) => ({ id: person.id, name: fullName(person), hint: person.employeeId }));
 
   return (
     <div>
