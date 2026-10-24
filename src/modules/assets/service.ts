@@ -494,6 +494,98 @@ export async function returnAsset(context: AuditContext, assignmentId: string, n
   });
 }
 
+/**
+ * Undo an assignment that should never have been made: the wrong employee was
+ * picked and the equipment never changed hands.
+ *
+ * Deliberately not a return. A return states that somebody held the asset and
+ * gave it back, which would be untrue of them - and their profile is the record
+ * of what they are answerable for. So the cancelled assignment leaves no trace
+ * there, while the asset's own history keeps it (its chain of custody must be
+ * complete) and the audit trail records who corrected it and why.
+ *
+ * Refused once the handover has been acknowledged: at that point the person has
+ * signed for the asset, and the way back is a return.
+ */
+export async function cancelAssignment(context: AuditContext, assignmentId: string, reason: string) {
+  const existing = await db.assetAssignment.findFirst({
+    where: { id: assignmentId, deletedAt: null },
+    include: {
+      asset: true,
+      person: true,
+      department: { include: { company: true } },
+      handoverAssets: { include: { handover: true } },
+    },
+  });
+  if (!existing) throw new NotFoundError("Asset assignment not found.");
+  if (existing.status !== "ASSIGNED" && existing.status !== "PENDING") {
+    throw new BusinessRuleError("Only an active assignment can be cancelled.");
+  }
+  const signed =
+    !!existing.acknowledgedAt ||
+    existing.handoverAssets.some((entry) => entry.handover.status === "ACKNOWLEDGED");
+  if (signed) {
+    throw new BusinessRuleError(
+      "This handover has been acknowledged, so the assignment stands. Return the asset instead.",
+    );
+  }
+  // A form already sent names the wrong holder, so it is void - including any
+  // other assets on it, which need a fresh form once the mix-up is sorted out.
+  const openHandovers = existing.handoverAssets
+    .filter((entry) => entry.handover.status === "PENDING")
+    .map((entry) => entry.handover);
+  const holder = existing.department
+    ? `the ${existing.department.name} department (${existing.department.company.name})`
+    : `${existing.person!.firstName} ${existing.person!.lastName}`;
+
+  const result = await db.$transaction(async (tx) => {
+    const assignment = await tx.assetAssignment.update({
+      where: { id: assignmentId },
+      data: { status: "CANCELLED", notes: reason },
+    });
+    for (const handover of openHandovers) {
+      await tx.handover.update({ where: { id: handover.id }, data: { status: "CANCELLED" } });
+    }
+    // Returning frees the asset unless somebody else still holds it; cancelling
+    // an assignment that should not exist is no different.
+    const otherHolders = await tx.assetAssignment.count({
+      where: {
+        assetId: existing.assetId,
+        id: { not: assignmentId },
+        status: { in: ["PENDING", "ASSIGNED"] },
+        deletedAt: null,
+      },
+    });
+    if (otherHolders === 0) {
+      await tx.asset.update({ where: { id: existing.assetId }, data: { status: "AVAILABLE" } });
+    }
+    await recordAudit(
+      { ...context, companyId: existing.asset.companyId },
+      {
+        module: MODULE,
+        eventType: "asset.assignment_cancelled",
+        action: `Cancelled assignment of "${existing.asset.name}" to ${holder} (assigned in error: ${reason})`,
+        targetType: "asset_assignment",
+        targetId: assignmentId,
+        targetLabel: existing.asset.name,
+        details: {
+          reason,
+          cancelledHandovers: openHandovers.length,
+        },
+      },
+      tx,
+    );
+    return assignment;
+  });
+
+  // Outside the transaction: the links are dead either way, and a token-store
+  // failure must not undo the correction itself.
+  for (const handover of openHandovers) {
+    await revokeTokensForTarget("handover", handover.id);
+  }
+  return result;
+}
+
 // ---------------------------------------------------------------------------
 // Handover (Doc 11 Ch6)
 // ---------------------------------------------------------------------------

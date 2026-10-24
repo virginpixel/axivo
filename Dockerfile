@@ -3,15 +3,27 @@
 # Multi-stage build producing two targets:
 #   web    - Next.js standalone server (stateless)
 #   worker - background worker + Prisma CLI (also used for migrations/seed)
+#
+# The base is pinned by digest, not just by tag. A moving tag re-bases every
+# image on whatever Docker Hub published that week, which changes every layer
+# digest below it - so a self-hosted install re-downloads all ~500MB on an
+# update that only changed application code. Bump this deliberately (and say so
+# in the release notes) rather than drifting.
 # =============================================================================
 
-FROM node:22-alpine AS deps
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
 RUN npm ci --no-audit --no-fund
 
-FROM node:22-alpine AS builder
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS prod-deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY prisma ./prisma
+RUN npm ci --omit=dev --no-audit --no-fund
+
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -23,7 +35,7 @@ RUN npx prisma generate && npm run build
 # -----------------------------------------------------------------------------
 # Web application (standalone, least privilege)
 # -----------------------------------------------------------------------------
-FROM node:22-alpine AS web
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS web
 WORKDIR /app
 # Stamped by CI from the release tag; the app reads AXIVO_VERSION to report its
 # running version and to compare against the latest release when checking for
@@ -49,14 +61,17 @@ CMD ["node", "server.js"]
 # -----------------------------------------------------------------------------
 # Background worker + migration/seed runner
 # -----------------------------------------------------------------------------
-FROM node:22-alpine AS worker
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS worker
 WORKDIR /app
 ARG AXIVO_VERSION=dev
 LABEL org.opencontainers.image.source="https://github.com/virginpixel/axivo"
 LABEL org.opencontainers.image.version="${AXIVO_VERSION}"
 ENV NODE_ENV=production STORAGE_PATH=/var/lib/axivo/storage AXIVO_VERSION=${AXIVO_VERSION}
 RUN addgroup -S axivo && adduser -S axivo -G axivo
-COPY --from=deps --chown=axivo:axivo /app/node_modules ./node_modules
+# Production dependencies only - prisma (migrations) and tsx (the worker's
+# entrypoint) are runtime dependencies for this image, so they are declared as
+# such in package.json rather than pulled from the build tree.
+COPY --from=prod-deps --chown=axivo:axivo /app/node_modules ./node_modules
 COPY --chown=axivo:axivo package.json tsconfig.json ./
 COPY --chown=axivo:axivo prisma ./prisma
 COPY --chown=axivo:axivo src ./src

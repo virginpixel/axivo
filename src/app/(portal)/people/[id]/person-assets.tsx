@@ -6,6 +6,7 @@ import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
 import { StatusBadge } from "@/shared/ui/badge";
 import { cn } from "@/shared/utils";
 import { ReturnAssetButton } from "./person-clearance";
+import { CancelAssignmentButton } from "../../assets/cancel-assignment";
 
 export interface PersonAssetRow {
   assignmentId: string;
@@ -18,6 +19,8 @@ export interface PersonAssetRow {
   assignedBy: string;
   returnedAt: string | null;
   status: string;
+  /** Signed for: it can then only be returned, never cancelled as an error. */
+  acknowledged: boolean;
 }
 
 /**
@@ -99,7 +102,12 @@ export function PersonAssets({
                 <TD><StatusBadge status={row.status} /></TD>
                 {canManage && view === "current" ? (
                   <TD className="text-right">
-                    <ReturnAssetButton assignmentId={row.assignmentId} />
+                    <span className="flex items-center justify-end">
+                      {row.acknowledged ? null : (
+                        <CancelAssignmentButton assignmentId={row.assignmentId} assetName={row.name} />
+                      )}
+                      <ReturnAssetButton assignmentId={row.assignmentId} />
+                    </span>
                   </TD>
                 ) : null}
               </TR>

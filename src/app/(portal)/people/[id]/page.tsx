@@ -156,6 +156,7 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
     assignedAt: Date;
     assignedByLabel: string | null;
     returnedAt: Date | null;
+    acknowledgedAt: Date | null;
     asset: { id: string; name: string; assetTag: string | null; model: string | null };
     department?: { name: string; company: { name: string } } | null;
   }): PersonAssetRow => ({
@@ -172,6 +173,7 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
     assignedBy: assignment.assignedByLabel ?? "-",
     returnedAt: assignment.returnedAt ? formatDate(assignment.returnedAt) : null,
     status: assignment.status,
+    acknowledged: !!assignment.acknowledgedAt,
   });
   const currentAssetRows = [
     ...person.assetAssignments
@@ -179,8 +181,10 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
       .map((assignment) => assetRow(assignment)),
     ...departmentAssignments.map((assignment) => assetRow(assignment)),
   ];
+  // Only genuine returns: an assignment cancelled as a mistake never belonged
+  // to this person, so it is absent from their record altogether.
   const returnedAssetRows = person.assetAssignments
-    .filter((assignment) => assignment.status !== "ASSIGNED" && assignment.status !== "PENDING")
+    .filter((assignment) => assignment.status === "RETURNED")
     .map((assignment) => assetRow(assignment));
 
   // Assets this person can sign a handover for: their own, plus their

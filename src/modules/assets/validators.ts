@@ -73,6 +73,14 @@ export const assetAssignmentSchema = z
     }
   });
 
+/** Why an assignment is being undone; kept with the audit entry. */
+export const assignmentCancelSchema = z
+  .object({
+    assignmentId: uuidSchema,
+    reason: requiredText("Reason", 500),
+  })
+  .strict();
+
 export const maintenanceSchema = z
   .object({
     assetId: uuidSchema,
@@ -154,6 +162,7 @@ export const clearanceVerifySchema = z
 export type AssetCategoryInput = z.infer<typeof assetCategorySchema>;
 export type AssetInput = z.infer<typeof assetSchema>;
 export type AssetAssignmentInput = z.infer<typeof assetAssignmentSchema>;
+export type AssignmentCancelInput = z.infer<typeof assignmentCancelSchema>;
 export type MaintenanceInput = z.infer<typeof maintenanceSchema>;
 export type DisposalInput = z.infer<typeof disposalSchema>;
 export type AssetTransferInput = z.infer<typeof assetTransferSchema>;

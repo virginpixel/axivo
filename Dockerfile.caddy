@@ -2,8 +2,8 @@
 # a customer connects their domain we can obtain a real Let's Encrypt cert via
 # the DNS-01 challenge (no exposed ports) and serve trusted HTTPS on the LAN.
 # In the default install Caddy simply serves plain HTTP.
-FROM caddy:2-builder AS builder
+FROM caddy:2-builder@sha256:c2fc374fd352439d76e1777b28d97d9f6d9c1dd86116db9227460374d46097d5 AS builder
 RUN xcaddy build --with github.com/caddy-dns/cloudflare
 
-FROM caddy:2-alpine
+FROM caddy:2-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy

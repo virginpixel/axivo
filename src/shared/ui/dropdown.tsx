@@ -1,13 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { MoreHorizontal } from "lucide-react";
 import { cn } from "@/shared/utils";
 
 /**
  * A small "kebab" (three-dot) actions menu. Consolidates a row's actions into
- * one control so tables stay clean. Closes on outside click, Escape, or when
- * any item inside is activated.
+ * one control so tables stay clean.
+ *
+ * The panel is portalled to the body: tables scroll horizontally
+ * (`overflow-x-auto`), which CSS turns into a vertical clip as well, so a panel
+ * rendered inside the row is cut off on the last rows and stretches the table's
+ * scroll area. Portalling also lets the menu flip above the trigger when it is
+ * near the bottom of the viewport.
+ *
+ * Non-modal: menu items here open dialogs, and a modal menu would still own
+ * focus and pointer events as the dialog appears.
  */
 export function ActionMenu({
   label = "Actions",
@@ -18,51 +26,31 @@ export function ActionMenu({
   align?: "left" | "right";
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (event: MouseEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
   return (
-    <div ref={ref} className="relative inline-block text-left">
-      <button
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label={label}
-        onClick={() => setOpen((value) => !value)}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
-      >
-        <MoreHorizontal className="h-4 w-4" />
-      </button>
-      {open ? (
-        <div
-          role="menu"
-          className={cn(
-            "absolute z-50 mt-1 min-w-[11rem] rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md",
-            align === "right" ? "right-0" : "left-0",
-          )}
-          // Any activation inside bubbles here and dismisses the menu.
-          onClick={() => setOpen(false)}
+    <DropdownMenu.Root modal={false}>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 data-[state=open]:bg-accent data-[state=open]:text-foreground"
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align={align === "right" ? "end" : "start"}
+          sideOffset={4}
+          collisionPadding={8}
+          // Returning focus to the trigger would pull it straight back out of a
+          // dialog opened by the item that was just chosen.
+          onCloseAutoFocus={(event) => event.preventDefault()}
+          className="z-[200] min-w-[11rem] rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-pop"
         >
           {children}
-        </div>
-      ) : null}
-    </div>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }
 
@@ -79,19 +67,17 @@ export function ActionMenuItem({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      role="menuitem"
-      onClick={onClick}
+    <DropdownMenu.Item
+      onSelect={() => onClick()}
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-sm px-2.5 py-1.5 text-left text-sm transition-colors",
+        "flex w-full cursor-pointer items-center gap-2.5 rounded-sm px-2.5 py-1.5 text-left text-sm outline-none transition-colors",
         tone === "destructive"
-          ? "text-destructive hover:bg-destructive/10"
-          : "hover:bg-accent hover:text-accent-foreground",
+          ? "text-destructive focus:bg-destructive/10 data-[highlighted]:bg-destructive/10"
+          : "focus:bg-accent focus:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
       )}
     >
       {icon ? <span className="shrink-0 opacity-80">{icon}</span> : null}
       {children}
-    </button>
+    </DropdownMenu.Item>
   );
 }

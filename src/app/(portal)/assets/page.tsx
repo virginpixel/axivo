@@ -318,6 +318,7 @@ export default async function AssetsPage({
                           customFields: (asset.customFields as Record<string, string> | null) ?? null,
                         }}
                         activeAssignmentId={soleAssignment?.id ?? null}
+                        activeAssignmentAcknowledged={!!soleAssignment?.acknowledgedAt}
                         currentHolderIds={asset.assignments
                           .map((assignment) => assignment.personId)
                           .filter((id): id is string => !!id)}

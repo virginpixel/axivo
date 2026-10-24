@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Plus, Copy, UserPlus, Undo2, Wrench, Trash2, ClipboardCheck } from "lucide-react";
+import { Pencil, Plus, Copy, UserPlus, Undo2, Wrench, Trash2, ClipboardCheck, Ban } from "lucide-react";
 import { ActionMenu, ActionMenuItem } from "@/shared/ui/dropdown";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
@@ -40,6 +40,7 @@ import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
 import { StatusBadge } from "@/shared/ui/badge";
 import { CUSTOM_FIELD_PLACEHOLDERS, type CustomFieldFormat } from "@/modules/catalogs/format";
 import { cn } from "@/shared/utils";
+import { CancelAssignmentDialog } from "./cancel-assignment";
 import type { ActionResult } from "@/shared/errors";
 
 /** Wrap a quick-create action into the Combobox onCreate contract, toasting failures. */
@@ -561,6 +562,7 @@ export function AssetDialog({
 export function AssetRowActions({
   asset,
   activeAssignmentId,
+  activeAssignmentAcknowledged = false,
   activeMaintenanceId,
   companies,
   categories,
@@ -578,6 +580,8 @@ export function AssetRowActions({
   /** Name of the department currently holding it, if any; blocks other holders. */
   heldByDepartment?: string | null;
   activeAssignmentId: string | null;
+  /** An acknowledged assignment can only be returned, never cancelled. */
+  activeAssignmentAcknowledged?: boolean;
   activeMaintenanceId: string | null;
   companies: Company[];
   categories: Category[];
@@ -592,6 +596,7 @@ export function AssetRowActions({
   const [editOpen, setEditOpen] = useState(false);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [personId, setPersonId] = useState("");
@@ -631,6 +636,14 @@ export function AssetRowActions({
             Return
           </ActionMenuItem>
         ) : null}
+        {/* Offered alongside Return, never instead of it: assigning is not
+            handing over here, so a missing handover does not make it a mistake.
+            Only the person doing it knows which of the two happened. */}
+        {permissions.canAssign && activeAssignmentId && !activeAssignmentAcknowledged ? (
+          <ActionMenuItem icon={<Ban className="h-4 w-4" />} onClick={() => setCancelOpen(true)}>
+            Cancel assignment
+          </ActionMenuItem>
+        ) : null}
         {permissions.canMaintain && asset.status === "UNDER_REPAIR" && activeMaintenanceId ? (
           <ActionMenuItem
             icon={<Wrench className="h-4 w-4" />}
@@ -668,6 +681,15 @@ export function AssetRowActions({
           <AssetDialog companies={companies} categories={categories} locations={locations} catalogs={catalogs} asset={asset} open={editOpen} onOpenChange={setEditOpen} hideTrigger />
           <AssetDialog companies={companies} categories={categories} locations={locations} catalogs={catalogs} cloneFrom={asset} open={cloneOpen} onOpenChange={setCloneOpen} hideTrigger />
         </>
+      ) : null}
+
+      {permissions.canAssign && activeAssignmentId && !activeAssignmentAcknowledged ? (
+        <CancelAssignmentDialog
+          assignmentId={activeAssignmentId}
+          assetName={asset.name}
+          open={cancelOpen}
+          onOpenChange={setCancelOpen}
+        />
       ) : null}
 
       {permissions.canAssign && canAssignNow ? (

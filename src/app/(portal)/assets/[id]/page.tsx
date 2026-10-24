@@ -239,6 +239,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                 customFields: assetCustomFields,
               }}
               activeAssignmentId={activeAssignment?.id ?? null}
+              activeAssignmentAcknowledged={!!activeAssignment?.acknowledgedAt}
               currentHolderIds={asset.assignments
                 .filter((assignment) => assignment.status === "ASSIGNED" || assignment.status === "PENDING")
                 .map((assignment) => assignment.personId)
@@ -385,6 +386,12 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                         {fullName(assignment.person!)}
                       </Link>
                     )}
+                    {/* The asset keeps the correction its holder's profile does
+                        not, so the reason belongs here rather than only in the
+                        audit trail. */}
+                    {assignment.status === "CANCELLED" && assignment.notes ? (
+                      <p className="text-xs text-muted-foreground">Assigned in error: {assignment.notes}</p>
+                    ) : null}
                   </TD>
                   <TD>{formatDate(assignment.assignedAt)}</TD>
                   <TD>{assignment.assignedByLabel ?? "None"}</TD>

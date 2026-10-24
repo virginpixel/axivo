@@ -12,6 +12,7 @@ import {
   assetSchema,
   assetStatusSchema,
   assetAssignmentSchema,
+  assignmentCancelSchema,
   maintenanceSchema,
   disposalSchema,
   assetTransferSchema,
@@ -151,6 +152,26 @@ export async function assignAssetAction(raw: unknown): Promise<ActionResult<{ id
     revalidatePath("/assets", "layout");
     revalidatePath("/people", "layout");
     return ok({ id: result.assignment.id });
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+/**
+ * Undo an assignment made against the wrong person. Not a return: see
+ * service.cancelAssignment for why the distinction is kept.
+ */
+export async function cancelAssignmentAction(
+  assignmentId: string,
+  reason: string,
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const { audit } = await requirePermission("assets.assignments.manage");
+    const input = parse(assignmentCancelSchema, { assignmentId, reason });
+    const assignment = await service.cancelAssignment(audit, input.assignmentId, input.reason);
+    revalidatePath("/assets", "layout");
+    revalidatePath("/people", "layout");
+    return ok({ id: assignment.id });
   } catch (error) {
     return toActionError(error);
   }
