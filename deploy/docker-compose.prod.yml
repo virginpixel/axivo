@@ -146,8 +146,13 @@ services:
   # profile is active (the in-app tunnel setup starts it via the agent). It
   # connects outbound to Cloudflare - no inbound ports - and forwards the public
   # hostname to caddy per the tunnel's dashboard configuration.
+  # Pinned, not "latest": the connector is a security-sensitive component and a
+  # floating tag means whatever was pulled the day the tunnel was first enabled
+  # keeps running (it is started with --no-autoupdate). Bump this deliberately
+  # when Cloudflare publishes a fix; a pinned tag that is not on the host yet is
+  # pulled on the next update, so the bump actually reaches installs.
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2026.11.0
     restart: unless-stopped
     profiles: ["tunnel"]
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-}

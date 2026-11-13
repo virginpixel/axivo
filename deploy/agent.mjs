@@ -92,7 +92,13 @@ fetch "${raw}/Caddyfile.https.example" "${DIR}/Caddyfile.https"
 echo "==> Pinning version ${version}"
 sed -i "s/^AXIVO_VERSION=.*/AXIVO_VERSION=${version}/" "${ENV_FILE}"
 echo "==> Pulling images"
-${COMPOSE} pull
+# Compose skips services behind a profile, so without this the tunnel connector
+# is never refreshed by an update - it would sit on its original image forever.
+if grep -q '^TUNNEL_ENABLED=1' "${ENV_FILE}"; then
+  ${COMPOSE} --profile tunnel pull
+else
+  ${COMPOSE} pull
+fi
 
 echo "==> Recreating services (migrations run automatically)"
 if grep -q '^TUNNEL_ENABLED=1' "${ENV_FILE}"; then

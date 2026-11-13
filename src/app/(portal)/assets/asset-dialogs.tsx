@@ -443,6 +443,7 @@ export function AssetDialog({
           <div>
             <Label htmlFor="asset-serial">Serial number</Label>
             <Input id="asset-serial" value={form.serialNumber} onChange={(e) => setForm({ ...form, serialNumber: e.target.value })} />
+            <FieldError message={fieldErrors.serialNumber} />
           </div>
           <div>
             <Label htmlFor="asset-location">Location</Label>

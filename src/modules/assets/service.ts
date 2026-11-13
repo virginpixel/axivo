@@ -193,24 +193,66 @@ async function normalizeAssetCustomFields(
   return clean;
 }
 
+/**
+ * An asset's identifying fields must not repeat within a company. A duplicate
+ * name or serial is nearly always the same unit entered twice, and the second
+ * record silently splits that unit's history - assignments on one row, the
+ * handover on the other. Case-insensitive, because "shmv0370" and "SHMV0370"
+ * are the same device.
+ *
+ * On an edit, only a field the user actually changed is checked: an install
+ * that already contains a duplicate pair must stay editable, or its owner
+ * cannot correct the very records that need correcting.
+ */
+async function assertAssetIdentifiersAreFree(
+  input: AssetInput,
+  existing?: { id: string; name: string; assetTag: string | null; serialNumber: string | null },
+) {
+  const unchanged = (value: string | null | undefined, previous: string | null) =>
+    !!existing && (value ?? "").toLowerCase() === (previous ?? "").toLowerCase();
+  const scope = {
+    companyId: input.companyId,
+    deletedAt: null,
+    ...(existing ? { id: { not: existing.id } } : {}),
+  };
+  const [duplicateTag, duplicateName, duplicateSerial] = await Promise.all([
+    input.assetTag && !unchanged(input.assetTag, existing?.assetTag ?? null)
+      ? db.asset.findFirst({ where: { ...scope, assetTag: { equals: input.assetTag, mode: "insensitive" } } })
+      : Promise.resolve(null),
+    !unchanged(input.name, existing?.name ?? null)
+      ? db.asset.findFirst({ where: { ...scope, name: { equals: input.name, mode: "insensitive" } } })
+      : Promise.resolve(null),
+    input.serialNumber && !unchanged(input.serialNumber, existing?.serialNumber ?? null)
+      ? db.asset.findFirst({
+          where: { ...scope, serialNumber: { equals: input.serialNumber, mode: "insensitive" } },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  // Reported together: fixing one at a time, with a round trip each, is a poor
+  // way to learn that two fields clash.
+  const errors: Record<string, string> = {};
+  if (duplicateTag) {
+    errors.assetTag = "This asset tag already exists in this company.";
+  }
+  if (duplicateName) {
+    errors.name = `An asset named "${duplicateName.name}" already exists in this company${
+      duplicateName.serialNumber ? ` (serial ${duplicateName.serialNumber})` : ""
+    }.`;
+  }
+  if (duplicateSerial) {
+    errors.serialNumber = `This serial number is already recorded on "${duplicateSerial.name}".`;
+  }
+  if (Object.keys(errors).length > 0) throw new ValidationError(undefined, errors);
+}
+
 export async function createAsset(context: AuditContext, input: AssetInput) {
   const category = await db.assetCategory.findFirst({
     where: { id: input.categoryId, deletedAt: null },
   });
   if (!category) throw new BusinessRuleError("Asset category not found.");
   if (!category.isActive) throw new BusinessRuleError("Disabled categories cannot receive new assets.");
-  if (input.assetTag) {
-    const duplicateTag = await db.asset.findFirst({
-      where: {
-        companyId: input.companyId,
-        assetTag: { equals: input.assetTag, mode: "insensitive" },
-        deletedAt: null,
-      },
-    });
-    if (duplicateTag) {
-      throw new ValidationError(undefined, { assetTag: "This asset tag already exists in this company." });
-    }
-  }
+  await assertAssetIdentifiersAreFree(input);
   if (input.locationId) {
     const location = await db.location.findFirst({
       where: { id: input.locationId, companyId: input.companyId, deletedAt: null },
@@ -244,19 +286,7 @@ export async function updateAsset(context: AuditContext, id: string, input: Asse
   if (existing.companyId !== input.companyId) {
     throw new BusinessRuleError("Assets cannot be moved between companies unless explicitly transferred.");
   }
-  if (input.assetTag) {
-    const duplicateTag = await db.asset.findFirst({
-      where: {
-        companyId: input.companyId,
-        assetTag: { equals: input.assetTag, mode: "insensitive" },
-        deletedAt: null,
-        id: { not: id },
-      },
-    });
-    if (duplicateTag) {
-      throw new ValidationError(undefined, { assetTag: "This asset tag already exists in this company." });
-    }
-  }
+  await assertAssetIdentifiersAreFree(input, existing);
   const customFields = await normalizeAssetCustomFields(input.model, input.customFields);
   return db.$transaction(async (tx) => {
     const asset = await tx.asset.update({
