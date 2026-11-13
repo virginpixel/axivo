@@ -73,10 +73,20 @@ jobs:
           build-args: |
             AXIVO_VERSION=${{ steps.ver.outputs.version }}
           # Reuse the previous release's layers, so an update ships only what
-          # actually changed instead of a fresh copy of node_modules. Scoped per
-          # image: the four matrix jobs would otherwise evict each other.
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          # actually changed instead of a fresh copy of node_modules.
+          #
+          # The cache lives in the registry, not in the Actions cache. GitHub
+          # scopes Actions caches by ref, and this workflow only ever runs on a
+          # tag, so each release wrote a scope of its own and read nothing from
+          # the release before it - measured on v1.0.26, whose 207 MB worker
+          # node_modules layer rebuilt despite an unchanged lockfile. A registry
+          # cache has no ref scoping: every run reads and writes the same
+          # :buildcache tag. One tag per image, so the matrix jobs don't evict
+          # each other.
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:buildcache
+          # ignore-error: a registry that refuses the cache manifest must not
+          # fail a release. Worst case we lose the cache, not the images.
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:buildcache,mode=max,ignore-error=true
           tags: |
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ steps.ver.outputs.version }}
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:latest
