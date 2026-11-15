@@ -375,7 +375,7 @@ describe("end-to-end request lifecycle", () => {
     const asset = await assetsService.createAsset(actor, {
       companyId: company.id, categoryId: category.id, name: "Test Laptop 1", assetTag: "LT-0001",
       serialNumber: null, manufacturer: null, model: null, locationId: null,
-      supplier: null, purchaseDate: undefined, purchasePrice: undefined, currency: undefined,
+      supplier: null, purchaseDate: null, purchasePrice: null, currency: null,
       warrantyExpiry: null, notes: null, isShared: false,
     });
 

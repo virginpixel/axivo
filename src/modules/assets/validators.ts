@@ -33,14 +33,9 @@ export const assetSchema = z
     model: optionalText(200),
     locationId: nullableUuid(),
     supplier: optionalText(200),
-    // Purchase details are shown on the asset page but no form edits them yet,
-    // so the asset dialog does not submit these three. They stay .optional() -
-    // absent has to mean "leave alone" here, or every ordinary edit (a rename,
-    // a location change) would wipe what the asset cost. Switch them to the
-    // nullable* helpers in the same change that adds the inputs.
-    purchaseDate: dateSchema.optional(),
-    purchasePrice: nonNegativeDecimal("Purchase price").optional(),
-    currency: z.string().trim().max(10).optional(),
+    purchaseDate: nullableDate(),
+    purchasePrice: nullableDecimal("Purchase price"),
+    currency: optionalText(10),
     warrantyExpiry: nullableDate(),
     /** Custom field values keyed by CustomField id (from the model's fieldset). */
     customFields: z.record(z.string(), z.string()).optional(),

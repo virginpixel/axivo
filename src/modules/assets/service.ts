@@ -305,7 +305,13 @@ export async function updateAsset(context: AuditContext, id: string, input: Asse
         fieldChanges: diffRecords(
           existing as unknown as Record<string, unknown>,
           asset as unknown as Record<string, unknown>,
-          ["name", "assetTag", "serialNumber", "manufacturer", "model", "categoryId", "locationId", "supplier", "warrantyExpiry", "notes"],
+          // Every field the edit form can change, so a correction is always
+          // traceable - the price especially, now that it can be edited.
+          [
+            "name", "assetTag", "serialNumber", "manufacturer", "model", "categoryId",
+            "locationId", "supplier", "purchaseDate", "purchasePrice", "currency",
+            "warrantyExpiry", "isShared", "notes",
+          ],
         ),
       },
       tx,

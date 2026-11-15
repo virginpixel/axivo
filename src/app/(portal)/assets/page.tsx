@@ -87,7 +87,7 @@ export default async function AssetsPage({
       }),
       db.company.findMany({
         where: { deletedAt: null, isActive: true, ...(isGlobalAdmin ? {} : { id: user.companyId }) },
-        orderBy: { name: "asc" }, select: { id: true, name: true },
+        orderBy: { name: "asc" }, select: { id: true, name: true, currency: true },
       }),
       db.location.findMany({
         where: { deletedAt: null, isActive: true, ...companyScope },
@@ -118,9 +118,14 @@ export default async function AssetsPage({
       }),
     ]);
 
-  const [manufacturerList, vendorList] = await Promise.all([
+  const [manufacturerList, vendorList, currencyList] = await Promise.all([
     db.manufacturer.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { name: "asc" }, select: { name: true } }),
     db.vendor.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { name: "asc" }, select: { name: true } }),
+    db.currency.findMany({
+      where: { deletedAt: null, isActive: true },
+      orderBy: { code: "asc" },
+      select: { code: true, name: true },
+    }),
   ]);
 
   // Compose "Parent → Child" labels so sub-locations read clearly in pickers.
@@ -162,6 +167,7 @@ export default async function AssetsPage({
       })),
     })),
     vendors: vendorList.map((v) => ({ name: v.name })),
+    currencies: currencyList.map((c) => ({ code: c.code, name: c.name })),
   };
   const categoryOptions = categories.map((category) => ({
     id: category.id,
@@ -314,6 +320,9 @@ export default async function AssetsPage({
                           model: asset.model,
                           locationId: asset.locationId,
                           supplier: asset.supplier,
+                          purchaseDate: asset.purchaseDate?.toISOString().slice(0, 10) ?? null,
+                          purchasePrice: asset.purchasePrice === null ? null : Number(asset.purchasePrice),
+                          currency: asset.currency,
                           warrantyExpiry: asset.warrantyExpiry?.toISOString().slice(0, 10) ?? null,
                           notes: asset.notes,
                           status: asset.status,

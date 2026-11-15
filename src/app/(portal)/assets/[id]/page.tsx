@@ -51,11 +51,11 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
   const isGlobalAdmin = user.systemRoleKey === "SYSTEM_ADMINISTRATOR";
   const companyScope = isGlobalAdmin ? {} : { companyId: user.companyId };
 
-  const [companies, categories, locations, people, departments, manufacturers, models, vendors, documents, assetDocuments, otherAssets] =
+  const [companies, categories, locations, people, departments, manufacturers, models, vendors, currencies, documents, assetDocuments, otherAssets] =
     await Promise.all([
     db.company.findMany({
       where: { deletedAt: null, isActive: true, ...(isGlobalAdmin ? {} : { id: user.companyId }) },
-      orderBy: { name: "asc" }, select: { id: true, name: true },
+      orderBy: { name: "asc" }, select: { id: true, name: true, currency: true },
     }),
     db.assetCategory.findMany({
       where: { deletedAt: null },
@@ -90,6 +90,11 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
       },
     }),
     db.vendor.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { name: "asc" }, select: { name: true } }),
+    db.currency.findMany({
+      where: { deletedAt: null, isActive: true },
+      orderBy: { code: "asc" },
+      select: { code: true, name: true },
+    }),
     // Only discard forms are offered in the discard dialog, so the picker stays
     // short instead of listing every document in the repository.
     db.document.findMany({
@@ -146,6 +151,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
       })),
     })),
     vendors: vendors.map((v) => ({ name: v.name })),
+    currencies: currencies.map((c) => ({ code: c.code, name: c.name })),
   };
   // Custom field values to display, resolved against the asset's model fieldset.
   const assetModel = models.find((m) => m.name === asset.model);
@@ -236,6 +242,9 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                 model: asset.model,
                 locationId: asset.locationId,
                 supplier: asset.supplier,
+                purchaseDate: asset.purchaseDate?.toISOString().slice(0, 10) ?? null,
+                purchasePrice: asset.purchasePrice === null ? null : Number(asset.purchasePrice),
+                currency: asset.currency,
                 warrantyExpiry: asset.warrantyExpiry?.toISOString().slice(0, 10) ?? null,
                 notes: asset.notes,
                 status: asset.status,
@@ -285,6 +294,17 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
               <Row label="Vendor" value={asset.supplier ?? "None"} />
               <Row label="Location" value={asset.location?.name ?? "None"} />
               <Row label="Purchase date" value={asset.purchaseDate ? formatDate(asset.purchaseDate) : "None"} />
+              <Row
+                label="Purchase price"
+                value={
+                  asset.purchasePrice === null
+                    ? "None"
+                    : `${Number(asset.purchasePrice).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}${asset.currency ? ` ${asset.currency}` : ""}`
+                }
+              />
               <Row label="Warranty expiry" value={asset.warrantyExpiry ? formatDate(asset.warrantyExpiry) : "None"} />
               {customFieldRows.map((row) => (
                 <Row key={row.label} label={row.label} value={row.value} />

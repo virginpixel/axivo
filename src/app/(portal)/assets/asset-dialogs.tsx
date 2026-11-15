@@ -28,6 +28,7 @@ import {
   quickCreateAssetModelAction,
   quickCreateCategoryAction,
   quickCreateLocationAction,
+  quickCreateCurrencyAction,
 } from "@/modules/catalogs/actions";
 import { useAction } from "@/shared/ui/use-action";
 import { useToast } from "@/shared/ui/toast";
@@ -56,7 +57,7 @@ function useCreateHandler() {
   };
 }
 
-interface Company { id: string; name: string }
+interface Company { id: string; name: string; currency?: string }
 interface Category { id: string; name: string }
 interface LocationOption { id: string; name: string; companyId: string }
 interface PersonOption { id: string; name: string; hint?: string }
@@ -221,6 +222,9 @@ export interface AssetFormRecord {
   model: string | null;
   locationId: string | null;
   supplier: string | null;
+  purchaseDate: string | null;
+  purchasePrice: number | null;
+  currency: string | null;
   warrantyExpiry: string | null;
   notes: string | null;
   status: string;
@@ -238,6 +242,7 @@ export interface AssetCatalogs {
   manufacturers: { name: string }[];
   models: AssetModelOption[];
   vendors: { name: string }[];
+  currencies?: { code: string; name: string }[];
 }
 
 export function AssetDialog({
@@ -276,8 +281,10 @@ export function AssetDialog({
   const [assignDepartmentId, setAssignDepartmentId] = useState("");
   const [assignHolderKind, setAssignHolderKind] = useState<"person" | "department">("person");
   // Clone reuses the shared fields (company/category/manufacturer/model/vendor/
-  // location/warranty/notes) but leaves the per-unit ones (name, serial, tag,
-  // model fields) blank so each new record gets its own.
+  // location/purchase/warranty/notes) but leaves the per-unit ones (name,
+  // serial, tag, model fields) blank so each new record gets its own. Units
+  // bought in a batch were bought on one invoice, so the purchase details carry
+  // over with the rest.
   const base = asset ?? cloneFrom;
   const [form, setForm] = useState({
     companyId: base?.companyId ?? companies[0]?.id ?? "",
@@ -289,6 +296,12 @@ export function AssetDialog({
     model: base?.model ?? "",
     locationId: base?.locationId ?? "",
     supplier: base?.supplier ?? "",
+    purchaseDate: base?.purchaseDate ?? "",
+    purchasePrice: base?.purchasePrice != null ? String(base.purchasePrice) : "",
+    currency:
+      base?.currency ??
+      companies.find((company) => company.id === (base?.companyId ?? companies[0]?.id))?.currency ??
+      "",
     warrantyExpiry: base?.warrantyExpiry ?? "",
     notes: base?.notes ?? "",
     isShared: base?.isShared ?? false,
@@ -311,8 +324,12 @@ export function AssetDialog({
       manufacturer: form.manufacturer || undefined,
       model: form.model || undefined,
       locationId: form.locationId || undefined,
-      supplier: form.supplier || undefined,
-      warrantyExpiry: form.warrantyExpiry || undefined,
+      supplier: form.supplier,
+      purchaseDate: form.purchaseDate,
+      // An empty box clears the price; a typed one is a number, not a string.
+      purchasePrice: form.purchasePrice === "" ? null : Number(form.purchasePrice),
+      currency: form.currency,
+      warrantyExpiry: form.warrantyExpiry,
       notes: form.notes || undefined,
       isShared: form.isShared,
       customFields: modelFields.length > 0 ? customFields : undefined,
@@ -495,8 +512,48 @@ export function AssetDialog({
             </div>
           ) : null}
           <div>
+            <Label htmlFor="asset-purchase-date">Purchase date</Label>
+            <Input
+              id="asset-purchase-date"
+              type="date"
+              value={form.purchaseDate}
+              onChange={(e) => setForm({ ...form, purchaseDate: e.target.value })}
+            />
+            <FieldError message={fieldErrors.purchaseDate} />
+          </div>
+          <div>
             <Label htmlFor="asset-warranty">Warranty expiry</Label>
             <Input id="asset-warranty" type="date" value={form.warrantyExpiry} onChange={(e) => setForm({ ...form, warrantyExpiry: e.target.value })} />
+            <FieldError message={fieldErrors.warrantyExpiry} />
+          </div>
+          <div>
+            <Label htmlFor="asset-purchase-price">Purchase price</Label>
+            <Input
+              id="asset-purchase-price"
+              type="number"
+              min={0}
+              step="0.01"
+              value={form.purchasePrice}
+              onChange={(e) => setForm({ ...form, purchasePrice: e.target.value })}
+            />
+            <FieldError message={fieldErrors.purchasePrice} />
+          </div>
+          <div>
+            <Label htmlFor="asset-currency">Currency</Label>
+            <Combobox
+              id="asset-currency"
+              value={form.currency}
+              placeholder="Select currency"
+              emptyLabel="None"
+              options={(catalogs.currencies ?? []).map((currency) => ({
+                value: currency.code,
+                label: `${currency.code} - ${currency.name}`,
+              }))}
+              onChange={(value) => setForm({ ...form, currency: value })}
+              onCreate={createHandler(quickCreateCurrencyAction)}
+              createNoun="currency"
+            />
+            <FieldError message={fieldErrors.currency} />
           </div>
           <div className="sm:col-span-2">
             <label className="flex items-start gap-2 text-sm">
