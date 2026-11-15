@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Pencil, Plus, ShoppingCart, UserPlus, Trash2 } from "lucide-react";
 import {
   createLicenseAction,
   updateLicenseAction,
   recordPurchaseAction,
+  updatePurchaseAction,
   assignLicenseAction,
   removeLicenseAssignmentAction,
   deleteLicenseAction,
@@ -167,8 +169,11 @@ export function LicenseDialog({
             />
             <FieldError message={fieldErrors.alertEmails} />
             <HelperText>
-              Separate addresses with commas. They need not be Axivo users - a shared mailbox is
-              fine. Leave blank to use the default recipients set in Settings.
+              Separate addresses with commas. Leave blank to use the default recipients set in{" "}
+              <Link href="/settings?tab=notifications" className="text-primary hover:underline">
+                Settings
+              </Link>
+              .
             </HelperText>
           </div>
           <div>
@@ -187,38 +192,72 @@ export function LicenseDialog({
   );
 }
 
+export interface PurchaseRecord {
+  id: string;
+  purchaseType: string;
+  quantity: number;
+  purchaseDate: string;
+  startDate: string | null;
+  expiryDate: string | null;
+  price: number | null;
+  currency: string | null;
+  supplier: string | null;
+  purchaseReference: string | null;
+}
+
+/**
+ * Record a purchase, or correct one entered wrongly. The same form does both:
+ * a purchase drives the seat count and the cover dates, so a typo misstates
+ * both until it is fixed, and re-entering it as a second purchase would add
+ * seats rather than replace them.
+ */
 export function PurchaseDialog({
   licenseId,
   licenseType,
   vendors = [],
+  purchase,
 }: {
   licenseId: string;
   licenseType: string;
   vendors?: string[];
+  purchase?: PurchaseRecord;
 }) {
   const { run, loading, fieldErrors } = useAction();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
-    purchaseType: "NEW_PURCHASE",
-    quantity: "1",
-    purchaseDate: new Date().toISOString().slice(0, 10),
-    startDate: "",
-    expiryDate: "",
-    price: "",
-    currency: "USD",
-    supplier: "",
-    purchaseReference: "",
+    purchaseType: purchase?.purchaseType ?? "NEW_PURCHASE",
+    quantity: String(purchase?.quantity ?? 1),
+    purchaseDate: purchase?.purchaseDate ?? new Date().toISOString().slice(0, 10),
+    startDate: purchase?.startDate ?? "",
+    expiryDate: purchase?.expiryDate ?? "",
+    price: purchase?.price != null ? String(purchase.price) : "",
+    currency: purchase?.currency ?? "USD",
+    supplier: purchase?.supplier ?? "",
+    purchaseReference: purchase?.purchaseReference ?? "",
   });
   const isSubscription = licenseType === "SUBSCRIPTION";
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Record purchase" title="Record purchase or renewal">
-          <ShoppingCart className="h-4 w-4" />
-        </Button>
+        {purchase ? (
+          <Button variant="ghost" size="icon" aria-label="Edit purchase" title="Correct this purchase">
+            <Pencil className="h-4 w-4" />
+          </Button>
+        ) : (
+          <Button variant="ghost" size="icon" aria-label="Record purchase" title="Record purchase or renewal">
+            <ShoppingCart className="h-4 w-4" />
+          </Button>
+        )}
       </DialogTrigger>
-      <DialogContent title="Record purchase / renewal">
+      <DialogContent
+        title={purchase ? "Correct purchase / renewal" : "Record purchase / renewal"}
+        description={
+          purchase
+            ? "Changing a quantity or a date here changes the seats in force and the cover dates. The correction is recorded in the audit trail."
+            : undefined
+        }
+      >
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -275,26 +314,32 @@ export function PurchaseDialog({
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button
               loading={loading}
-              onClick={() =>
+              onClick={() => {
+                const payload = {
+                  licenseId,
+                  purchaseType: form.purchaseType,
+                  quantity: Number(form.quantity),
+                  purchaseDate: form.purchaseDate,
+                  startDate: form.startDate || undefined,
+                  expiryDate: form.expiryDate || undefined,
+                  price: form.price ? Number(form.price) : undefined,
+                  currency: form.currency,
+                  supplier: form.supplier,
+                  purchaseReference: form.purchaseReference,
+                };
                 run(
                   () =>
-                    recordPurchaseAction({
-                      licenseId,
-                      purchaseType: form.purchaseType,
-                      quantity: Number(form.quantity),
-                      purchaseDate: form.purchaseDate,
-                      startDate: form.startDate || undefined,
-                      expiryDate: form.expiryDate || undefined,
-                      price: form.price ? Number(form.price) : undefined,
-                      currency: form.currency || undefined,
-                      supplier: form.supplier || undefined,
-                      purchaseReference: form.purchaseReference || undefined,
-                    }),
-                  { successMessage: "Purchase recorded.", onSuccess: () => setOpen(false) },
-                )
-              }
+                    purchase
+                      ? updatePurchaseAction(purchase.id, payload)
+                      : recordPurchaseAction(payload),
+                  {
+                    successMessage: purchase ? "Purchase corrected." : "Purchase recorded.",
+                    onSuccess: () => setOpen(false),
+                  },
+                );
+              }}
             >
-              Record purchase
+              {purchase ? "Save changes" : "Record purchase"}
             </Button>
           </div>
         </div>

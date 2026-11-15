@@ -296,6 +296,54 @@ export async function setLicenseStatus(context: AuditContext, id: string, status
 // Purchases & renewals (Doc 10 Ch3/5)
 // ---------------------------------------------------------------------------
 
+/**
+ * Keep a subscription licence's status in step with the cover its purchases
+ * actually provide, in both directions.
+ *
+ * Expiry used to be a one-way door: the nightly job marked a licence expired
+ * and nothing brought it back, so a licence renewed afterwards sat marked
+ * Expired beside its own future cover date. Correcting a mistyped expiry has
+ * the same problem in reverse. Draft, Suspended and Retired are left alone -
+ * somebody chose those, and a date must not override a decision.
+ */
+async function syncStatusToCover(
+  context: AuditContext,
+  license: { id: string; name: string; companyId: string; status: LicenseStatus; licenseType: string },
+  tx: DbClient,
+) {
+  if (license.licenseType !== "SUBSCRIPTION") return;
+  if (license.status !== "ACTIVE" && license.status !== "EXPIRED") return;
+  const purchases = await tx.licensePurchase.findMany({
+    where: { licenseId: license.id, deletedAt: null },
+    select: { expiryDate: true },
+  });
+  if (purchases.length === 0) return;
+  const coverage = getLicenseCoverage(purchases);
+  if (coverage.state === "none") return;
+  const target: LicenseStatus = coverage.state === "expired" ? "EXPIRED" : "ACTIVE";
+  if (target === license.status) return;
+  await tx.license.update({ where: { id: license.id }, data: { status: target } });
+  await recordAudit(
+    { ...context, companyId: license.companyId },
+    {
+      module: MODULE,
+      eventType: target === "ACTIVE" ? "license.reactivated" : "license.expired",
+      action:
+        target === "ACTIVE"
+          ? `License "${license.name}" returned to active: cover now runs to ${
+              coverage.expiresAt?.toISOString().slice(0, 10) ?? "no expiry"
+            }`
+          : `License "${license.name}" expired: cover ended ${
+              coverage.expiresAt?.toISOString().slice(0, 10) ?? "unknown"
+            }`,
+      targetType: "license",
+      targetId: license.id,
+      targetLabel: license.name,
+    },
+    tx,
+  );
+}
+
 export async function recordPurchase(context: AuditContext, input: LicensePurchaseInput) {
   const license = await db.license.findFirst({ where: { id: input.licenseId, deletedAt: null } });
   if (!license) throw new NotFoundError("License not found.");
@@ -338,33 +386,85 @@ export async function recordPurchase(context: AuditContext, input: LicensePurcha
       },
       tx,
     );
-    // A renewal on a licence the expiry job already retired has to bring it
-    // back. Nothing else did, so a renewed licence sat marked Expired for ever,
-    // contradicting the cover date printed beside it. Only EXPIRED is reversed:
-    // Draft, Suspended and Retired are states somebody chose on purpose.
-    if (license.status === "EXPIRED") {
-      const purchases = await tx.licensePurchase.findMany({
-        where: { licenseId: license.id, deletedAt: null },
-        select: { expiryDate: true },
-      });
-      if (getLicenseCoverage(purchases).state !== "expired") {
-        await tx.license.update({ where: { id: license.id }, data: { status: "ACTIVE" } });
-        await recordAudit(
-          { ...context, companyId: license.companyId },
-          {
-            module: MODULE,
-            eventType: "license.reactivated",
-            action: `License "${license.name}" returned to active: cover now runs to ${
-              getLicenseCoverage(purchases).expiresAt?.toISOString().slice(0, 10) ?? "no expiry"
-            }`,
-            targetType: "license",
-            targetId: license.id,
-            targetLabel: license.name,
-          },
-          tx,
-        );
-      }
-    }
+    await syncStatusToCover(context, license, tx);
+    return purchase;
+  });
+}
+
+/**
+ * Correct a purchase that was entered wrongly. Purchases drive seat counts and
+ * cover dates, so a typo in a quantity or an expiry misstates both until it is
+ * fixed - and the record is the evidence of what was actually bought, so the
+ * change is diffed into the audit trail rather than quietly overwritten.
+ *
+ * A corrected date can end cover or restore it, so the licence's status is
+ * re-derived afterwards. Reducing a quantity below what is already assigned is
+ * allowed: that is a real situation, shown as an over-allocation, and refusing
+ * the edit would leave the wrong number on screen instead.
+ */
+export async function updatePurchase(
+  context: AuditContext,
+  id: string,
+  input: LicensePurchaseInput,
+) {
+  const existing = await db.licensePurchase.findFirst({
+    where: { id, deletedAt: null },
+    include: { license: true },
+  });
+  if (!existing) throw new NotFoundError("Purchase not found.");
+  if (existing.licenseId !== input.licenseId) {
+    throw new BusinessRuleError("A purchase cannot be moved to another licence.");
+  }
+  const license = existing.license;
+  if (license.deletedAt) throw new NotFoundError("License not found.");
+  if (license.status === "RETIRED") {
+    throw new BusinessRuleError("Retired licenses cannot have their purchases changed.");
+  }
+  if (license.licenseType === "SUBSCRIPTION") {
+    const fieldErrors: Record<string, string> = {};
+    if (!input.startDate) fieldErrors.startDate = "Start date is required for subscription licenses.";
+    if (!input.expiryDate) fieldErrors.expiryDate = "Expiry date is required for subscription licenses.";
+    if (Object.keys(fieldErrors).length > 0) throw new ValidationError(undefined, fieldErrors);
+  }
+
+  return db.$transaction(async (tx) => {
+    const purchase = await tx.licensePurchase.update({
+      where: { id },
+      data: {
+        purchaseType: input.purchaseType,
+        quantity: input.quantity,
+        purchaseDate: input.purchaseDate,
+        startDate: input.startDate ?? null,
+        expiryDate: input.expiryDate ?? null,
+        price: input.price ?? null,
+        currency: input.currency,
+        supplier: input.supplier,
+        purchaseReference: input.purchaseReference,
+        notes: input.notes,
+        updatedById: context.actorUserId ?? null,
+      },
+    });
+    await recordAudit(
+      { ...context, companyId: license.companyId },
+      {
+        module: MODULE,
+        eventType: "license.purchase_updated",
+        action: `Corrected a ${input.purchaseType.toLowerCase().replace("_", " ")} on "${license.name}"`,
+        targetType: "license_purchase",
+        targetId: purchase.id,
+        targetLabel: license.name,
+        fieldChanges: diffRecords(
+          existing as unknown as Record<string, unknown>,
+          purchase as unknown as Record<string, unknown>,
+          [
+            "purchaseType", "quantity", "purchaseDate", "startDate", "expiryDate",
+            "price", "currency", "supplier", "purchaseReference", "notes",
+          ],
+        ),
+      },
+      tx,
+    );
+    await syncStatusToCover(context, license, tx);
     return purchase;
   });
 }

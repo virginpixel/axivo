@@ -175,7 +175,6 @@ export function ContractDialog({
             <Input
               id="con-contact-name"
               value={form.contactName}
-              placeholder="Their account manager"
               onChange={(e) => setForm({ ...form, contactName: e.target.value })}
             />
             <FieldError message={fieldErrors.contactName} />
@@ -209,8 +208,11 @@ export function ContractDialog({
             />
             <FieldError message={fieldErrors.alertEmails} />
             <HelperText>
-              Separate addresses with commas. They need not be Axivo users - a shared mailbox is
-              fine. Leave blank to use the default recipients set in Settings.
+              Separate addresses with commas. Leave blank to use the default recipients set in{" "}
+              <Link href="/settings?tab=notifications" className="text-primary hover:underline">
+                Settings
+              </Link>
+              .
             </HelperText>
           </div>
           <div>

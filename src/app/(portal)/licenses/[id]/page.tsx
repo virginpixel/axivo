@@ -8,6 +8,7 @@ import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
 import { StatusBadge, Badge } from "@/shared/ui/badge";
 import { formatDate, fullName, enumLabel } from "@/shared/utils";
 import { UtilizationBar } from "@/shared/ui/utilization-bar";
+import { VendorLink, vendorIdsByName } from "@/shared/ui/vendor-link";
 import { LicenseAssignDialog, LicenseAssignmentActions, PurchaseDialog } from "../license-dialogs";
 
 export const dynamic = "force-dynamic";
@@ -75,13 +76,13 @@ export default async function LicenseDetailPage({
         select: { id: true, firstName: true, lastName: true, employeeId: true },
       })
     : [];
-  const vendorNames = canManage
-    ? (await db.vendor.findMany({
-        where: { deletedAt: null, isActive: true },
-        orderBy: { name: "asc" },
-        select: { name: true },
-      })).map((vendor) => vendor.name)
-    : [];
+  const vendorRecords = await db.vendor.findMany({
+    where: { deletedAt: null, isActive: true },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
+  const vendorNames = canManage ? vendorRecords.map((vendor) => vendor.name) : [];
+  const vendorIds = vendorIdsByName(vendorRecords);
 
   return (
     <div>
@@ -228,7 +229,10 @@ export default async function LicenseDetailPage({
             ) : (
               <Table>
                 <THead>
-                  <TR><TH>Type</TH><TH>Qty</TH><TH>Purchased</TH><TH>Start</TH><TH>Expiry</TH><TH>Price</TH><TH>Supplier</TH></TR>
+                  <TR>
+                    <TH>Type</TH><TH>Qty</TH><TH>Purchased</TH><TH>Start</TH><TH>Expiry</TH>
+                    <TH>Price</TH><TH>Supplier</TH>{canManage ? <TH /> : null}
+                  </TR>
                 </THead>
                 <TBody>
                   {license.purchases.map((purchase) => (
@@ -239,7 +243,30 @@ export default async function LicenseDetailPage({
                       <TD>{purchase.startDate ? formatDate(purchase.startDate) : "None"}</TD>
                       <TD>{purchase.expiryDate ? formatDate(purchase.expiryDate) : "None"}</TD>
                       <TD>{purchase.price ? `${Number(purchase.price).toLocaleString()} ${purchase.currency ?? ""}` : "None"}</TD>
-                      <TD>{purchase.supplier ?? "None"}</TD>
+                      <TD>
+                        <VendorLink name={purchase.supplier} vendorIds={vendorIds} />
+                      </TD>
+                      {canManage ? (
+                        <TD className="text-right">
+                          <PurchaseDialog
+                            licenseId={license.id}
+                            licenseType={license.licenseType}
+                            vendors={vendorNames}
+                            purchase={{
+                              id: purchase.id,
+                              purchaseType: purchase.purchaseType,
+                              quantity: purchase.quantity,
+                              purchaseDate: purchase.purchaseDate.toISOString().slice(0, 10),
+                              startDate: purchase.startDate?.toISOString().slice(0, 10) ?? null,
+                              expiryDate: purchase.expiryDate?.toISOString().slice(0, 10) ?? null,
+                              price: purchase.price === null ? null : Number(purchase.price),
+                              currency: purchase.currency,
+                              purchaseReference: purchase.purchaseReference,
+                              supplier: purchase.supplier,
+                            }}
+                          />
+                        </TD>
+                      ) : null}
                     </TR>
                   ))}
                 </TBody>

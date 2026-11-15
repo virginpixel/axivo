@@ -10,6 +10,7 @@ import { Input, Select } from "@/shared/ui/input";
 import { formatDate, fullName, enumLabel } from "@/shared/utils";
 import { ContractDialog, ContractRowActions } from "./contract-dialogs";
 import type { Prisma, ContractStatus } from "@prisma/client";
+import { VendorLink, vendorIdsByName } from "@/shared/ui/vendor-link";
 
 export const metadata = { title: "Contracts" };
 export const dynamic = "force-dynamic";
@@ -99,6 +100,7 @@ export default async function ContractsPage({
   };
   // Convert each active contract's cost to the base currency for a combined total.
   const totalCostBase = totalCost.reduce((sum, row) => sum + (row.cost ? Number(row.cost) * rateFor(row.currency) : 0), 0);
+  const vendorIds = vendorIdsByName(vendorItems);
   const catalogs = {
     vendors: vendorItems,
     categories: catalogItems.filter((item) => item.kind === "CONTRACT_CATEGORY"),
@@ -173,7 +175,7 @@ export default async function ContractsPage({
                     <p className="max-w-48 truncate text-xs text-muted-foreground">{contract.contractNumber}</p>
                   ) : null}
                 </TD>
-                <TD>{contract.vendor}</TD>
+                <TD><VendorLink name={contract.vendor} vendorIds={vendorIds} /></TD>
                 <TD>{contract.category}</TD>
                 <TD>{contract.company.name}</TD>
                 <TD className="whitespace-nowrap text-xs">

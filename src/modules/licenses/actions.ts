@@ -67,6 +67,21 @@ export async function recordPurchaseAction(raw: unknown): Promise<ActionResult<{
   }
 }
 
+/** Correct a purchase or renewal entered with the wrong details. */
+export async function updatePurchaseAction(
+  id: string,
+  raw: unknown,
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const { audit } = await requirePermission("licenses.manage");
+    const purchase = await service.updatePurchase(audit, id, parse(licensePurchaseSchema, raw));
+    revalidatePath("/licenses");
+    return ok({ id: purchase.id });
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
 export async function assignLicenseAction(raw: unknown): Promise<ActionResult<{ id: string }>> {
   try {
     const { audit } = await requirePermission("licenses.assignments.manage");

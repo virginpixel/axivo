@@ -10,6 +10,7 @@ import { ContractRowActions } from "../contract-dialogs";
 import { ContractDocuments } from "./contract-documents";
 import { DeleteButton } from "@/shared/ui/delete-button";
 import { deleteContractAction } from "@/modules/contracts/actions";
+import { VendorLink, vendorIdsByName } from "@/shared/ui/vendor-link";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,7 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
   // Who the renewal reminder actually reaches, resolved for display only: the
   // worker applies the same order when it sends.
   const alertEmails = (contract.alertEmails as string[] | null) ?? [];
+  const vendorIds = vendorIdsByName(vendorItems);
   const catalogs = { vendors: vendorItems, categories: categoryItems, currencies: currencyItems };
   const documents = docLinks
     .filter((link) => link.document)
@@ -109,7 +111,7 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
             <dl className="space-y-2 text-sm">
               <Row label="Status" value={<StatusBadge status={contract.status} />} />
               <Row label="Contract number" value={contract.contractNumber ?? "None"} />
-              <Row label="Vendor" value={contract.vendor} />
+              <Row label="Vendor" value={<VendorLink name={contract.vendor} vendorIds={vendorIds} />} />
               <Row label="Category" value={contract.category} />
               <Row label="Period" value={`${contract.startDate ? formatDate(contract.startDate) : "None"} → ${contract.endDate ? formatDate(contract.endDate) : "None"}`} />
               <Row label="Renewal" value={`${contract.renewalDate ? formatDate(contract.renewalDate) : "None"} (${enumLabel(contract.renewalType)})`} />

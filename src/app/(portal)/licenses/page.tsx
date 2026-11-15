@@ -7,6 +7,7 @@ import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge, Badge } from "@/shared/ui/badge";
 import { UtilizationBar } from "@/shared/ui/utilization-bar";
 import { formatDate, fullName, enumLabel } from "@/shared/utils";
+import { VendorLink, vendorIdsByName } from "@/shared/ui/vendor-link";
 import { LiveSearch } from "@/shared/ui/live-search";
 import { LicenseDialog, PurchaseDialog, LicenseAssignDialog, LicenseDeleteButton } from "./license-dialogs";
 
@@ -63,10 +64,11 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
     }),
     db.vendor.findMany({
       where: { deletedAt: null, isActive: true },
-      orderBy: { name: "asc" }, select: { name: true },
+      orderBy: { name: "asc" }, select: { id: true, name: true },
     }),
   ]);
   const vendors = vendorItems.map((item) => item.name);
+  const vendorIds = vendorIdsByName(vendorItems);
 
   const availability = new Map<string, { purchased: number; assigned: number; available: number }>();
   for (const license of licenses) {
@@ -153,7 +155,9 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
                         : ""}
                     </p>
                   </TD>
-                  <TD className="text-muted-foreground">{license.purchases[0]?.supplier ?? "None"}</TD>
+                  <TD className="text-muted-foreground">
+                    <VendorLink name={license.purchases[0]?.supplier} vendorIds={vendorIds} />
+                  </TD>
                   <TD className="text-right tabular-nums">{stats.purchased}</TD>
                   <TD className="text-right tabular-nums">{stats.assigned}</TD>
                   <TD>
