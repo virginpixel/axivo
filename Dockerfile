@@ -37,15 +37,10 @@ RUN npx prisma generate && npm run build
 # -----------------------------------------------------------------------------
 FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS web
 WORKDIR /app
-# Stamped by CI from the release tag; the app reads AXIVO_VERSION to report its
-# running version and to compare against the latest release when checking for
-# updates. Defaults to "dev" for local builds.
-ARG AXIVO_VERSION=dev
 LABEL org.opencontainers.image.source="https://github.com/virginpixel/axivo"
-LABEL org.opencontainers.image.version="${AXIVO_VERSION}"
 # HOSTNAME=0.0.0.0 is required: Docker sets HOSTNAME to the container id and
 # the Next.js standalone server would otherwise bind only to that interface.
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000 STORAGE_PATH=/var/lib/axivo/storage AXIVO_VERSION=${AXIVO_VERSION}
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000 STORAGE_PATH=/var/lib/axivo/storage
 RUN addgroup -S axivo && adduser -S axivo -G axivo
 COPY --from=builder --chown=axivo:axivo /app/.next/standalone ./
 COPY --from=builder --chown=axivo:axivo /app/.next/static ./.next/static
@@ -54,6 +49,18 @@ COPY --from=builder --chown=axivo:axivo /app/public ./public
 # Pre-create the storage path owned by axivo so the named volume Docker
 # initializes from it inherits that ownership (uploads run as the axivo user).
 RUN mkdir -p /var/lib/axivo/storage && chown -R axivo:axivo /var/lib/axivo
+# Stamped by CI from the release tag; the app reads AXIVO_VERSION to report its
+# running version and to compare against the latest release when checking for
+# updates. Defaults to "dev" for local builds.
+#
+# This goes LAST on purpose. The value changes on every release, and every
+# instruction after a changed one gets a new cache key - so stamping the version
+# before the COPY above put a ~200MB layer permanently out of reach of the build
+# cache, and each update re-downloaded node_modules it already had. Keep version
+# stamping below anything expensive.
+ARG AXIVO_VERSION=dev
+ENV AXIVO_VERSION=${AXIVO_VERSION}
+LABEL org.opencontainers.image.version="${AXIVO_VERSION}"
 USER axivo
 EXPOSE 3000
 CMD ["node", "server.js"]
@@ -63,10 +70,8 @@ CMD ["node", "server.js"]
 # -----------------------------------------------------------------------------
 FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS worker
 WORKDIR /app
-ARG AXIVO_VERSION=dev
 LABEL org.opencontainers.image.source="https://github.com/virginpixel/axivo"
-LABEL org.opencontainers.image.version="${AXIVO_VERSION}"
-ENV NODE_ENV=production STORAGE_PATH=/var/lib/axivo/storage AXIVO_VERSION=${AXIVO_VERSION}
+ENV NODE_ENV=production STORAGE_PATH=/var/lib/axivo/storage
 RUN addgroup -S axivo && adduser -S axivo -G axivo
 # Production dependencies only - prisma (migrations) and tsx (the worker's
 # entrypoint) are runtime dependencies for this image, so they are declared as
@@ -76,5 +81,10 @@ COPY --chown=axivo:axivo package.json tsconfig.json ./
 COPY --chown=axivo:axivo prisma ./prisma
 COPY --chown=axivo:axivo src ./src
 RUN npx prisma generate && mkdir -p /var/lib/axivo/storage && chown -R axivo:axivo /var/lib/axivo
+# Last, for the reason given in the web stage: this value changes every release,
+# and anything below it can never be reused from the cache.
+ARG AXIVO_VERSION=dev
+ENV AXIVO_VERSION=${AXIVO_VERSION}
+LABEL org.opencontainers.image.version="${AXIVO_VERSION}"
 USER axivo
 CMD ["npx", "tsx", "src/workers/index.ts"]
