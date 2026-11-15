@@ -743,7 +743,7 @@ export async function completeImplementation(
         );
         await licenses.assignLicense(
           context,
-          { licenseId, personId: requestedForPersonId, notes: undefined },
+          { licenseId, personId: requestedForPersonId, notes: null },
           { requestItemId: item.id },
           tx,
         );

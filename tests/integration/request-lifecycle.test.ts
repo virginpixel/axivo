@@ -57,10 +57,10 @@ describe("end-to-end request lifecycle", () => {
 
     // --- Organization setup (Doc 06) ---
     const company = await orgService.createCompany(actor, {
-      name: "Test Resort", description: undefined, timezone: "UTC", currency: "USD",
+      name: "Test Resort", description: null, timezone: "UTC", currency: "USD",
     });
     const department = await orgService.createDepartment(actor, {
-      companyId: company.id, name: "Front Office", description: undefined, headPersonIds: [],
+      companyId: company.id, name: "Front Office", description: null, headPersonIds: [],
     });
     const position = await db.position.create({
       data: { companyId: company.id, name: "Agent" },
@@ -75,19 +75,19 @@ describe("end-to-end request lifecycle", () => {
 
     // --- People (Doc 07) ---
     const hod = await peopleService.createPerson(actor, {
-      companyId: company.id, departmentId: department.id, positionId: undefined, locationId: undefined,
+      companyId: company.id, isThirdParty: false, externalCompanyName: null, departmentId: department.id, positionId: null, locationId: null,
       employeeId: "E-100", firstName: "Head", lastName: "OfDept", email: "hod@test.local",
-      personalEmail: undefined, phone: undefined, extension: undefined, employmentStatus: "ACTIVE",
+      personalEmail: null, phone: null, extension: null, employmentStatus: "ACTIVE",
     });
     const employee = await peopleService.createPerson(actor, {
-      companyId: company.id, departmentId: department.id, positionId: undefined, locationId: undefined,
+      companyId: company.id, isThirdParty: false, externalCompanyName: null, departmentId: department.id, positionId: null, locationId: null,
       employeeId: "E-200", firstName: "New", lastName: "Employee", email: "employee@test.local",
-      personalEmail: undefined, phone: undefined, extension: undefined, employmentStatus: "ACTIVE",
+      personalEmail: null, phone: null, extension: null, employmentStatus: "ACTIVE",
     });
     const itPerson = await peopleService.createPerson(actor, {
-      companyId: company.id, departmentId: department.id, positionId: undefined, locationId: undefined,
+      companyId: company.id, isThirdParty: false, externalCompanyName: null, departmentId: department.id, positionId: null, locationId: null,
       employeeId: "E-300", firstName: "IT", lastName: "Support", email: "it@test.local",
-      personalEmail: undefined, phone: undefined, extension: undefined, employmentStatus: "ACTIVE",
+      personalEmail: null, phone: null, extension: null, employmentStatus: "ACTIVE",
     });
 
     await orgService.assignDepartmentHead(actor, { departmentId: department.id, personId: hod.id });
@@ -97,7 +97,7 @@ describe("end-to-end request lifecycle", () => {
 
     // --- Application (Doc 08) ---
     const application = await appService.createApplication(actor, {
-      companyId: company.id, name: "Email System", description: undefined,
+      companyId: company.id, name: "Email System", description: null, workflowId: null,
       allowMultipleAssignments: false, requiresLicense: false, isShared: false,
     });
 
@@ -105,7 +105,7 @@ describe("end-to-end request lifecycle", () => {
     const workflow = await workflowDefs.createWorkflow(actor, {
       companyId: company.id,
       name: "Standard Access",
-      description: undefined,
+      description: null,
       isDefault: true,
       steps: [
         { stepName: "Department Head Approval", stepType: "APPROVAL", approvalRoleId: hodRole.id, approvalRule: "ANY", allowDelegation: true, commentsRequired: false },
@@ -119,14 +119,16 @@ describe("end-to-end request lifecycle", () => {
     });
     const form = await formsService.createForm(actor, {
       companyId: company.id,
+      applicationId: null,
+      assetCategoryId: null,
       requestTypeId: requestType.id,
       workflowId: workflow.id,
       name: "IT Access Request",
-      description: undefined,
+      description: null,
       confirmationMessage: "Thank you!",
       allowedAssetCategoryIds: [], allowsMixedItems: false, allowsThirdParty: false, thirdPartyWorkflowId: null,
       fields: [
-        { fieldKey: "justification", label: "Justification", fieldType: "TEXT", isRequired: true, placeholder: undefined, helpText: undefined, defaultValue: undefined, options: undefined, validation: undefined, visibilityRules: undefined },
+        { fieldKey: "justification", label: "Justification", fieldType: "TEXT", isRequired: true, placeholder: null, helpText: null, defaultValue: null, options: undefined, validation: undefined, visibilityRules: undefined },
       ],
     });
     await formsService.publishForm(actor, form.id);
@@ -140,6 +142,7 @@ describe("end-to-end request lifecycle", () => {
       { ...actor, ipAddress: "10.0.0.1" },
       {
         slug: published!.slug,
+        requestedForExternalCompany: null,
         requesterName: "Requester Person",
         requesterEmail: "requester@test.local",
         requesterEmployeeId: "E-900",
@@ -153,7 +156,7 @@ describe("end-to-end request lifecycle", () => {
         requestedForDepartmentId: department.id,
         requestedForPositionTitle: position.name, isThirdParty: false,
         fieldValues: { justification: "New hire" },
-        items: [{ itemType: "APPLICATION", applicationId: application.id, applicationRoleId: undefined, assetCategoryId: undefined, description: undefined, fieldValues: {} }],
+        items: [{ itemType: "APPLICATION", applicationId: application.id, applicationRoleId: undefined, assetCategoryId: undefined, description: null, fieldValues: {} }],
         website: "",
       },
     );
@@ -275,6 +278,7 @@ describe("end-to-end request lifecycle", () => {
       { ...actor, ipAddress: "10.0.0.2" },
       {
         slug: form.slug,
+        requestedForExternalCompany: null,
         requesterName: "Requester",
         requesterEmail: "requester2@test.local",
         requesterEmployeeId: "E-901",
@@ -289,7 +293,7 @@ describe("end-to-end request lifecycle", () => {
         requestedForPositionTitle: position.name, isThirdParty: false,
         fieldValues: { justification: "Two items" },
         items: [
-          { itemType: "APPLICATION", applicationId: application.id, applicationRoleId: undefined, assetCategoryId: undefined, description: undefined, fieldValues: {} },
+          { itemType: "APPLICATION", applicationId: application.id, applicationRoleId: undefined, assetCategoryId: undefined, description: null, fieldValues: {} },
           { itemType: "GENERAL", applicationId: undefined, applicationRoleId: undefined, assetCategoryId: undefined, description: "Other request", fieldValues: {} },
         ],
         website: "",
@@ -339,17 +343,17 @@ describe("end-to-end request lifecycle", () => {
 
     const license = await licensesService.createLicense(actor, {
       companyId: company.id, applicationId: application.id, name: "Single Seat License",
-      licenseType: "PERPETUAL", isShared: false, licenseKey: undefined, contractId: undefined, notes: undefined,
+      licenseType: "PERPETUAL", isShared: false, licenseKey: null, contractId: null, notes: null,
     });
     await licensesService.recordPurchase(actor, {
       licenseId: license.id, purchaseType: "NEW_PURCHASE", quantity: 1,
       purchaseDate: new Date(), startDate: undefined, expiryDate: undefined,
-      price: undefined, currency: undefined, supplier: undefined, purchaseReference: undefined, notes: undefined,
+      price: undefined, currency: null, supplier: null, purchaseReference: null, notes: null,
     });
 
-    await licensesService.assignLicense(actor, { licenseId: license.id, personId: personA!.id, notes: undefined });
+    await licensesService.assignLicense(actor, { licenseId: license.id, personId: personA!.id, notes: null });
     await expect(
-      licensesService.assignLicense(actor, { licenseId: license.id, personId: personB!.id, notes: undefined }),
+      licensesService.assignLicense(actor, { licenseId: license.id, personId: personB!.id, notes: null }),
     ).rejects.toThrow(/No available seats/);
 
     // Removal returns the seat to the pool.
@@ -365,24 +369,24 @@ describe("end-to-end request lifecycle", () => {
     const [personA, personB] = await db.person.findMany({ where: { companyId: company.id }, take: 2 });
 
     const category = await assetsService.createAssetCategory(actor, {
-      name: "Laptop", description: undefined, workflowId: null,
+      name: "Laptop", description: null, workflowId: null,
       requireHandoverAcceptance: false, requireClearanceRecovery: true,
     });
     const asset = await assetsService.createAsset(actor, {
       companyId: company.id, categoryId: category.id, name: "Test Laptop 1", assetTag: "LT-0001",
-      serialNumber: undefined, manufacturer: undefined, model: undefined, locationId: undefined,
-      supplier: undefined, purchaseDate: undefined, purchasePrice: undefined, currency: undefined,
-      warrantyExpiry: undefined, notes: undefined, isShared: false,
+      serialNumber: null, manufacturer: null, model: null, locationId: null,
+      supplier: null, purchaseDate: undefined, purchasePrice: undefined, currency: undefined,
+      warrantyExpiry: null, notes: null, isShared: false,
     });
 
     const { assignment } = await assetsService.assignAsset(actor, {
-      assetId: asset.id, personId: personA!.id, notes: undefined,
+      assetId: asset.id, personId: personA!.id, notes: null,
     });
     expect((await db.asset.findUniqueOrThrow({ where: { id: asset.id } })).status).toBe("ASSIGNED");
 
     // Second active assignment prohibited.
     await expect(
-      assetsService.assignAsset(actor, { assetId: asset.id, personId: personB!.id, notes: undefined }),
+      assetsService.assignAsset(actor, { assetId: asset.id, personId: personB!.id, notes: null }),
     ).rejects.toThrow();
 
     // Return restores availability.
@@ -483,6 +487,7 @@ describe("corrections return an item to its approver (Doc 09 Ch6)", () => {
       { ...actor, ipAddress: "10.0.0.3" },
       {
         slug: form.slug,
+        requestedForExternalCompany: null,
         requesterName: "Requester",
         requesterEmail: "requester3@test.local",
         requesterEmployeeId: "E-902",
@@ -497,7 +502,7 @@ describe("corrections return an item to its approver (Doc 09 Ch6)", () => {
         requestedForPositionTitle: position.name, isThirdParty: false,
         fieldValues: { justification: "Original reason" },
         items: [
-          { itemType: "APPLICATION", applicationId: application.id, applicationRoleId: undefined, assetCategoryId: undefined, description: undefined, fieldValues: {} },
+          { itemType: "APPLICATION", applicationId: application.id, applicationRoleId: undefined, assetCategoryId: undefined, description: null, fieldValues: {} },
         ],
         website: "",
       },
@@ -533,7 +538,7 @@ describe("corrections return an item to its approver (Doc 09 Ch6)", () => {
     await requestsService.submitCorrection(actor, item.id, {
       fieldValues: { justification: "Corrected reason" },
       itemFieldValues: {},
-      itemDescription: undefined,
+      itemDescription: null,
       comments: "Updated as asked.",
     });
 

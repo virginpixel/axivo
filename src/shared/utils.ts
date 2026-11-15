@@ -81,6 +81,22 @@ export function fullName(person: { firstName: string; lastName: string }): strin
   return `${person.firstName} ${person.lastName}`;
 }
 
+/**
+ * The secondary line under a name in a person picker: the employee number, or
+ * for a third-party contact their own employer. Picking a tenant's contact for
+ * a staff laptop - or an employee for a tenant's phone - is an easy mistake to
+ * make when every row in the list looks like staff.
+ */
+export function personHint(person: {
+  employeeId: string;
+  isThirdParty: boolean;
+  externalCompanyName: string | null;
+}): string {
+  return person.isThirdParty
+    ? `${person.externalCompanyName ?? "External"} · third party`
+    : person.employeeId;
+}
+
 /** Generate a URL-safe slug from a name. */
 export function slugify(value: string): string {
   return value

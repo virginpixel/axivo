@@ -151,7 +151,13 @@ export default async function HandoverActionPage({
 
           <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
             <h3 className="mb-1 text-sm font-semibold text-foreground">Terms of responsibility</h3>
-            {handoverTerms(handover.person.company.name, hasSharedAsset, departmentHolders)}
+            {handoverTerms({
+              companyName: handover.person.company.name,
+              includesSharedAsset: hasSharedAsset,
+              includesDepartmentAsset: departmentHolders,
+              signerIsThirdParty: handover.person.isThirdParty,
+              signerCompanyName: handover.person.externalCompanyName,
+            })}
           </div>
 
           {alreadyAcknowledged ? (

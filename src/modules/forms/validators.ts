@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { uuidSchema, requiredText, optionalText } from "@/shared/validation/common";
+import { uuidSchema, requiredText, optionalText, nullableUuid } from "@/shared/validation/common";
 
 /** Forms & Form Builder validation (SDS Doc 22). */
 
@@ -94,8 +94,8 @@ export const formSchema = z
     /** ASSET_REQUEST forms: restrict requestable asset categories (empty = all). */
     allowedAssetCategoryIds: z.array(uuidSchema).max(100).default([]),
     /** Dedicated form: the requester never picks the target, only its details. */
-    applicationId: uuidSchema.optional().or(z.literal("").transform(() => undefined)),
-    assetCategoryId: uuidSchema.optional().or(z.literal("").transform(() => undefined)),
+    applicationId: nullableUuid(),
+    assetCategoryId: nullableUuid(),
     /** All-in-one form: each item row chooses Application or Asset. */
     allowsMixedItems: z.boolean().default(false),
     /**

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { uuidSchema, requiredText, optionalText, dateSchema, positiveInt, nonNegativeDecimal } from "@/shared/validation/common";
+import { uuidSchema, requiredText, optionalText, dateSchema, positiveInt, nonNegativeDecimal, nullableUuid } from "@/shared/validation/common";
 
 /** Licenses module validation (SDS Doc 10 Ch10). */
 
@@ -7,13 +7,13 @@ export const licenseSchema = z
   .object({
     companyId: uuidSchema,
     /// Optional: standalone licenses (Adobe, VPN, ...) need no application.
-    applicationId: uuidSchema.optional().or(z.literal("").transform(() => undefined)),
+    applicationId: nullableUuid(),
     name: requiredText("License name"),
     licenseType: z.enum(["SUBSCRIPTION", "PERPETUAL"]),
     /** Shareable across companies (seats assignable to any company's people). */
     isShared: z.boolean().default(false),
     licenseKey: optionalText(500),
-    contractId: uuidSchema.optional().or(z.literal("").transform(() => undefined)),
+    contractId: nullableUuid(),
     notes: optionalText(),
   })
   .strict();

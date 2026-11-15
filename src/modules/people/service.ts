@@ -3,6 +3,7 @@ import { recordAudit, diffRecords, type AuditContext } from "@/shared/audit/audi
 import { BusinessRuleError, NotFoundError, ValidationError } from "@/shared/errors";
 import { hashPassword, validatePasswordAgainstPolicy, type PasswordPolicy } from "@/shared/crypto/password";
 import { getSetting, SETTING_KEYS } from "@/shared/settings/settings";
+import { nextCounterValue } from "@/shared/counters";
 import type { EmploymentStatus } from "@prisma/client";
 import type { PersonInput, SystemUserInput, TransferCompanyInput } from "./validators";
 
@@ -49,20 +50,61 @@ async function validateOrgReferences(input: PersonInput): Promise<void> {
   }
 }
 
+/**
+ * A third-party contact has no employee number to enter, so one is issued for
+ * them. The reference still has to exist and be unique: it identifies the
+ * person in pickers, handover documents and clearance, and the column is part
+ * of the per-company unique key.
+ */
+async function issueThirdPartyReference(client: DbClient): Promise<string> {
+  const value = await nextCounterValue("third-party-contact", client);
+  return `TP-${String(value).padStart(4, "0")}`;
+}
+
+/** The person's own fields, with a cleared optional field written as null. */
+function personFields(input: PersonInput, employeeId: string) {
+  return {
+    companyId: input.companyId,
+    isThirdParty: input.isThirdParty,
+    // Only meaningful for a third party; a contact converted to an employee
+    // must not keep their old employer on the record.
+    externalCompanyName: input.isThirdParty ? input.externalCompanyName : null,
+    departmentId: input.departmentId,
+    positionId: input.positionId,
+    locationId: input.locationId,
+    employeeId,
+    firstName: input.firstName,
+    lastName: input.lastName,
+    email: input.email,
+    personalEmail: input.personalEmail,
+    phone: input.phone,
+    extension: input.extension,
+    employmentStatus: input.employmentStatus,
+    isActive: !INACTIVE_EMPLOYMENT_STATUSES.includes(input.employmentStatus),
+  };
+}
+
+/** How a person is described in audit entries and error messages. */
+function personNoun(isThirdParty: boolean) {
+  return isThirdParty ? "third-party contact" : "employee";
+}
+
 export async function createPerson(context: AuditContext, input: PersonInput) {
   await validateOrgReferences(input);
 
-  const duplicateEmployeeId = await db.person.findFirst({
-    where: {
-      companyId: input.companyId,
-      employeeId: { equals: input.employeeId, mode: "insensitive" },
-      deletedAt: null,
-    },
-  });
-  if (duplicateEmployeeId) {
-    throw new ValidationError(undefined, {
-      employeeId: "This Employee ID already exists in this company.",
+  if (input.employeeId) {
+    const duplicateEmployeeId = await db.person.findFirst({
+      where: {
+        companyId: input.companyId,
+        employeeId: { equals: input.employeeId, mode: "insensitive" },
+        deletedAt: null,
+      },
     });
+    if (duplicateEmployeeId) {
+      throw new ValidationError(undefined, {
+        employeeId: "This Employee ID already exists in this company.",
+      });
+    }
   }
   const duplicateEmail = await db.person.findFirst({
     where: {
@@ -73,15 +115,15 @@ export async function createPerson(context: AuditContext, input: PersonInput) {
   });
   if (duplicateEmail) {
     throw new ValidationError(undefined, {
-      email: "This work email is already used by another employee in this company.",
+      email: "This work email is already used by another person in this company.",
     });
   }
 
   return db.$transaction(async (tx) => {
+    const employeeId = input.employeeId ?? (await issueThirdPartyReference(tx));
     const person = await tx.person.create({
       data: {
-        ...input,
-        isActive: !INACTIVE_EMPLOYMENT_STATUSES.includes(input.employmentStatus),
+        ...personFields(input, employeeId),
         createdById: context.actorUserId ?? null,
       },
     });
@@ -100,7 +142,10 @@ export async function createPerson(context: AuditContext, input: PersonInput) {
       {
         module: MODULE,
         eventType: "person.created",
-        action: `Created employee ${person.firstName} ${person.lastName} (${person.employeeId})`,
+        action:
+          `Created ${personNoun(person.isThirdParty)} ${person.firstName} ${person.lastName} ` +
+          `(${person.employeeId})` +
+          (person.externalCompanyName ? ` of ${person.externalCompanyName}` : ""),
         targetType: "person",
         targetId: person.id,
         targetLabel: `${person.firstName} ${person.lastName}`,
@@ -119,10 +164,14 @@ export async function updatePerson(context: AuditContext, id: string, input: Per
   }
   await validateOrgReferences(input);
 
+  // A third-party contact's form leaves the reference blank, so an edit keeps
+  // the one already issued rather than trying to clear a column that cannot be
+  // null and is half of the per-company unique key.
+  const employeeId = input.employeeId ?? existing.employeeId;
   const duplicateEmployeeId = await db.person.findFirst({
     where: {
       companyId: input.companyId,
-      employeeId: { equals: input.employeeId, mode: "insensitive" },
+      employeeId: { equals: employeeId, mode: "insensitive" },
       deletedAt: null,
       id: { not: id },
     },
@@ -142,7 +191,7 @@ export async function updatePerson(context: AuditContext, id: string, input: Per
   });
   if (duplicateEmail) {
     throw new ValidationError(undefined, {
-      email: "This work email is already used by another employee in this company.",
+      email: "This work email is already used by another person in this company.",
     });
   }
 
@@ -155,8 +204,7 @@ export async function updatePerson(context: AuditContext, id: string, input: Per
     const person = await tx.person.update({
       where: { id },
       data: {
-        ...input,
-        isActive: !INACTIVE_EMPLOYMENT_STATUSES.includes(input.employmentStatus),
+        ...personFields(input, employeeId),
         updatedById: context.actorUserId ?? null,
       },
     });
@@ -182,7 +230,7 @@ export async function updatePerson(context: AuditContext, id: string, input: Per
       {
         module: MODULE,
         eventType: "person.updated",
-        action: `Updated employee ${person.firstName} ${person.lastName} (${person.employeeId})`,
+        action: `Updated ${personNoun(person.isThirdParty)} ${person.firstName} ${person.lastName} (${person.employeeId})`,
         targetType: "person",
         targetId: id,
         targetLabel: `${person.firstName} ${person.lastName}`,
@@ -192,6 +240,7 @@ export async function updatePerson(context: AuditContext, id: string, input: Per
           [
             "employeeId", "firstName", "lastName", "email", "personalEmail", "phone",
             "extension", "employmentStatus", "departmentId", "positionId", "locationId",
+            "isThirdParty", "externalCompanyName",
           ],
         ),
       },

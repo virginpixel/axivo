@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { TR, TH, TD } from "@/shared/ui/table";
 import { PaginatedTable } from "@/shared/ui/paginated-table";
 import { StatusBadge } from "@/shared/ui/badge";
-import { formatDate, formatDateTime, fullName } from "@/shared/utils";
+import { formatDate, formatDateTime, fullName, personHint } from "@/shared/utils";
 import { DISPOSAL_CATEGORY } from "@/modules/documents/categories";
 import { AssetDialog, AssetRowActions } from "../asset-dialogs";
 import { AssetStatusControl } from "./asset-status-control";
@@ -71,6 +71,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
       orderBy: { lastName: "asc" },
       select: {
         id: true, firstName: true, lastName: true, companyId: true, employeeId: true,
+        isThirdParty: true, externalCompanyName: true,
         company: { select: { name: true } },
       },
     }),
@@ -169,6 +170,8 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
     id: person.id,
     name: fullName(person),
     employeeId: person.employeeId,
+    isThirdParty: person.isThirdParty,
+    externalCompanyName: person.externalCompanyName,
     companyId: person.companyId,
     companyName: person.company.name,
   }));
@@ -259,7 +262,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
               people={peopleOptions.map((person) => ({
                 id: person.id,
                 name: person.name,
-                hint: person.employeeId,
+                hint: personHint(person),
               }))}
               departments={departmentOptions}
               permissions={{ canManage, canAssign, canMaintain, canDispose }}

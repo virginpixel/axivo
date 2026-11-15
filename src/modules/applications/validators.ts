@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { uuidSchema, requiredText, optionalText } from "@/shared/validation/common";
+import { uuidSchema, requiredText, optionalText, nullableUuid } from "@/shared/validation/common";
 
 /** Applications module validation (SDS Doc 08 Ch10). */
 
@@ -12,7 +12,7 @@ export const applicationSchema = z
     requiresLicense: z.boolean().default(false),
     isShared: z.boolean().default(false),
     /** Approval chain for items requesting this app; falls back to the form's. */
-    workflowId: uuidSchema.optional().or(z.literal("").transform(() => undefined)),
+    workflowId: nullableUuid(),
   })
   .strict();
 

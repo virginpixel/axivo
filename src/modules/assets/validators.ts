@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { uuidSchema, requiredText, optionalText, dateSchema, nonNegativeDecimal } from "@/shared/validation/common";
+import { uuidSchema, requiredText, optionalText, dateSchema, nonNegativeDecimal, nullableUuid, nullableDate, nullableDecimal } from "@/shared/validation/common";
 
 /** Assets module validation (SDS Doc 11 Ch11). */
 
@@ -31,12 +31,17 @@ export const assetSchema = z
     serialNumber: optionalText(200),
     manufacturer: optionalText(200),
     model: optionalText(200),
-    locationId: uuidSchema.optional().or(z.literal("").transform(() => undefined)),
+    locationId: nullableUuid(),
     supplier: optionalText(200),
+    // Purchase details are shown on the asset page but no form edits them yet,
+    // so the asset dialog does not submit these three. They stay .optional() -
+    // absent has to mean "leave alone" here, or every ordinary edit (a rename,
+    // a location change) would wipe what the asset cost. Switch them to the
+    // nullable* helpers in the same change that adds the inputs.
     purchaseDate: dateSchema.optional(),
     purchasePrice: nonNegativeDecimal("Purchase price").optional(),
-    currency: optionalText(10),
-    warrantyExpiry: dateSchema.optional(),
+    currency: z.string().trim().max(10).optional(),
+    warrantyExpiry: nullableDate(),
     /** Custom field values keyed by CustomField id (from the model's fieldset). */
     customFields: z.record(z.string(), z.string()).optional(),
     /** Shared equipment may be held by several employees at the same time. */

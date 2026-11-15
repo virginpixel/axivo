@@ -17,6 +17,12 @@ export const emailSchema = z
   .email("Please enter a valid email address.")
   .transform((value) => value.toLowerCase());
 
+/** An optional email address that clears the column when the field is emptied. */
+export const nullableEmail = () =>
+  z
+    .union([z.literal(""), z.null(), z.undefined(), emailSchema])
+    .transform((value) => (value === "" || value == null ? null : value));
+
 export const requiredText = (label: string, max = 200) =>
   z
     .string({ required_error: `${label} is required.` })
@@ -24,15 +30,54 @@ export const requiredText = (label: string, max = 200) =>
     .min(1, `${label} is required.`)
     .max(max, `${label} must be at most ${max} characters.`);
 
+/**
+ * An optional text field, which resolves to null rather than undefined when it
+ * is empty or absent.
+ *
+ * That distinction is the whole point. Every form in this system submits its
+ * complete set of fields on save, so an optional field arriving empty means the
+ * user cleared it - it never means "leave whatever was there". Prisma skips
+ * undefined keys, so resolving to undefined silently kept the previous value
+ * and told the user it had saved. Null writes the column.
+ */
 export const optionalText = (max = 2000) =>
   z
     .string()
     .trim()
     .max(max)
-    .optional()
-    .transform((value) => (value === "" ? undefined : value));
+    .nullish()
+    .transform((value) => (value == null || value === "" ? null : value));
 
 export const dateSchema = z.coerce.date({ invalid_type_error: "Please enter a valid date." });
+
+/**
+ * An optional reference to another record - a location, an owner, a parent -
+ * that clears the column when the field is left empty. Use this for a nullable
+ * FK on a form that is saved whole; a filter or a partial action still wants
+ * `uuidSchema.optional()`, where absent has to keep meaning "not specified".
+ */
+export const nullableUuid = () =>
+  z
+    .string()
+    .nullish()
+    .transform((value) => {
+      const trimmed = value?.trim();
+      return trimmed ? trimmed : null;
+    })
+    .refine((value) => value === null || z.string().uuid().safeParse(value).success, {
+      message: "Invalid identifier.",
+    });
+
+/**
+ * An optional date that clears the column when emptied. The empty string is
+ * matched before the date branch: coercing "" yields an Invalid Date, which
+ * would surface as "Please enter a valid date" on a field the user deliberately
+ * blanked.
+ */
+export const nullableDate = () =>
+  z
+    .union([z.literal(""), z.null(), z.undefined(), dateSchema])
+    .transform((value) => (value === "" || value == null ? null : value));
 
 export const positiveInt = (label: string) =>
   z.coerce
@@ -44,6 +89,12 @@ export const nonNegativeDecimal = (label: string) =>
   z.coerce
     .number({ invalid_type_error: `${label} must be a number.` })
     .nonnegative(`${label} cannot be negative.`);
+
+/** An optional amount that clears the column when emptied. See {@link nullableDate}. */
+export const nullableDecimal = (label: string) =>
+  z
+    .union([z.literal(""), z.null(), z.undefined(), nonNegativeDecimal(label)])
+    .transform((value) => (value === "" || value == null ? null : value));
 
 export const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),

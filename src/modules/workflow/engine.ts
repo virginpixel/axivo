@@ -540,7 +540,7 @@ export interface ApplyActionParams {
   stepInstanceId: string;
   actingPersonId: string;
   action: ApprovalActionType;
-  comments?: string;
+  comments?: string | null;
   viaSecureToken: boolean;
 }
 

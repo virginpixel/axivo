@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { uuidSchema, requiredText, optionalText } from "@/shared/validation/common";
+import { uuidSchema, requiredText, optionalText, nullableUuid } from "@/shared/validation/common";
 
 /** Organization module validation (SDS Doc 06 Ch12). Strict schemas reject unexpected fields. */
 
@@ -29,7 +29,7 @@ export const locationSchema = z
     code: optionalText(20),
     description: optionalText(),
     /** Optional parent for a one-level sub-location (e.g. Front Office → Reception). */
-    parentId: uuidSchema.optional().or(z.literal("").transform(() => undefined)),
+    parentId: nullableUuid(),
   })
   .strict();
 

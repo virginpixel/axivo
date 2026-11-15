@@ -6,7 +6,7 @@ import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge } from "@/shared/ui/badge";
 import { Input, Select } from "@/shared/ui/input";
 import { LiveSearch } from "@/shared/ui/live-search";
-import { fullName, formatDate } from "@/shared/utils";
+import { fullName, formatDate, personHint } from "@/shared/utils";
 import { AssetDialog, AssetRowActions } from "./asset-dialogs";
 import { HolderList } from "@/shared/ui/holder-list";
 import type { Prisma, AssetStatus } from "@prisma/client";
@@ -97,7 +97,10 @@ export default async function AssetsPage({
       db.person.findMany({
         where: { deletedAt: null, isActive: true, ...companyScope },
         orderBy: { lastName: "asc" },
-        select: { id: true, firstName: true, lastName: true, companyId: true, employeeId: true },
+        select: {
+          id: true, firstName: true, lastName: true, companyId: true, employeeId: true,
+          isThirdParty: true, externalCompanyName: true,
+        },
       }),
       db.department.findMany({
         where: { deletedAt: null, isActive: true, ...companyScope },
@@ -133,7 +136,7 @@ export default async function AssetsPage({
     (peopleByCompany[person.companyId] ??= []).push({
       id: person.id,
       name: fullName(person),
-      hint: person.employeeId,
+      hint: personHint(person),
     });
   }
   // A department of any company may hold an asset, just as an employee of
@@ -183,7 +186,7 @@ export default async function AssetsPage({
               people={people.map((person) => ({
                 id: person.id,
                 name: fullName(person),
-                hint: person.employeeId,
+                hint: personHint(person),
                 companyId: person.companyId,
               }))}
               departments={departmentOptions}

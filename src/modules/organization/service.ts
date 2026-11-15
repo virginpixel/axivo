@@ -390,7 +390,7 @@ export async function setDepartmentActive(context: AuditContext, id: string, isA
  * company, be top-level itself, and never be the location being edited.
  */
 async function assertValidParentLocation(
-  parentId: string | undefined,
+  parentId: string | null | undefined,
   companyId: string,
   selfId?: string,
 ): Promise<void> {

@@ -159,6 +159,44 @@ export interface PersonRecord {
   phone: string | null;
   extension: string | null;
   employmentStatus: string;
+  isThirdParty: boolean;
+  externalCompanyName: string | null;
+}
+
+/**
+ * Employee or third party. A tenant's or contractor's staff are not on our
+ * payroll and we never learn of their hiring or leaving, so they are recorded
+ * against the property they work at with their own employer as text - enough to
+ * hold equipment and sign for it, without pretending they are staff.
+ */
+function PersonKindToggle({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: boolean;
+  onChange: (isThirdParty: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="mb-1 inline-flex rounded-full border bg-muted/40 p-0.5 text-sm">
+      {([false, true] as const).map((kind) => (
+        <button
+          key={String(kind)}
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange(kind)}
+          aria-pressed={value === kind}
+          className={
+            "rounded-full px-3 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50 " +
+            (value === kind ? "bg-card font-medium shadow-sm" : "text-muted-foreground hover:text-foreground")
+          }
+        >
+          {kind ? "Third party" : "Employee"}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function PersonDialog({ orgData, person }: { orgData: OrgData; person?: PersonRecord }) {
@@ -171,6 +209,8 @@ export function PersonDialog({ orgData, person }: { orgData: OrgData; person?: P
     positionId: person?.positionId ?? "",
     locationId: person?.locationId ?? "",
     employeeId: person?.employeeId ?? "",
+    isThirdParty: person?.isThirdParty ?? false,
+    externalCompanyName: person?.externalCompanyName ?? "",
     firstName: person?.firstName ?? "",
     lastName: person?.lastName ?? "",
     email: person?.email ?? "",
@@ -187,9 +227,12 @@ export function PersonDialog({ orgData, person }: { orgData: OrgData; person?: P
   async function submit() {
     const payload = {
       companyId: form.companyId,
-      departmentId: form.departmentId || undefined,
-      positionId: form.positionId || undefined,
-      locationId: form.locationId || undefined,
+      isThirdParty: form.isThirdParty,
+      externalCompanyName: form.externalCompanyName,
+      // A third party belongs to no department or position of ours.
+      departmentId: form.isThirdParty ? "" : form.departmentId,
+      positionId: form.isThirdParty ? "" : form.positionId,
+      locationId: form.locationId,
       employeeId: form.employeeId,
       firstName: form.firstName,
       lastName: form.lastName,
@@ -201,7 +244,12 @@ export function PersonDialog({ orgData, person }: { orgData: OrgData; person?: P
     };
     await run(
       () => (person ? updatePersonAction(person.id, payload) : createPersonAction(payload)),
-      { successMessage: person ? "Employee updated." : "Employee created.", onSuccess: () => setOpen(false) },
+      {
+        successMessage: form.isThirdParty
+          ? person ? "Contact updated." : "Third-party contact created."
+          : person ? "Employee updated." : "Employee created.",
+        onSuccess: () => setOpen(false),
+      },
     );
   }
 
@@ -214,11 +262,29 @@ export function PersonDialog({ orgData, person }: { orgData: OrgData; person?: P
           </Button>
         ) : (
           <Button size="sm">
-            <Plus className="h-4 w-4" /> New employee
+            <Plus className="h-4 w-4" /> New person
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent title={person ? "Edit employee" : "New employee"} wide>
+      <DialogContent
+        title={
+          form.isThirdParty
+            ? person ? "Edit third-party contact" : "New third-party contact"
+            : person ? "Edit employee" : "New employee"
+        }
+        description={
+          form.isThirdParty
+            ? "Somebody from outside the company - a tenant or a contractor - who holds our equipment and signs for it. Recorded against the property they work at; their own employer is kept as text."
+            : undefined
+        }
+        wide
+      >
+        <div className="mb-3">
+          <PersonKindToggle
+            value={form.isThirdParty}
+            onChange={(isThirdParty) => setForm({ ...form, isThirdParty })}
+          />
+        </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <Label htmlFor="p-company" required>Company</Label>
@@ -232,10 +298,28 @@ export function PersonDialog({ orgData, person }: { orgData: OrgData; person?: P
             {person ? <HelperText>Use the company transfer function on the profile page.</HelperText> : null}
           </div>
           <div>
-            <Label htmlFor="p-employee-id" required>Employee ID</Label>
+            <Label htmlFor="p-employee-id" required={!form.isThirdParty}>
+              {form.isThirdParty ? "Reference" : "Employee ID"}
+            </Label>
             <Input id="p-employee-id" value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })} />
             <FieldError message={fieldErrors.employeeId} />
+            {form.isThirdParty && !person ? (
+              <HelperText>Leave blank to issue one automatically.</HelperText>
+            ) : null}
           </div>
+          {form.isThirdParty ? (
+            <div className="sm:col-span-2">
+              <Label htmlFor="p-external-company" required>Company (their employer)</Label>
+              <Input
+                id="p-external-company"
+                value={form.externalCompanyName}
+                placeholder="e.g. the tenant outlet or contractor"
+                onChange={(e) => setForm({ ...form, externalCompanyName: e.target.value })}
+              />
+              <FieldError message={fieldErrors.externalCompanyName} />
+              <HelperText>Shown wherever they appear, and named on their handover form.</HelperText>
+            </div>
+          ) : null}
           <div>
             <Label htmlFor="p-first" required>First name</Label>
             <Input id="p-first" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
@@ -247,7 +331,7 @@ export function PersonDialog({ orgData, person }: { orgData: OrgData; person?: P
             <FieldError message={fieldErrors.lastName} />
           </div>
           <div>
-            <Label htmlFor="p-email" required>Work email</Label>
+            <Label htmlFor="p-email" required>{form.isThirdParty ? "Email" : "Work email"}</Label>
             <Input id="p-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
             <FieldError message={fieldErrors.email} />
           </div>
@@ -255,7 +339,7 @@ export function PersonDialog({ orgData, person }: { orgData: OrgData; person?: P
             <Label htmlFor="p-personal-email">Personal email</Label>
             <Input id="p-personal-email" type="email" value={form.personalEmail} onChange={(e) => setForm({ ...form, personalEmail: e.target.value })} />
           </div>
-          <div>
+          <div className={form.isThirdParty ? "hidden" : undefined}>
             <Label htmlFor="p-department">Department</Label>
             <Combobox
               id="p-department" value={form.departmentId}
@@ -267,7 +351,7 @@ export function PersonDialog({ orgData, person }: { orgData: OrgData; person?: P
             />
             <FieldError message={fieldErrors.departmentId} />
           </div>
-          <div>
+          <div className={form.isThirdParty ? "hidden" : undefined}>
             <Label htmlFor="p-position">Position</Label>
             <Combobox
               id="p-position" value={form.positionId}
@@ -279,7 +363,7 @@ export function PersonDialog({ orgData, person }: { orgData: OrgData; person?: P
             />
           </div>
           <div>
-            <Label htmlFor="p-location">Location</Label>
+            <Label htmlFor="p-location">{form.isThirdParty ? "Location (their outlet)" : "Location"}</Label>
             <Combobox
               id="p-location" value={form.locationId}
               placeholder="No location" emptyLabel="No location"
@@ -302,7 +386,7 @@ export function PersonDialog({ orgData, person }: { orgData: OrgData; person?: P
               placeholder="Desk extension"
             />
           </div>
-          <div>
+          <div className={form.isThirdParty ? "hidden" : undefined}>
             <Label htmlFor="p-status" required>Employment status</Label>
             <Select id="p-status" value={form.employmentStatus} onChange={(e) => setForm({ ...form, employmentStatus: e.target.value })}>
               {/* Resigned and Terminated are set by completing a clearance. */}
@@ -314,7 +398,9 @@ export function PersonDialog({ orgData, person }: { orgData: OrgData; person?: P
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={submit} loading={loading}>{person ? "Save changes" : "Create employee"}</Button>
+          <Button onClick={submit} loading={loading}>
+            {person ? "Save changes" : form.isThirdParty ? "Create contact" : "Create employee"}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

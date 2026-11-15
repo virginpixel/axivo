@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { uuidSchema, requiredText, optionalText, dateSchema, nonNegativeDecimal } from "@/shared/validation/common";
+import { uuidSchema, requiredText, optionalText, dateSchema, nonNegativeDecimal, nullableUuid, nullableDate, nullableDecimal } from "@/shared/validation/common";
 
 /** Contracts module validation (SDS Doc 23). */
 
@@ -22,13 +22,13 @@ export const contractSchema = z
     name: requiredText("Contract name"),
     vendor: requiredText("Vendor", 200),
     category: requiredText("Category", 100),
-    startDate: dateSchema.optional(),
-    endDate: dateSchema.optional(),
+    startDate: nullableDate(),
+    endDate: nullableDate(),
     // renewalDate is derived from endDate + renewalType in the service.
     renewalType: z.enum(["MANUAL", "MONTHLY", "QUARTERLY", "ANNUAL", "CUSTOM"]).default("MANUAL"),
-    cost: nonNegativeDecimal("Cost").optional(),
+    cost: nullableDecimal("Cost"),
     currency: optionalText(10),
-    ownerPersonId: uuidSchema.optional().or(z.literal("").transform(() => undefined)),
+    ownerPersonId: nullableUuid(),
     reminderDays: z.array(z.number().int().positive()).max(10).optional(),
     notes: optionalText(),
   })

@@ -473,7 +473,7 @@ export async function assignAsset(
   return result;
 }
 
-export async function returnAsset(context: AuditContext, assignmentId: string, notes?: string) {
+export async function returnAsset(context: AuditContext, assignmentId: string, notes?: string | null) {
   const existing = await db.assetAssignment.findFirst({
     where: { id: assignmentId, deletedAt: null },
     include: { asset: true, person: true, department: { include: { company: true } } },
@@ -634,6 +634,7 @@ export async function cancelAssignment(context: AuditContext, assignmentId: stri
  */
 function handoverPdfDefinition(
   person: { firstName: string; lastName: string; employeeId: string; email: string;
+    isThirdParty: boolean; externalCompanyName: string | null;
     company: { name: string }; department: { name: string } | null; position: { name: string } | null },
   assignments: { assignedAt: Date; department: { name: string; company: { name: string } } | null;
     asset: { name: string; assetTag: string | null; serialNumber: string | null;
@@ -652,15 +653,25 @@ function handoverPdfDefinition(
       branding: { systemName: "Axivo", companyName: person.company.name },
       sections: [
         {
-          heading: "Employee",
-          fields: [
-            { label: "Name", value: `${person.firstName} ${person.lastName}` },
-            { label: "Employee ID", value: person.employeeId },
-            { label: "Company", value: person.company.name },
-            { label: "Department", value: person.department?.name ?? "None" },
-            { label: "Position", value: person.position?.name ?? "None" },
-            { label: "Email", value: person.email },
-          ],
+          // A third party is not staff, so the block names their employer in
+          // place of our department and position, which are empty for them.
+          heading: person.isThirdParty ? "Recipient" : "Employee",
+          fields: person.isThirdParty
+            ? [
+                { label: "Name", value: `${person.firstName} ${person.lastName}` },
+                { label: "Reference", value: person.employeeId },
+                { label: "Company", value: person.externalCompanyName ?? "External" },
+                { label: "Property", value: person.company.name },
+                { label: "Email", value: person.email },
+              ]
+            : [
+                { label: "Name", value: `${person.firstName} ${person.lastName}` },
+                { label: "Employee ID", value: person.employeeId },
+                { label: "Company", value: person.company.name },
+                { label: "Department", value: person.department?.name ?? "None" },
+                { label: "Position", value: person.position?.name ?? "None" },
+                { label: "Email", value: person.email },
+              ],
         },
         {
           heading: "Assets",
@@ -694,11 +705,13 @@ function handoverPdfDefinition(
         {
           heading: "Terms of Responsibility",
           paragraphs: [
-            handoverTerms(
-              person.company.name,
-              assignments.some((a) => a.asset.isShared),
-              showHolder,
-            ),
+            handoverTerms({
+              companyName: person.company.name,
+              includesSharedAsset: assignments.some((a) => a.asset.isShared),
+              includesDepartmentAsset: showHolder,
+              signerIsThirdParty: person.isThirdParty,
+              signerCompanyName: person.externalCompanyName,
+            }),
           ],
         },
         {
@@ -1001,11 +1014,13 @@ export async function acknowledgeHandover(context: AuditContext, handoverId: str
   const acknowledgedHash = signatureHash({
     handoverId: handover.id,
     termsVersion: HANDOVER_TERMS_VERSION,
-    terms: handoverTerms(
-      handover.person.company.name,
-      handover.assets.some((entry) => entry.assetAssignment.asset.isShared),
-      handover.assets.some((entry) => !!entry.assetAssignment.departmentId),
-    ),
+    terms: handoverTerms({
+      companyName: handover.person.company.name,
+      includesSharedAsset: handover.assets.some((entry) => entry.assetAssignment.asset.isShared),
+      includesDepartmentAsset: handover.assets.some((entry) => !!entry.assetAssignment.departmentId),
+      signerIsThirdParty: handover.person.isThirdParty,
+      signerCompanyName: handover.person.externalCompanyName,
+    }),
     person: {
       id: handover.person.id,
       employeeId: handover.person.employeeId,

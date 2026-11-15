@@ -336,7 +336,13 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
       <PageHeader
         title={fullName(person)}
         breadcrumbs={[{ label: "People", href: "/people" }, { label: fullName(person) }]}
-        description={`${person.employeeId} · ${person.company.name}`}
+        description={
+          // A third party's own employer is the useful line here; our company is
+          // only the property they work at.
+          person.isThirdParty
+            ? `${person.employeeId} · ${person.externalCompanyName ?? "External"} · third party at ${person.company.name}`
+            : `${person.employeeId} · ${person.company.name}`
+        }
         actions={
           canManage || canManageAssets ? (
             <div className="flex items-center gap-2">
@@ -368,6 +374,8 @@ export default async function PersonDetailPage({ params }: { params: Promise<{ i
                   positionId: person.positionId,
                   locationId: person.locationId,
                   employeeId: person.employeeId,
+                  isThirdParty: person.isThirdParty,
+                  externalCompanyName: person.externalCompanyName,
                   firstName: person.firstName,
                   lastName: person.lastName,
                   email: person.email,
