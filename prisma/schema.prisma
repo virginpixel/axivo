@@ -948,7 +948,8 @@ model LicensePurchase {
   expiryDate        DateTime?           @map("expiry_date")
   price             Decimal?            @map("price") @db.Decimal(14, 2)
   currency          String?             @map("currency")
-  supplier          String?             @map("supplier")
+  /// Who it was bought from. A reference rather than a name, as on Contract.
+  vendorId          String?             @map("vendor_id") @db.Uuid
   purchaseReference String?             @map("purchase_reference")
   notes             String?             @map("notes")
   createdAt         DateTime            @default(now()) @map("created_at")
@@ -958,8 +959,10 @@ model LicensePurchase {
   deletedAt         DateTime?           @map("deleted_at")
 
   license License @relation(fields: [licenseId], references: [id])
+  vendor  Vendor? @relation(fields: [vendorId], references: [id])
 
   @@index([licenseId])
+  @@index([vendorId])
   @@index([expiryDate])
   @@map("license_purchases")
 }
@@ -1330,7 +1333,9 @@ model Contract {
   companyId      String              @map("company_id") @db.Uuid
   contractNumber String?             @map("contract_number")
   name           String              @map("name")
-  vendor         String              @map("vendor")
+  /// The vendor itself, not a copy of its name: renaming one in Settings used
+  /// to leave every contract showing the old name for ever.
+  vendorId       String              @map("vendor_id") @db.Uuid
   category       String              @map("category")
   status         ContractStatus      @default(DRAFT) @map("status")
   startDate      DateTime?           @map("start_date")
@@ -1359,11 +1364,13 @@ model Contract {
   deletedById    String?             @map("deleted_by") @db.Uuid
 
   company  Company           @relation(fields: [companyId], references: [id])
+  vendor   Vendor            @relation(fields: [vendorId], references: [id])
   renewals ContractRenewal[]
   links    ContractLink[]
   licenses License[]
 
   @@unique([companyId, contractNumber])
+  @@index([vendorId])
   @@index([companyId, status])
   @@index([endDate])
   @@index([renewalDate])
@@ -2189,6 +2196,9 @@ model Vendor {
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
+
+  contracts        Contract[]
+  licensePurchases LicensePurchase[]
 
   @@index([isActive])
   @@map("vendors")

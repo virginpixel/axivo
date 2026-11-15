@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/shared/db";
 import { requirePermission } from "@/shared/auth/guard";
-import { recordAudit } from "@/shared/audit/audit";
+import { recordAudit, type AuditContext } from "@/shared/audit/audit";
 import { ok, toActionError, BusinessRuleError, type ActionResult } from "@/shared/errors";
 import { parseInput as parse } from "@/shared/validation/common";
 import { getSetting, setSetting, SETTING_KEYS } from "@/shared/settings/settings";
@@ -143,10 +143,12 @@ export async function updateVendorAction(id: string, raw: unknown): Promise<Acti
       where: { id: { not: id }, name: { equals: input.name, mode: "insensitive" }, deletedAt: null },
     });
     if (duplicate) throw new BusinessRuleError("A vendor with this name already exists.");
-    // Keep assets and contracts (which store the vendor by name) in sync on rename.
+    // Assets still store the vendor by name, so a rename has to be copied into
+    // them. Contracts and licence purchases reference the vendor and need no
+    // sync - which is the point: this hand-written catch-up never covered
+    // licence purchases, so renaming a vendor quietly left them behind.
     if (existing.name !== input.name) {
       await db.asset.updateMany({ where: { supplier: existing.name }, data: { supplier: input.name } });
-      await db.contract.updateMany({ where: { vendor: existing.name }, data: { vendor: input.name } });
     }
     await db.vendor.update({
       where: { id },
@@ -621,18 +623,41 @@ export async function quickCreateManufacturerAction(name: string): Promise<Actio
   }
 }
 
+/** Find or create a vendor by name, auditing only a genuine creation. */
+async function findOrCreateVendor(audit: AuditContext, name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) throw new BusinessRuleError("Enter a name.");
+  const existing = await db.vendor.findFirst({
+    where: { name: { equals: trimmed, mode: "insensitive" }, deletedAt: null },
+  });
+  const item = existing ?? (await db.vendor.create({ data: { name: trimmed } }));
+  if (!existing) {
+    await recordAudit(audit, { module: "settings", eventType: "vendor.created", action: `Added vendor "${trimmed}"`, targetType: "vendor", targetId: item.id, targetLabel: trimmed });
+  }
+  revalidateCatalogs();
+  return item;
+}
+
+/** Inline vendor creation for pickers that store the vendor's NAME (assets). */
 export async function quickCreateVendorAction(name: string): Promise<ActionResult<{ value: string; label: string }>> {
   try {
     const { audit } = await requirePermission("settings.manage");
-    const trimmed = name.trim();
-    if (!trimmed) throw new BusinessRuleError("Enter a name.");
-    const existing = await db.vendor.findFirst({ where: { name: { equals: trimmed, mode: "insensitive" }, deletedAt: null } });
-    const item = existing ?? (await db.vendor.create({ data: { name: trimmed } }));
-    if (!existing) {
-      await recordAudit(audit, { module: "settings", eventType: "vendor.created", action: `Added vendor "${trimmed}"`, targetType: "vendor", targetId: item.id, targetLabel: trimmed });
-    }
-    revalidateCatalogs();
+    const item = await findOrCreateVendor(audit, name);
     return ok({ value: item.name, label: item.name });
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+/**
+ * Inline vendor creation for pickers that REFERENCE the vendor - contracts and
+ * licence purchases - so the value handed back is the id their field stores.
+ */
+export async function quickCreateVendorIdAction(name: string): Promise<ActionResult<{ value: string; label: string }>> {
+  try {
+    const { audit } = await requirePermission("settings.manage");
+    const item = await findOrCreateVendor(audit, name);
+    return ok({ value: item.id, label: item.name });
   } catch (error) {
     return toActionError(error);
   }
@@ -789,12 +814,20 @@ export async function deleteVendorAction(id: string): Promise<ActionResult<undef
     const { audit } = await requirePermission("settings.manage");
     const item = await db.vendor.findFirst({ where: { id, deletedAt: null } });
     if (!item) throw new BusinessRuleError("Vendor not found.");
-    const [assets, contracts] = await Promise.all([
+    const [assets, contracts, purchases] = await Promise.all([
       db.asset.count({ where: { supplier: item.name, deletedAt: null } }),
-      db.contract.count({ where: { vendor: item.name, deletedAt: null } }),
+      db.contract.count({ where: { vendorId: id, deletedAt: null } }),
+      db.licensePurchase.count({ where: { vendorId: id, deletedAt: null } }),
     ]);
-    if (assets > 0 || contracts > 0) {
-      throw new BusinessRuleError(`"${item.name}" is still used by ${assets} asset(s) and ${contracts} contract(s). Clear them before deleting it.`);
+    if (assets > 0 || contracts > 0 || purchases > 0) {
+      const used = [
+        assets > 0 ? `${assets} asset(s)` : null,
+        contracts > 0 ? `${contracts} contract(s)` : null,
+        purchases > 0 ? `${purchases} licence purchase(s)` : null,
+      ].filter(Boolean);
+      throw new BusinessRuleError(
+        `"${item.name}" is still used by ${used.join(" and ")}. Clear them before deleting it.`,
+      );
     }
     await db.vendor.update({ where: { id }, data: { isActive: false, deletedAt: new Date(), name: `${item.name} (deleted ${id.slice(0, 8)})` } });
     await recordAudit(audit, { module: "settings", eventType: "vendor.deleted", action: `Deleted vendor "${item.name}"`, targetType: "vendor", targetId: id, targetLabel: item.name });

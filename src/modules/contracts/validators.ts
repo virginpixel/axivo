@@ -20,7 +20,7 @@ export const contractSchema = z
     companyId: uuidSchema,
     contractNumber: optionalText(100),
     name: requiredText("Contract name"),
-    vendor: requiredText("Vendor", 200),
+    vendorId: uuidSchema,
     category: requiredText("Category", 100),
     startDate: nullableDate(),
     endDate: nullableDate(),

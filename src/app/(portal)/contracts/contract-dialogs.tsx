@@ -10,7 +10,7 @@ import {
   renewContractAction,
   attachContractPdfAction,
 } from "@/modules/contracts/actions";
-import { quickCreateVendorAction, quickCreateContractCategoryAction, quickCreateCurrencyAction } from "@/modules/catalogs/actions";
+import { quickCreateVendorIdAction, quickCreateContractCategoryAction, quickCreateCurrencyAction } from "@/modules/catalogs/actions";
 import { useAction } from "@/shared/ui/use-action";
 import { useToast } from "@/shared/ui/toast";
 import { Button } from "@/shared/ui/button";
@@ -36,7 +36,7 @@ export interface ContractRecord {
   companyId: string;
   contractNumber: string | null;
   name: string;
-  vendor: string;
+  vendorId: string;
   category: string;
   status: string;
   startDate: string | null;
@@ -74,7 +74,7 @@ export function ContractDialog({
     companyId: contract?.companyId ?? companies[0]?.id ?? "",
     contractNumber: contract?.contractNumber ?? "",
     name: contract?.name ?? "",
-    vendor: contract?.vendor ?? "",
+    vendorId: contract?.vendorId ?? "",
     category: contract?.category ?? "",
     startDate: contract?.startDate ?? "",
     endDate: contract?.endDate ?? "",
@@ -93,7 +93,7 @@ export function ContractDialog({
       companyId: form.companyId,
       contractNumber: form.contractNumber || undefined,
       name: form.name,
-      vendor: form.vendor,
+      vendorId: form.vendorId,
       category: form.category,
       startDate: form.startDate || undefined,
       endDate: form.endDate || undefined,
@@ -143,15 +143,15 @@ export function ContractDialog({
           <div>
             <Label htmlFor="con-vendor" required>Vendor</Label>
             <Combobox
-              id="con-vendor" value={form.vendor}
+              id="con-vendor" value={form.vendorId}
               placeholder="Select vendor"
-              options={catalogs.vendors.map((vendor) => ({ value: vendor.name, label: vendor.name }))}
-              onChange={(value) => setForm({ ...form, vendor: value })}
-              onCreate={createHandler(quickCreateVendorAction)}
+              options={catalogs.vendors.map((vendor) => ({ value: vendor.id, label: vendor.name }))}
+              onChange={(value) => setForm({ ...form, vendorId: value })}
+              onCreate={createHandler(quickCreateVendorIdAction)}
               createNoun="vendor"
             />
             <HelperText>Vendors are managed in Settings, Vendors.</HelperText>
-            <FieldError message={fieldErrors.vendor} />
+            <FieldError message={fieldErrors.vendorId} />
           </div>
           <div>
             <Label htmlFor="con-category" required>Category</Label>
@@ -256,7 +256,7 @@ export function ContractDialog({
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={submit} loading={loading} disabled={!form.name || !form.vendor || !form.category}>
+          <Button onClick={submit} loading={loading} disabled={!form.name || !form.vendorId || !form.category}>
             {contract ? "Save changes" : "Create contract"}
           </Button>
         </div>

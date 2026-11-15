@@ -349,7 +349,7 @@ describe("end-to-end request lifecycle", () => {
     await licensesService.recordPurchase(actor, {
       licenseId: license.id, purchaseType: "NEW_PURCHASE", quantity: 1,
       purchaseDate: new Date(), startDate: undefined, expiryDate: undefined,
-      price: undefined, currency: null, supplier: null, purchaseReference: null, notes: null,
+      price: undefined, currency: null, vendorId: null, purchaseReference: null, notes: null,
     });
 
     await licensesService.assignLicense(actor, { licenseId: license.id, personId: personA!.id, notes: null });

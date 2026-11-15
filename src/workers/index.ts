@@ -89,7 +89,7 @@ async function contractReminders(): Promise<void> {
       status: { in: ["ACTIVE", "EXPIRING", "RENEWED"] },
       OR: [{ endDate: { not: null } }, { renewalDate: { not: null } }],
     },
-    include: { company: true },
+    include: { company: true, vendor: { select: { name: true } } },
   });
   for (const contract of contracts) {
     const reminderDays = (contract.reminderDays as number[] | null) ?? defaultDays;
@@ -129,7 +129,7 @@ async function contractReminders(): Promise<void> {
         companyId: contract.companyId,
         eventType: "CONTRACT_RENEWAL_REMINDER",
         subject: `Contract "${contract.name}" ${contract.renewalDate ? "renews" : "expires"} in ${daysLeft} day(s)`,
-        body: `Contract <strong>${contract.name}</strong>${contract.contractNumber ? ` (${contract.contractNumber})` : ""} with vendor ${contract.vendor} for ${contract.company.name} ${contract.renewalDate ? "is due for renewal" : "expires"} on ${targetDate.toISOString().slice(0, 10)}.`,
+        body: `Contract <strong>${contract.name}</strong>${contract.contractNumber ? ` (${contract.contractNumber})` : ""} with vendor ${contract.vendor.name} for ${contract.company.name} ${contract.renewalDate ? "is due for renewal" : "expires"} on ${targetDate.toISOString().slice(0, 10)}.`,
         recipients,
         entityType: "contract",
         entityId: contract.id,

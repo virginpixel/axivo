@@ -10,7 +10,7 @@ import { ContractRowActions } from "../contract-dialogs";
 import { ContractDocuments } from "./contract-documents";
 import { DeleteButton } from "@/shared/ui/delete-button";
 import { deleteContractAction } from "@/modules/contracts/actions";
-import { VendorLink, vendorIdsByName } from "@/shared/ui/vendor-link";
+import { VendorLink } from "@/shared/ui/vendor-link";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +25,7 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
     where: { id, deletedAt: null, ...(isGlobalAdmin ? {} : { companyId: user.companyId }) },
     include: {
       company: { select: { id: true, name: true } },
+      vendor: { select: { id: true, name: true } },
       renewals: { orderBy: { renewalDate: "desc" } },
       licenses: { where: { deletedAt: null }, select: { id: true, name: true } },
     },
@@ -41,7 +42,11 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
       orderBy: { createdAt: "desc" },
       include: { document: { select: { id: true, name: true, createdAt: true } } },
     }),
-    db.vendor.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    db.vendor.findMany({
+      where: { deletedAt: null },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, isActive: true },
+    }),
     db.catalogItem.findMany({ where: { deletedAt: null, isActive: true, kind: "CONTRACT_CATEGORY" }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   const currencyItems = await db.currency.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { code: "asc" }, select: { code: true, name: true } });
@@ -49,8 +54,11 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
   // Who the renewal reminder actually reaches, resolved for display only: the
   // worker applies the same order when it sends.
   const alertEmails = (contract.alertEmails as string[] | null) ?? [];
-  const vendorIds = vendorIdsByName(vendorItems);
-  const catalogs = { vendors: vendorItems, categories: categoryItems, currencies: currencyItems };
+  const catalogs = {
+    vendors: vendorItems.filter((vendor) => vendor.isActive),
+    categories: categoryItems,
+    currencies: currencyItems,
+  };
   const documents = docLinks
     .filter((link) => link.document)
     .map((link) => ({ id: link.document!.id, name: link.document!.name, createdAt: formatDate(link.document!.createdAt) }));
@@ -60,7 +68,7 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
       <PageHeader
         title={contract.name}
         breadcrumbs={[{ label: "Contracts", href: "/contracts" }, { label: contract.name }]}
-        description={[contract.vendor, contract.category, contract.company.name].filter(Boolean).join(" · ")}
+        description={[contract.vendor.name, contract.category, contract.company.name].filter(Boolean).join(" · ")}
         actions={
           canManage ? (
             <div className="flex items-center gap-2">
@@ -70,7 +78,7 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
                 companyId: contract.companyId,
                 contractNumber: contract.contractNumber,
                 name: contract.name,
-                vendor: contract.vendor,
+                vendorId: contract.vendorId,
                 category: contract.category,
                 status: contract.status,
                 startDate: contract.startDate?.toISOString().slice(0, 10) ?? null,
@@ -111,7 +119,7 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
             <dl className="space-y-2 text-sm">
               <Row label="Status" value={<StatusBadge status={contract.status} />} />
               <Row label="Contract number" value={contract.contractNumber ?? "None"} />
-              <Row label="Vendor" value={<VendorLink name={contract.vendor} vendorIds={vendorIds} />} />
+              <Row label="Vendor" value={<VendorLink vendor={contract.vendor} />} />
               <Row label="Category" value={contract.category} />
               <Row label="Period" value={`${contract.startDate ? formatDate(contract.startDate) : "None"} → ${contract.endDate ? formatDate(contract.endDate) : "None"}`} />
               <Row label="Renewal" value={`${contract.renewalDate ? formatDate(contract.renewalDate) : "None"} (${enumLabel(contract.renewalType)})`} />

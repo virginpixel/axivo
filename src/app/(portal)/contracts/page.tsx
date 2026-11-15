@@ -10,7 +10,7 @@ import { Input, Select } from "@/shared/ui/input";
 import { formatDate, fullName, enumLabel } from "@/shared/utils";
 import { ContractDialog, ContractRowActions } from "./contract-dialogs";
 import type { Prisma, ContractStatus } from "@prisma/client";
-import { VendorLink, vendorIdsByName } from "@/shared/ui/vendor-link";
+import { VendorLink } from "@/shared/ui/vendor-link";
 
 export const metadata = { title: "Contracts" };
 export const dynamic = "force-dynamic";
@@ -45,7 +45,7 @@ export default async function ContractsPage({
           OR: [
             { contractNumber: { contains: q, mode: "insensitive" } },
             { name: { contains: q, mode: "insensitive" } },
-            { vendor: { contains: q, mode: "insensitive" } },
+            { vendor: { name: { contains: q, mode: "insensitive" } } },
           ],
         }
       : {}),
@@ -60,6 +60,7 @@ export default async function ContractsPage({
       orderBy: [{ endDate: "asc" }, { contractNumber: "asc" }],
       include: {
         company: { select: { name: true } },
+        vendor: { select: { id: true, name: true } },
         renewals: { orderBy: { renewalDate: "desc" }, take: 1 },
       },
     }),
@@ -88,7 +89,14 @@ export default async function ContractsPage({
   ]);
 
   const [vendorItems, currencyItems, general] = await Promise.all([
-    db.vendor.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    // Every vendor that still exists, not just the active ones: a retired
+    // vendor keeps its page, and the contracts naming it should still reach it.
+    // The picker below offers only the active ones.
+    db.vendor.findMany({
+      where: { deletedAt: null },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, isActive: true },
+    }),
     db.currency.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { code: "asc" }, select: { code: true, name: true, rateToBase: true } }),
     getSetting<{ defaultCurrency?: string }>(SETTING_KEYS.GENERAL),
   ]);
@@ -100,9 +108,9 @@ export default async function ContractsPage({
   };
   // Convert each active contract's cost to the base currency for a combined total.
   const totalCostBase = totalCost.reduce((sum, row) => sum + (row.cost ? Number(row.cost) * rateFor(row.currency) : 0), 0);
-  const vendorIds = vendorIdsByName(vendorItems);
+  const activeVendors = vendorItems.filter((vendor) => vendor.isActive);
   const catalogs = {
-    vendors: vendorItems,
+    vendors: activeVendors,
     categories: catalogItems.filter((item) => item.kind === "CONTRACT_CATEGORY"),
     currencies: currencyItems.map((c) => ({ code: c.code, name: c.name })),
   };
@@ -175,7 +183,7 @@ export default async function ContractsPage({
                     <p className="max-w-48 truncate text-xs text-muted-foreground">{contract.contractNumber}</p>
                   ) : null}
                 </TD>
-                <TD><VendorLink name={contract.vendor} vendorIds={vendorIds} /></TD>
+                <TD><VendorLink vendor={contract.vendor} /></TD>
                 <TD>{contract.category}</TD>
                 <TD>{contract.company.name}</TD>
                 <TD className="whitespace-nowrap text-xs">
@@ -201,7 +209,7 @@ export default async function ContractsPage({
                         companyId: contract.companyId,
                         contractNumber: contract.contractNumber,
                         name: contract.name,
-                        vendor: contract.vendor,
+                        vendorId: contract.vendorId,
                         category: contract.category,
                         status: contract.status,
                         startDate: contract.startDate?.toISOString().slice(0, 10) ?? null,

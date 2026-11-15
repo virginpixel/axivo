@@ -82,6 +82,18 @@ export async function updatePurchaseAction(
   }
 }
 
+/** Remove a purchase recorded in error. Soft-deleted, and audited. */
+export async function deletePurchaseAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const { audit } = await requirePermission("licenses.manage");
+    await service.deletePurchase(audit, id);
+    revalidatePath("/licenses");
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
 export async function assignLicenseAction(raw: unknown): Promise<ActionResult<{ id: string }>> {
   try {
     const { audit } = await requirePermission("licenses.assignments.manage");

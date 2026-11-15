@@ -221,10 +221,11 @@ async function VendorsTab({ canManage }: { canManage: boolean }) {
   const vendors = await db.vendor.findMany({ where: { deletedAt: null }, orderBy: { name: "asc" } });
   const [assetCounts, contractCounts] = await Promise.all([
     db.asset.groupBy({ by: ["supplier"], where: { deletedAt: null, supplier: { not: null } }, _count: { _all: true } }),
-    db.contract.groupBy({ by: ["vendor"], where: { deletedAt: null }, _count: { _all: true } }),
+    db.contract.groupBy({ by: ["vendorId"], where: { deletedAt: null }, _count: { _all: true } }),
   ]);
   const assetFor = (name: string) => assetCounts.find((row) => row.supplier === name)?._count._all ?? 0;
-  const contractFor = (name: string) => contractCounts.find((row) => row.vendor === name)?._count._all ?? 0;
+  // Contracts reference the vendor, so these count by id rather than by name.
+  const contractFor = (id: string) => contractCounts.find((row) => row.vendorId === id)?._count._all ?? 0;
   return (
     <section aria-label="Vendors">
       <div className="mb-3 flex items-center justify-between">
@@ -249,7 +250,7 @@ async function VendorsTab({ canManage }: { canManage: boolean }) {
               </TD>
               <TD>{vendor.contactName ?? "None"}{vendor.contactPhone ? ` (${vendor.contactPhone})` : ""}</TD>
               <TD>{assetFor(vendor.name)}</TD>
-              <TD>{contractFor(vendor.name)}</TD>
+              <TD>{contractFor(vendor.id)}</TD>
               <TD>{vendor.isActive ? "Active" : "Inactive"}</TD>
               {canManage ? (
                 <TD className="text-right">

@@ -7,7 +7,7 @@ import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge, Badge } from "@/shared/ui/badge";
 import { UtilizationBar } from "@/shared/ui/utilization-bar";
 import { formatDate, fullName, enumLabel } from "@/shared/utils";
-import { VendorLink, vendorIdsByName } from "@/shared/ui/vendor-link";
+import { VendorLink } from "@/shared/ui/vendor-link";
 import { LiveSearch } from "@/shared/ui/live-search";
 import { LicenseDialog, PurchaseDialog, LicenseAssignDialog, LicenseDeleteButton } from "./license-dialogs";
 
@@ -41,7 +41,11 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
         company: { select: { name: true } },
         application: { select: { name: true } },
         contract: { select: { contractNumber: true, name: true } },
-        purchases: { where: { deletedAt: null }, orderBy: { purchaseDate: "desc" } },
+        purchases: {
+          where: { deletedAt: null },
+          orderBy: { purchaseDate: "desc" },
+          include: { vendor: { select: { id: true, name: true } } },
+        },
       },
     }),
     db.license.count({ where: licenseWhere }),
@@ -62,13 +66,13 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
       where: { deletedAt: null, ...companyScope },
       orderBy: { contractNumber: "asc" }, select: { id: true, contractNumber: true, name: true, companyId: true },
     }),
+    // All of them for the name lookup; the picker takes the active subset.
     db.vendor.findMany({
-      where: { deletedAt: null, isActive: true },
-      orderBy: { name: "asc" }, select: { id: true, name: true },
+      where: { deletedAt: null },
+      orderBy: { name: "asc" }, select: { id: true, name: true, isActive: true },
     }),
   ]);
-  const vendors = vendorItems.map((item) => item.name);
-  const vendorIds = vendorIdsByName(vendorItems);
+  const vendors = vendorItems.filter((item) => item.isActive).map(({ id, name }) => ({ id, name }));
 
   const availability = new Map<string, { purchased: number; assigned: number; available: number }>();
   for (const license of licenses) {
@@ -156,7 +160,7 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
                     </p>
                   </TD>
                   <TD className="text-muted-foreground">
-                    <VendorLink name={license.purchases[0]?.supplier} vendorIds={vendorIds} />
+                    <VendorLink vendor={license.purchases[0]?.vendor} />
                   </TD>
                   <TD className="text-right tabular-nums">{stats.purchased}</TD>
                   <TD className="text-right tabular-nums">{stats.assigned}</TD>

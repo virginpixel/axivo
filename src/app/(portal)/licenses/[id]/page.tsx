@@ -8,8 +8,13 @@ import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
 import { StatusBadge, Badge } from "@/shared/ui/badge";
 import { formatDate, fullName, enumLabel } from "@/shared/utils";
 import { UtilizationBar } from "@/shared/ui/utilization-bar";
-import { VendorLink, vendorIdsByName } from "@/shared/ui/vendor-link";
-import { LicenseAssignDialog, LicenseAssignmentActions, PurchaseDialog } from "../license-dialogs";
+import { VendorLink } from "@/shared/ui/vendor-link";
+import {
+  LicenseAssignDialog,
+  LicenseAssignmentActions,
+  PurchaseDialog,
+  DeletePurchaseButton,
+} from "../license-dialogs";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +41,11 @@ export default async function LicenseDetailPage({
       company: true,
       application: true,
       contract: true,
-      purchases: { where: { deletedAt: null }, orderBy: { purchaseDate: "desc" } },
+      purchases: {
+        where: { deletedAt: null },
+        orderBy: { purchaseDate: "desc" },
+        include: { vendor: { select: { id: true, name: true } } },
+      },
       assignments: {
         where: { deletedAt: null, status: { in: ["PENDING", "ACTIVE", "SUSPENDED"] } },
         include: { person: true },
@@ -77,12 +86,15 @@ export default async function LicenseDetailPage({
       })
     : [];
   const vendorRecords = await db.vendor.findMany({
-    where: { deletedAt: null, isActive: true },
+    where: { deletedAt: null },
     orderBy: { name: "asc" },
-    select: { id: true, name: true },
+    select: { id: true, name: true, isActive: true },
   });
-  const vendorNames = canManage ? vendorRecords.map((vendor) => vendor.name) : [];
-  const vendorIds = vendorIdsByName(vendorRecords);
+  // Only active vendors are offered; an inactive one already chosen keeps
+  // showing, because the purchase references it rather than copying its name.
+  const vendorOptions = canManage
+    ? vendorRecords.filter((vendor) => vendor.isActive).map(({ id, name }) => ({ id, name }))
+    : [];
 
   return (
     <div>
@@ -93,7 +105,7 @@ export default async function LicenseDetailPage({
           license.application?.name ?? undefined,
           license.isShared ? "All companies" : license.company.name,
           enumLabel(license.licenseType),
-          license.purchases[0]?.supplier ?? undefined,
+          license.purchases[0]?.vendor?.name ?? undefined,
         ]
           .filter(Boolean)
           .join(" · ")}
@@ -113,7 +125,7 @@ export default async function LicenseDetailPage({
                 {coverage.state === "expired" ? "Expired" : "Covered until"} {formatDate(coverage.expiresAt)}
               </Badge>
             ) : null}
-            {canManage ? <PurchaseDialog licenseId={license.id} licenseType={license.licenseType} vendors={vendorNames} /> : null}
+            {canManage ? <PurchaseDialog licenseId={license.id} licenseType={license.licenseType} vendors={vendorOptions} /> : null}
             {canAssign ? (
               <LicenseAssignDialog
                 licenseId={license.id}
@@ -244,14 +256,15 @@ export default async function LicenseDetailPage({
                       <TD>{purchase.expiryDate ? formatDate(purchase.expiryDate) : "None"}</TD>
                       <TD>{purchase.price ? `${Number(purchase.price).toLocaleString()} ${purchase.currency ?? ""}` : "None"}</TD>
                       <TD>
-                        <VendorLink name={purchase.supplier} vendorIds={vendorIds} />
+                        <VendorLink vendor={purchase.vendor} />
                       </TD>
                       {canManage ? (
                         <TD className="text-right">
+                          <span className="flex items-center justify-end">
                           <PurchaseDialog
                             licenseId={license.id}
                             licenseType={license.licenseType}
-                            vendors={vendorNames}
+                            vendors={vendorOptions}
                             purchase={{
                               id: purchase.id,
                               purchaseType: purchase.purchaseType,
@@ -262,9 +275,16 @@ export default async function LicenseDetailPage({
                               price: purchase.price === null ? null : Number(purchase.price),
                               currency: purchase.currency,
                               purchaseReference: purchase.purchaseReference,
-                              supplier: purchase.supplier,
+                              vendorId: purchase.vendorId,
                             }}
                           />
+                          <DeletePurchaseButton
+                            purchaseId={purchase.id}
+                            summary={`${enumLabel(purchase.purchaseType)} of ${purchase.quantity} seat(s)${
+                              purchase.expiryDate ? `, expiring ${formatDate(purchase.expiryDate)}` : ""
+                            }`}
+                          />
+                          </span>
                         </TD>
                       ) : null}
                     </TR>

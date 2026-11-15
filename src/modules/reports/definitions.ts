@@ -952,7 +952,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           license: { deletedAt: null, ...companyScope(user) },
         },
         orderBy: { expiryDate: "asc" },
-        include: { license: { include: { company: true, application: true } } },
+        include: { license: { include: { company: true, application: true } }, vendor: true },
       });
       return {
         headers: ["License", "Application", "Company", "Quantity", "Expires", "Supplier"],
@@ -962,7 +962,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           purchase.license.company.name,
           String(purchase.quantity),
           formatDate(purchase.expiryDate),
-          purchase.supplier ?? "None",
+          purchase.vendor?.name ?? "None",
         ]),
       };
     },
@@ -1083,14 +1083,14 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           ],
         },
         orderBy: { endDate: "asc" },
-        include: { company: true },
+        include: { company: true, vendor: true },
       });
       return {
         headers: ["Contract", "Name", "Vendor", "Company", "End date", "Renewal date", "Cost", "Contact"],
         rows: contracts.map((contract) => [
           contract.contractNumber ?? "None",
           contract.name,
-          contract.vendor,
+          contract.vendor.name,
           contract.company.name,
           contract.endDate ? formatDate(contract.endDate) : "None",
           contract.renewalDate ? formatDate(contract.renewalDate) : "None",
@@ -1108,14 +1108,15 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
     run: async (user) => {
       const contracts = await db.contract.findMany({
         where: { deletedAt: null, status: { in: ["ACTIVE", "EXPIRING", "RENEWED"] }, ...companyScope(user) },
-        include: { company: true },
+        include: { company: true, vendor: true },
       });
       const byVendor = new Map<string, { count: number; total: number; currency: string }>();
       for (const contract of contracts) {
-        const entry = byVendor.get(contract.vendor) ?? { count: 0, total: 0, currency: contract.currency ?? "" };
+        const name = contract.vendor.name;
+        const entry = byVendor.get(name) ?? { count: 0, total: 0, currency: contract.currency ?? "" };
         entry.count += 1;
         entry.total += contract.cost ? Number(contract.cost) : 0;
-        byVendor.set(contract.vendor, entry);
+        byVendor.set(name, entry);
       }
       return {
         headers: ["Vendor", "Active contracts", "Total cost"],

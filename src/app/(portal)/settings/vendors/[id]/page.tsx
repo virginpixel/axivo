@@ -32,7 +32,7 @@ export default async function VendorDetailPage({
       include: { category: { select: { name: true } }, location: { select: { name: true } } },
     }),
     db.contract.findMany({
-      where: { deletedAt: null, vendor: vendor.name },
+      where: { deletedAt: null, vendorId: vendor.id },
       orderBy: { createdAt: "desc" },
       include: { company: { select: { name: true } } },
     }),

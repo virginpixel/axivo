@@ -30,7 +30,7 @@ export const licensePurchaseSchema = z
     expiryDate: dateSchema.optional(),
     price: nonNegativeDecimal("Price").optional(),
     currency: optionalText(10),
-    supplier: optionalText(200),
+    vendorId: nullableUuid(),
     purchaseReference: optionalText(100),
     notes: optionalText(),
   })

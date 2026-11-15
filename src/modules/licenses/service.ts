@@ -368,7 +368,7 @@ export async function recordPurchase(context: AuditContext, input: LicensePurcha
         expiryDate: input.expiryDate ?? null,
         price: input.price ?? null,
         currency: input.currency ?? null,
-        supplier: input.supplier ?? null,
+        vendorId: input.vendorId,
         purchaseReference: input.purchaseReference ?? null,
         notes: input.notes ?? null,
         createdById: context.actorUserId ?? null,
@@ -438,7 +438,7 @@ export async function updatePurchase(
         expiryDate: input.expiryDate ?? null,
         price: input.price ?? null,
         currency: input.currency,
-        supplier: input.supplier,
+        vendorId: input.vendorId,
         purchaseReference: input.purchaseReference,
         notes: input.notes,
         updatedById: context.actorUserId ?? null,
@@ -458,7 +458,7 @@ export async function updatePurchase(
           purchase as unknown as Record<string, unknown>,
           [
             "purchaseType", "quantity", "purchaseDate", "startDate", "expiryDate",
-            "price", "currency", "supplier", "purchaseReference", "notes",
+            "price", "currency", "vendorId", "purchaseReference", "notes",
           ],
         ),
       },
@@ -466,6 +466,46 @@ export async function updatePurchase(
     );
     await syncStatusToCover(context, license, tx);
     return purchase;
+  });
+}
+
+/**
+ * Remove a purchase recorded in error - the wrong licence, or entered twice.
+ *
+ * Soft-deleted, not erased: what was bought and when is the evidence behind a
+ * seat count, and a deletion is itself worth being able to account for. The
+ * seats it contributed stop counting immediately, which can leave the licence
+ * over-allocated; that is shown rather than prevented, because the alternative
+ * is leaving a purchase on the record that never happened.
+ */
+export async function deletePurchase(context: AuditContext, id: string) {
+  const existing = await db.licensePurchase.findFirst({
+    where: { id, deletedAt: null },
+    include: { license: true },
+  });
+  if (!existing) throw new NotFoundError("Purchase not found.");
+  const license = existing.license;
+  if (license.status === "RETIRED") {
+    throw new BusinessRuleError("Retired licenses cannot have their purchases changed.");
+  }
+  return db.$transaction(async (tx) => {
+    await tx.licensePurchase.update({ where: { id }, data: { deletedAt: new Date() } });
+    await recordAudit(
+      { ...context, companyId: license.companyId },
+      {
+        module: MODULE,
+        eventType: "license.purchase_deleted",
+        action:
+          `Deleted a ${existing.purchaseType.toLowerCase().replace("_", " ")} of ` +
+          `${existing.quantity} seat(s) from "${license.name}"` +
+          (existing.expiryDate ? ` (expiring ${existing.expiryDate.toISOString().slice(0, 10)})` : ""),
+        targetType: "license_purchase",
+        targetId: id,
+        targetLabel: license.name,
+      },
+      tx,
+    );
+    await syncStatusToCover(context, license, tx);
   });
 }
 

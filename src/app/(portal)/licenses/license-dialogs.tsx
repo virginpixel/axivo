@@ -11,12 +11,29 @@ import {
   assignLicenseAction,
   removeLicenseAssignmentAction,
   deleteLicenseAction,
+  deletePurchaseAction,
 } from "@/modules/licenses/actions";
 import { useAction } from "@/shared/ui/use-action";
 import { Button } from "@/shared/ui/button";
 import { Input, Select, Textarea, Label, FieldError, HelperText } from "@/shared/ui/input";
 import { Combobox } from "@/shared/ui/combobox";
 import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
+import { quickCreateVendorIdAction } from "@/modules/catalogs/actions";
+import { useToast } from "@/shared/ui/toast";
+import type { ActionResult } from "@/shared/errors";
+
+/** Wrap a quick-create action into the Combobox onCreate contract, toasting failures. */
+function useCreateHandler() {
+  const { toast } = useToast();
+  return function handler(fn: (label: string) => Promise<ActionResult<{ value: string; label: string }>>) {
+    return async (label: string) => {
+      const result = await fn(label);
+      if (result.ok) return result.data;
+      toast("error", result.error);
+      return null;
+    };
+  };
+}
 
 export function LicenseDialog({
   companies,
@@ -192,6 +209,56 @@ export function LicenseDialog({
   );
 }
 
+/**
+ * Remove a purchase recorded in error. Confirmed first: the seats it provided
+ * stop counting straight away, which can leave the licence over-allocated.
+ */
+export function DeletePurchaseButton({
+  purchaseId,
+  summary,
+}: {
+  purchaseId: string;
+  summary: string;
+}) {
+  const { run, loading } = useAction();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Delete purchase"
+        title="Delete this purchase"
+        onClick={() => setOpen(true)}
+      >
+        <Trash2 className="h-4 w-4 text-destructive" />
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent
+          title="Delete this purchase?"
+          description={`${summary}. The seats it provides stop counting immediately, which may leave the licence over-allocated. It is removed from the list and kept in the audit trail.`}
+        >
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setOpen(false)}>Keep it</Button>
+            <Button
+              variant="destructive"
+              loading={loading}
+              onClick={() =>
+                run(() => deletePurchaseAction(purchaseId), {
+                  successMessage: "Purchase deleted.",
+                  onSuccess: () => setOpen(false),
+                })
+              }
+            >
+              Delete purchase
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 export interface PurchaseRecord {
   id: string;
   purchaseType: string;
@@ -201,7 +268,7 @@ export interface PurchaseRecord {
   expiryDate: string | null;
   price: number | null;
   currency: string | null;
-  supplier: string | null;
+  vendorId: string | null;
   purchaseReference: string | null;
 }
 
@@ -219,10 +286,11 @@ export function PurchaseDialog({
 }: {
   licenseId: string;
   licenseType: string;
-  vendors?: string[];
+  vendors?: { id: string; name: string }[];
   purchase?: PurchaseRecord;
 }) {
   const { run, loading, fieldErrors } = useAction();
+  const createHandler = useCreateHandler();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     purchaseType: purchase?.purchaseType ?? "NEW_PURCHASE",
@@ -232,7 +300,7 @@ export function PurchaseDialog({
     expiryDate: purchase?.expiryDate ?? "",
     price: purchase?.price != null ? String(purchase.price) : "",
     currency: purchase?.currency ?? "USD",
-    supplier: purchase?.supplier ?? "",
+    vendorId: purchase?.vendorId ?? "",
     purchaseReference: purchase?.purchaseReference ?? "",
   });
   const isSubscription = licenseType === "SUBSCRIPTION";
@@ -298,11 +366,13 @@ export function PurchaseDialog({
             <div>
               <Label htmlFor="pur-supplier">Vendor</Label>
               <Combobox
-                id="pur-supplier" value={form.supplier}
-                placeholder={vendors.length ? "Select vendor…" : "Add vendors in Settings → Catalogs"}
+                id="pur-supplier" value={form.vendorId}
+                placeholder={vendors.length ? "Select vendor…" : "Add vendors in Settings → Vendors"}
                 emptyLabel="None"
-                options={vendors.map((vendor) => ({ value: vendor, label: vendor }))}
-                onChange={(value) => setForm({ ...form, supplier: value })}
+                options={vendors.map((vendor) => ({ value: vendor.id, label: vendor.name }))}
+                onChange={(value) => setForm({ ...form, vendorId: value })}
+                onCreate={createHandler(quickCreateVendorIdAction)}
+                createNoun="vendor"
               />
             </div>
             <div>
@@ -324,7 +394,7 @@ export function PurchaseDialog({
                   expiryDate: form.expiryDate || undefined,
                   price: form.price ? Number(form.price) : undefined,
                   currency: form.currency,
-                  supplier: form.supplier,
+                  vendorId: form.vendorId,
                   purchaseReference: form.purchaseReference,
                 };
                 run(

@@ -39,6 +39,8 @@ export async function createContract(context: AuditContext, input: ContractInput
       throw new ValidationError(undefined, { contractNumber: "This contract number already exists." });
     }
   }
+  const vendor = await db.vendor.findFirst({ where: { id: input.vendorId, deletedAt: null } });
+  if (!vendor) throw new ValidationError(undefined, { vendorId: "Select a vendor." });
   return db.$transaction(async (tx) => {
     const contract = await tx.contract.create({
       data: {
@@ -71,6 +73,10 @@ export async function updateContract(context: AuditContext, id: string, input: C
   if (!existing) throw new NotFoundError("Contract not found.");
   if (existing.companyId !== input.companyId) {
     throw new BusinessRuleError("Contracts cannot be moved between companies.");
+  }
+  if (input.vendorId !== existing.vendorId) {
+    const vendor = await db.vendor.findFirst({ where: { id: input.vendorId, deletedAt: null } });
+    if (!vendor) throw new ValidationError(undefined, { vendorId: "Select a vendor." });
   }
   if (input.contractNumber) {
     const duplicate = await db.contract.findFirst({
@@ -109,7 +115,7 @@ export async function updateContract(context: AuditContext, id: string, input: C
           existing as unknown as Record<string, unknown>,
           contract as unknown as Record<string, unknown>,
           [
-            "name", "vendor", "category", "startDate", "endDate", "renewalDate", "renewalType",
+            "name", "vendorId", "category", "startDate", "endDate", "renewalDate", "renewalType",
             "cost", "currency", "contactName", "contactEmail", "contactPhone", "notes",
           ],
         ),
