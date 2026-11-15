@@ -120,7 +120,7 @@ export default async function AssetsPage({
 
   const [manufacturerList, vendorList, currencyList] = await Promise.all([
     db.manufacturer.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { name: "asc" }, select: { name: true } }),
-    db.vendor.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { name: "asc" }, select: { name: true } }),
+    db.vendor.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     db.currency.findMany({
       where: { deletedAt: null, isActive: true },
       orderBy: { code: "asc" },
@@ -166,7 +166,7 @@ export default async function AssetsPage({
         helpText: f.customField.helpText,
       })),
     })),
-    vendors: vendorList.map((v) => ({ name: v.name })),
+    vendors: vendorList.map(({ id, name }) => ({ id, name })),
     currencies: currencyList.map((c) => ({ code: c.code, name: c.name })),
   };
   const categoryOptions = categories.map((category) => ({
@@ -319,7 +319,7 @@ export default async function AssetsPage({
                           manufacturer: asset.manufacturer,
                           model: asset.model,
                           locationId: asset.locationId,
-                          supplier: asset.supplier,
+                          vendorId: asset.vendorId,
                           purchaseDate: asset.purchaseDate?.toISOString().slice(0, 10) ?? null,
                           purchasePrice: asset.purchasePrice === null ? null : Number(asset.purchasePrice),
                           currency: asset.currency,

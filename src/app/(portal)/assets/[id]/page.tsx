@@ -27,6 +27,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
     include: {
       company: true,
       category: true,
+      vendor: { select: { id: true, name: true } },
       location: true,
       assignments: {
         where: { deletedAt: null },
@@ -89,7 +90,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
         fieldSet: { include: { fields: { orderBy: { sortOrder: "asc" }, include: { customField: true } } } },
       },
     }),
-    db.vendor.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { name: "asc" }, select: { name: true } }),
+    db.vendor.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     db.currency.findMany({
       where: { deletedAt: null, isActive: true },
       orderBy: { code: "asc" },
@@ -150,7 +151,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
         helpText: f.customField.helpText,
       })),
     })),
-    vendors: vendors.map((v) => ({ name: v.name })),
+    vendors: vendors.map(({ id, name }) => ({ id, name })),
     currencies: currencies.map((c) => ({ code: c.code, name: c.name })),
   };
   // Custom field values to display, resolved against the asset's model fieldset.
@@ -241,7 +242,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                 manufacturer: asset.manufacturer,
                 model: asset.model,
                 locationId: asset.locationId,
-                supplier: asset.supplier,
+                vendorId: asset.vendorId,
                 purchaseDate: asset.purchaseDate?.toISOString().slice(0, 10) ?? null,
                 purchasePrice: asset.purchasePrice === null ? null : Number(asset.purchasePrice),
                 currency: asset.currency,
@@ -291,7 +292,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
               <Row label="Serial number" value={asset.serialNumber ?? "None"} />
               <Row label="Manufacturer" value={asset.manufacturer ?? "None"} />
               <Row label="Model" value={asset.model ?? "None"} />
-              <Row label="Vendor" value={asset.supplier ?? "None"} />
+              <Row label="Vendor" value={asset.vendor?.name ?? "None"} />
               <Row label="Location" value={asset.location?.name ?? "None"} />
               <Row label="Purchase date" value={asset.purchaseDate ? formatDate(asset.purchaseDate) : "None"} />
               <Row

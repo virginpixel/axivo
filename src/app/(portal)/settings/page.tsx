@@ -220,10 +220,10 @@ async function ModelsTab({ canManage }: { canManage: boolean }) {
 async function VendorsTab({ canManage }: { canManage: boolean }) {
   const vendors = await db.vendor.findMany({ where: { deletedAt: null }, orderBy: { name: "asc" } });
   const [assetCounts, contractCounts] = await Promise.all([
-    db.asset.groupBy({ by: ["supplier"], where: { deletedAt: null, supplier: { not: null } }, _count: { _all: true } }),
+    db.asset.groupBy({ by: ["vendorId"], where: { deletedAt: null, vendorId: { not: null } }, _count: { _all: true } }),
     db.contract.groupBy({ by: ["vendorId"], where: { deletedAt: null }, _count: { _all: true } }),
   ]);
-  const assetFor = (name: string) => assetCounts.find((row) => row.supplier === name)?._count._all ?? 0;
+  const assetFor = (id: string) => assetCounts.find((row) => row.vendorId === id)?._count._all ?? 0;
   // Contracts reference the vendor, so these count by id rather than by name.
   const contractFor = (id: string) => contractCounts.find((row) => row.vendorId === id)?._count._all ?? 0;
   return (
@@ -249,7 +249,7 @@ async function VendorsTab({ canManage }: { canManage: boolean }) {
                 ) : "None"}
               </TD>
               <TD>{vendor.contactName ?? "None"}{vendor.contactPhone ? ` (${vendor.contactPhone})` : ""}</TD>
-              <TD>{assetFor(vendor.name)}</TD>
+              <TD>{assetFor(vendor.id)}</TD>
               <TD>{contractFor(vendor.id)}</TD>
               <TD>{vendor.isActive ? "Active" : "Inactive"}</TD>
               {canManage ? (

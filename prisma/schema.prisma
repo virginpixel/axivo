@@ -1041,8 +1041,9 @@ model Asset {
   /// for damage during their use. Normal assets keep the single-holder rule.
   isShared       Boolean     @default(false) @map("is_shared")
   locationId     String?     @map("location_id") @db.Uuid
-  /// Vendor the asset was purchased from (name sourced from the Vendor list).
-  supplier       String?     @map("supplier")
+  /// Vendor the asset was bought from, by reference: a rename in Settings then
+  /// reaches every asset instead of being copied into each one.
+  vendorId       String?     @map("vendor_id") @db.Uuid
   purchaseDate   DateTime?   @map("purchase_date")
   purchasePrice  Decimal?    @map("purchase_price") @db.Decimal(14, 2)
   currency       String?     @map("currency")
@@ -1062,6 +1063,7 @@ model Asset {
   company     Company            @relation(fields: [companyId], references: [id])
   category    AssetCategory      @relation(fields: [categoryId], references: [id])
   location    Location?          @relation(fields: [locationId], references: [id])
+  vendor      Vendor?            @relation(fields: [vendorId], references: [id])
   assignments AssetAssignment[]
   maintenance AssetMaintenance[]
   checkouts   AssetCheckout[]
@@ -1071,6 +1073,7 @@ model Asset {
   @@index([companyId, status])
   @@index([serialNumber])
   @@index([categoryId])
+  @@index([vendorId])
   @@map("assets")
 }
 
@@ -2197,6 +2200,7 @@ model Vendor {
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
 
+  assets           Asset[]
   contracts        Contract[]
   licensePurchases LicensePurchase[]
 

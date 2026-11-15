@@ -32,7 +32,7 @@ export const assetSchema = z
     manufacturer: optionalText(200),
     model: optionalText(200),
     locationId: nullableUuid(),
-    supplier: optionalText(200),
+    vendorId: nullableUuid(),
     purchaseDate: nullableDate(),
     purchasePrice: nullableDecimal("Purchase price"),
     currency: optionalText(10),

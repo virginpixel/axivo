@@ -309,7 +309,7 @@ export async function updateAsset(context: AuditContext, id: string, input: Asse
           // traceable - the price especially, now that it can be edited.
           [
             "name", "assetTag", "serialNumber", "manufacturer", "model", "categoryId",
-            "locationId", "supplier", "purchaseDate", "purchasePrice", "currency",
+            "locationId", "vendorId", "purchaseDate", "purchasePrice", "currency",
             "warrantyExpiry", "isShared", "notes",
           ],
         ),

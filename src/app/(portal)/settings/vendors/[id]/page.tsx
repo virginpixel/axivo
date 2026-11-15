@@ -27,7 +27,7 @@ export default async function VendorDetailPage({
 
   const [assets, contracts] = await Promise.all([
     db.asset.findMany({
-      where: { deletedAt: null, supplier: vendor.name },
+      where: { deletedAt: null, vendorId: vendor.id },
       orderBy: { name: "asc" },
       include: { category: { select: { name: true } }, location: { select: { name: true } } },
     }),

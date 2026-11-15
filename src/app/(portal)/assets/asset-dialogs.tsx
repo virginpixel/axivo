@@ -24,7 +24,7 @@ import {
 } from "@/modules/assets/actions";
 import {
   quickCreateManufacturerAction,
-  quickCreateVendorAction,
+  quickCreateVendorIdAction,
   quickCreateAssetModelAction,
   quickCreateCategoryAction,
   quickCreateLocationAction,
@@ -221,7 +221,7 @@ export interface AssetFormRecord {
   manufacturer: string | null;
   model: string | null;
   locationId: string | null;
-  supplier: string | null;
+  vendorId: string | null;
   purchaseDate: string | null;
   purchasePrice: number | null;
   currency: string | null;
@@ -241,7 +241,7 @@ export interface AssetModelOption {
 export interface AssetCatalogs {
   manufacturers: { name: string }[];
   models: AssetModelOption[];
-  vendors: { name: string }[];
+  vendors: { id: string; name: string }[];
   currencies?: { code: string; name: string }[];
 }
 
@@ -295,7 +295,7 @@ export function AssetDialog({
     manufacturer: base?.manufacturer ?? "",
     model: base?.model ?? "",
     locationId: base?.locationId ?? "",
-    supplier: base?.supplier ?? "",
+    vendorId: base?.vendorId ?? "",
     purchaseDate: base?.purchaseDate ?? "",
     purchasePrice: base?.purchasePrice != null ? String(base.purchasePrice) : "",
     currency:
@@ -324,7 +324,7 @@ export function AssetDialog({
       manufacturer: form.manufacturer || undefined,
       model: form.model || undefined,
       locationId: form.locationId || undefined,
-      supplier: form.supplier,
+      vendorId: form.vendorId,
       purchaseDate: form.purchaseDate,
       // An empty box clears the price; a typed one is a number, not a string.
       purchasePrice: form.purchasePrice === "" ? null : Number(form.purchasePrice),
@@ -449,11 +449,11 @@ export function AssetDialog({
           <div>
             <Label htmlFor="asset-supplier">Vendor</Label>
             <Combobox
-              id="asset-supplier" value={form.supplier}
+              id="asset-supplier" value={form.vendorId}
               placeholder="Select vendor" emptyLabel="None"
-              options={catalogs.vendors.map((vendor) => ({ value: vendor.name, label: vendor.name }))}
-              onChange={(value) => setForm({ ...form, supplier: value })}
-              onCreate={createHandler(quickCreateVendorAction)}
+              options={catalogs.vendors.map((vendor) => ({ value: vendor.id, label: vendor.name }))}
+              onChange={(value) => setForm({ ...form, vendorId: value })}
+              onCreate={createHandler(quickCreateVendorIdAction)}
               createNoun="vendor"
             />
           </div>

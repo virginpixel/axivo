@@ -143,13 +143,6 @@ export async function updateVendorAction(id: string, raw: unknown): Promise<Acti
       where: { id: { not: id }, name: { equals: input.name, mode: "insensitive" }, deletedAt: null },
     });
     if (duplicate) throw new BusinessRuleError("A vendor with this name already exists.");
-    // Assets still store the vendor by name, so a rename has to be copied into
-    // them. Contracts and licence purchases reference the vendor and need no
-    // sync - which is the point: this hand-written catch-up never covered
-    // licence purchases, so renaming a vendor quietly left them behind.
-    if (existing.name !== input.name) {
-      await db.asset.updateMany({ where: { supplier: existing.name }, data: { supplier: input.name } });
-    }
     await db.vendor.update({
       where: { id },
       data: {
@@ -815,7 +808,7 @@ export async function deleteVendorAction(id: string): Promise<ActionResult<undef
     const item = await db.vendor.findFirst({ where: { id, deletedAt: null } });
     if (!item) throw new BusinessRuleError("Vendor not found.");
     const [assets, contracts, purchases] = await Promise.all([
-      db.asset.count({ where: { supplier: item.name, deletedAt: null } }),
+      db.asset.count({ where: { vendorId: id, deletedAt: null } }),
       db.contract.count({ where: { vendorId: id, deletedAt: null } }),
       db.licensePurchase.count({ where: { vendorId: id, deletedAt: null } }),
     ]);
