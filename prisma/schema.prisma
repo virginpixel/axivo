@@ -514,31 +514,31 @@ model DepartmentHead {
 // =============================================================================
 
 model Person {
-  id               String           @id @default(uuid()) @db.Uuid
-  companyId        String           @map("company_id") @db.Uuid
-  departmentId     String?          @map("department_id") @db.Uuid
-  positionId       String?          @map("position_id") @db.Uuid
-  locationId       String?          @map("location_id") @db.Uuid
-  employeeId       String           @map("employee_id")
-  firstName        String           @map("first_name")
-  lastName         String           @map("last_name")
-  email            String           @map("email")
-  personalEmail    String?          @map("personal_email")
-  phone            String?          @map("phone")
-  extension        String?          @map("extension")
-  employmentStatus EmploymentStatus @default(ACTIVE) @map("employment_status")
+  id                  String           @id @default(uuid()) @db.Uuid
+  companyId           String           @map("company_id") @db.Uuid
+  departmentId        String?          @map("department_id") @db.Uuid
+  positionId          String?          @map("position_id") @db.Uuid
+  locationId          String?          @map("location_id") @db.Uuid
+  employeeId          String           @map("employee_id")
+  firstName           String           @map("first_name")
+  lastName            String           @map("last_name")
+  email               String           @map("email")
+  personalEmail       String?          @map("personal_email")
+  phone               String?          @map("phone")
+  extension           String?          @map("extension")
+  employmentStatus    EmploymentStatus @default(ACTIVE) @map("employment_status")
   /// A contractor or tenant rather than an employee. companyId still holds the
   /// property they work for, which is what company scoping runs on; their
   /// actual employer has no record here and is kept as text.
-  isThirdParty     Boolean          @default(false) @map("is_third_party")
-  externalCompanyName String?       @map("external_company_name")
-  isActive         Boolean          @default(true) @map("is_active")
-  createdAt        DateTime         @default(now()) @map("created_at")
-  createdById      String?          @map("created_by") @db.Uuid
-  updatedAt        DateTime         @updatedAt @map("updated_at")
-  updatedById      String?          @map("updated_by") @db.Uuid
-  deletedAt        DateTime?        @map("deleted_at")
-  deletedById      String?          @map("deleted_by") @db.Uuid
+  isThirdParty        Boolean          @default(false) @map("is_third_party")
+  externalCompanyName String?          @map("external_company_name")
+  isActive            Boolean          @default(true) @map("is_active")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  createdById         String?          @map("created_by") @db.Uuid
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+  updatedById         String?          @map("updated_by") @db.Uuid
+  deletedAt           DateTime?        @map("deleted_at")
+  deletedById         String?          @map("deleted_by") @db.Uuid
 
   company    Company     @relation(fields: [companyId], references: [id])
   department Department? @relation(fields: [departmentId], references: [id])
@@ -562,7 +562,6 @@ model Person {
   delegationsTo           Delegation[]             @relation("delegation_to")
   approvalAssignments     ApprovalAssignment[]
   approvalActions         ApprovalAction[]
-  contractsOwned          Contract[]               @relation("contract_owner")
 
   @@unique([companyId, employeeId])
   @@index([companyId, isActive])
@@ -684,41 +683,41 @@ model LoginThrottle {
 // =============================================================================
 
 model Application {
-  id          String    @id @default(uuid()) @db.Uuid
-  companyId   String    @map("company_id") @db.Uuid
-  name        String    @map("name")
-  description String?   @map("description")
-  category    String?   @map("category")
-  loginUrl    String?   @map("login_url")
-  icon        String?   @map("icon")
+  id                       String    @id @default(uuid()) @db.Uuid
+  companyId                String    @map("company_id") @db.Uuid
+  name                     String    @map("name")
+  description              String?   @map("description")
+  category                 String?   @map("category")
+  loginUrl                 String?   @map("login_url")
+  icon                     String?   @map("icon")
   /// Whether the same person may hold multiple simultaneous assignments
-  allowMultipleAssignments Boolean @default(false) @map("allow_multiple_assignments")
+  allowMultipleAssignments Boolean   @default(false) @map("allow_multiple_assignments")
   /// Whether implementing this application consumes a license
-  requiresLicense Boolean  @default(false) @map("requires_license")
+  requiresLicense          Boolean   @default(false) @map("requires_license")
   /// Approval chain for items requesting this application. Falls back to the
   /// form's workflow when unset, so a mixed request routes per item.
-  workflowId      String?  @map("workflow_id") @db.Uuid
+  workflowId               String?   @map("workflow_id") @db.Uuid
   /// Shared applications (e.g. a group-wide system) can be assigned to people
   /// in any company, not just the owning one (Doc 08 cross-company use).
-  isShared        Boolean  @default(false) @map("is_shared")
-  isActive        Boolean  @default(true) @map("is_active")
-  createdAt       DateTime @default(now()) @map("created_at")
-  createdById     String?  @map("created_by") @db.Uuid
-  updatedAt       DateTime @updatedAt @map("updated_at")
-  updatedById     String?  @map("updated_by") @db.Uuid
-  deletedAt       DateTime? @map("deleted_at")
-  deletedById     String?   @map("deleted_by") @db.Uuid
+  isShared                 Boolean   @default(false) @map("is_shared")
+  isActive                 Boolean   @default(true) @map("is_active")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  createdById              String?   @map("created_by") @db.Uuid
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+  updatedById              String?   @map("updated_by") @db.Uuid
+  deletedAt                DateTime? @map("deleted_at")
+  deletedById              String?   @map("deleted_by") @db.Uuid
 
-  company          Company                      @relation(fields: [companyId], references: [id])
-  roles            ApplicationRole[]
-  credentialFields ApplicationCredentialField[]
-  assignments      ApplicationAssignment[]
-  licenses         License[]
-  requestItems     RequestItem[]
+  company              Company                      @relation(fields: [companyId], references: [id])
+  roles                ApplicationRole[]
+  credentialFields     ApplicationCredentialField[]
+  assignments          ApplicationAssignment[]
+  licenses             License[]
+  requestItems         RequestItem[]
   credentialDeliveries CredentialDelivery[]
-  requestFields    RequestField[]
-  forms            Form[]
-  workflow         Workflow?                    @relation(fields: [workflowId], references: [id])
+  requestFields        RequestField[]
+  forms                Form[]
+  workflow             Workflow?                    @relation(fields: [workflowId], references: [id])
 
   @@unique([companyId, name])
   @@index([companyId, isActive])
@@ -910,6 +909,12 @@ model License {
   /// owning company for name-uniqueness and management scope.
   isShared      Boolean       @default(false) @map("is_shared")
   licenseKey    String?       @map("license_key")
+  /// Addresses that receive this licence's expiry reminders, as a JSON array of
+  /// strings. Empty or unset falls back to the Settings default, then to the
+  /// company's administrators, so an expiry is never silently unannounced.
+  /// Free-text addresses on purpose: the people who chase a renewal are not
+  /// always Axivo users, and a procurement mailbox is not a person at all.
+  alertEmails   Json?         @map("alert_emails")
   status        LicenseStatus @default(ACTIVE) @map("status")
   contractId    String?       @map("contract_id") @db.Uuid
   notes         String?       @map("notes")
@@ -960,25 +965,25 @@ model LicensePurchase {
 }
 
 model LicenseAssignment {
-  id            String                  @id @default(uuid()) @db.Uuid
-  licenseId     String                  @map("license_id") @db.Uuid
-  personId      String                  @map("person_id") @db.Uuid
-  requestItemId String?                 @map("request_item_id") @db.Uuid
-  status        LicenseAssignmentStatus @default(ACTIVE) @map("status")
-  assignedAt    DateTime                @default(now()) @map("assigned_at")
-  assignedById  String?                 @map("assigned_by") @db.Uuid
+  id              String                  @id @default(uuid()) @db.Uuid
+  licenseId       String                  @map("license_id") @db.Uuid
+  personId        String                  @map("person_id") @db.Uuid
+  requestItemId   String?                 @map("request_item_id") @db.Uuid
+  status          LicenseAssignmentStatus @default(ACTIVE) @map("status")
+  assignedAt      DateTime                @default(now()) @map("assigned_at")
+  assignedById    String?                 @map("assigned_by") @db.Uuid
   /// Human name of whoever assigned this licence seat, for display.
-  assignedByLabel String?               @map("assigned_by_label")
-  removedAt     DateTime?               @map("removed_at")
-  removedById   String?                 @map("removed_by") @db.Uuid
-  notes         String?                 @map("notes")
-  createdAt     DateTime                @default(now()) @map("created_at")
-  updatedAt     DateTime                @updatedAt @map("updated_at")
-  deletedAt     DateTime?               @map("deleted_at")
+  assignedByLabel String?                 @map("assigned_by_label")
+  removedAt       DateTime?               @map("removed_at")
+  removedById     String?                 @map("removed_by") @db.Uuid
+  notes           String?                 @map("notes")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+  deletedAt       DateTime?               @map("deleted_at")
 
-  license        License      @relation(fields: [licenseId], references: [id])
-  person         Person       @relation(fields: [personId], references: [id])
-  requestItem    RequestItem? @relation(fields: [requestItemId], references: [id])
+  license        License         @relation(fields: [licenseId], references: [id])
+  person         Person          @relation(fields: [personId], references: [id])
+  requestItem    RequestItem?    @relation(fields: [requestItemId], references: [id])
   clearanceItems ClearanceItem[]
 
   @@index([licenseId, status])
@@ -993,25 +998,25 @@ model LicenseAssignment {
 /// Asset categories are global (shared by every company), so the same category
 /// can be used wherever an asset lives, including after a company transfer.
 model AssetCategory {
-  id                       String    @id @default(uuid()) @db.Uuid
-  name                     String    @unique @map("name")
-  description              String?   @map("description")
-  requireHandoverAcceptance Boolean  @default(false) @map("require_handover_acceptance")
-  requireClearanceRecovery  Boolean  @default(true) @map("require_clearance_recovery")
+  id                        String    @id @default(uuid()) @db.Uuid
+  name                      String    @unique @map("name")
+  description               String?   @map("description")
+  requireHandoverAcceptance Boolean   @default(false) @map("require_handover_acceptance")
+  requireClearanceRecovery  Boolean   @default(true) @map("require_clearance_recovery")
   /// Approval chain for items requesting this category; falls back to the form's.
-  workflowId               String?   @map("workflow_id") @db.Uuid
-  isActive                 Boolean   @default(true) @map("is_active")
-  createdAt                DateTime  @default(now()) @map("created_at")
-  createdById              String?   @map("created_by") @db.Uuid
-  updatedAt                DateTime  @updatedAt @map("updated_at")
-  updatedById              String?   @map("updated_by") @db.Uuid
-  deletedAt                DateTime? @map("deleted_at")
+  workflowId                String?   @map("workflow_id") @db.Uuid
+  isActive                  Boolean   @default(true) @map("is_active")
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  createdById               String?   @map("created_by") @db.Uuid
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+  updatedById               String?   @map("updated_by") @db.Uuid
+  deletedAt                 DateTime? @map("deleted_at")
 
-  assets  Asset[]
-  requestItems RequestItem[]
+  assets        Asset[]
+  requestItems  RequestItem[]
   requestFields RequestField[]
-  forms   Form[]
-  workflow Workflow? @relation(fields: [workflowId], references: [id])
+  forms         Form[]
+  workflow      Workflow?      @relation(fields: [workflowId], references: [id])
 
   @@index([isActive])
   @@map("asset_categories")
@@ -1051,13 +1056,13 @@ model Asset {
   deletedAt      DateTime?   @map("deleted_at")
   deletedById    String?     @map("deleted_by") @db.Uuid
 
-  company      Company            @relation(fields: [companyId], references: [id])
-  category     AssetCategory      @relation(fields: [categoryId], references: [id])
-  location     Location?          @relation(fields: [locationId], references: [id])
-  assignments  AssetAssignment[]
-  maintenance  AssetMaintenance[]
-  checkouts    AssetCheckout[]
-  disposal     AssetDisposal?
+  company     Company            @relation(fields: [companyId], references: [id])
+  category    AssetCategory      @relation(fields: [categoryId], references: [id])
+  location    Location?          @relation(fields: [locationId], references: [id])
+  assignments AssetAssignment[]
+  maintenance AssetMaintenance[]
+  checkouts   AssetCheckout[]
+  disposal    AssetDisposal?
 
   @@unique([companyId, assetTag])
   @@index([companyId, status])
@@ -1071,23 +1076,23 @@ model Asset {
 /// the department itself, so it is not tied to whoever happens to use it, and
 /// never appears in an individual's clearance when they leave.
 model AssetAssignment {
-  id             String                @id @default(uuid()) @db.Uuid
-  assetId        String                @map("asset_id") @db.Uuid
-  personId       String?               @map("person_id") @db.Uuid
-  departmentId   String?               @map("department_id") @db.Uuid
-  requestItemId  String?               @map("request_item_id") @db.Uuid
-  status         AssetAssignmentStatus @default(ASSIGNED) @map("status")
-  assignedAt     DateTime              @default(now()) @map("assigned_at")
-  assignedById   String?               @map("assigned_by") @db.Uuid
+  id              String                @id @default(uuid()) @db.Uuid
+  assetId         String                @map("asset_id") @db.Uuid
+  personId        String?               @map("person_id") @db.Uuid
+  departmentId    String?               @map("department_id") @db.Uuid
+  requestItemId   String?               @map("request_item_id") @db.Uuid
+  status          AssetAssignmentStatus @default(ASSIGNED) @map("status")
+  assignedAt      DateTime              @default(now()) @map("assigned_at")
+  assignedById    String?               @map("assigned_by") @db.Uuid
   /// Human name of whoever assigned this asset, for display.
-  assignedByLabel String?              @map("assigned_by_label")
-  returnedAt     DateTime?             @map("returned_at")
-  returnedById   String?               @map("returned_by") @db.Uuid
-  acknowledgedAt DateTime?             @map("acknowledged_at")
-  notes          String?               @map("notes")
-  createdAt      DateTime              @default(now()) @map("created_at")
-  updatedAt      DateTime              @updatedAt @map("updated_at")
-  deletedAt      DateTime?             @map("deleted_at")
+  assignedByLabel String?               @map("assigned_by_label")
+  returnedAt      DateTime?             @map("returned_at")
+  returnedById    String?               @map("returned_by") @db.Uuid
+  acknowledgedAt  DateTime?             @map("acknowledged_at")
+  notes           String?               @map("notes")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+  deletedAt       DateTime?             @map("deleted_at")
 
   asset          Asset           @relation(fields: [assetId], references: [id])
   person         Person?         @relation(fields: [personId], references: [id])
@@ -1104,24 +1109,24 @@ model AssetAssignment {
 }
 
 model AssetMaintenance {
-  id              String            @id @default(uuid()) @db.Uuid
-  assetId         String            @map("asset_id") @db.Uuid
-  maintenanceType String            @map("maintenance_type")
-  description     String            @map("description")
-  serviceProvider String?           @map("service_provider")
-  startDate       DateTime          @map("start_date")
-  completionDate  DateTime?         @map("completion_date")
-  cost            Decimal?          @map("cost") @db.Decimal(14, 2)
-  currency        String?           @map("currency")
-  status          MaintenanceStatus @default(SCHEDULED) @map("status")
+  id                  String            @id @default(uuid()) @db.Uuid
+  assetId             String            @map("asset_id") @db.Uuid
+  maintenanceType     String            @map("maintenance_type")
+  description         String            @map("description")
+  serviceProvider     String?           @map("service_provider")
+  startDate           DateTime          @map("start_date")
+  completionDate      DateTime?         @map("completion_date")
+  cost                Decimal?          @map("cost") @db.Decimal(14, 2)
+  currency            String?           @map("currency")
+  status              MaintenanceStatus @default(SCHEDULED) @map("status")
   /// Asset status to restore when maintenance completes (Doc 11 Ch8)
-  previousAssetStatus AssetStatus?  @map("previous_asset_status")
-  notes           String?           @map("notes")
-  createdAt       DateTime          @default(now()) @map("created_at")
-  createdById     String?           @map("created_by") @db.Uuid
-  updatedAt       DateTime          @updatedAt @map("updated_at")
-  updatedById     String?           @map("updated_by") @db.Uuid
-  deletedAt       DateTime?         @map("deleted_at")
+  previousAssetStatus AssetStatus?      @map("previous_asset_status")
+  notes               String?           @map("notes")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  createdById         String?           @map("created_by") @db.Uuid
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+  updatedById         String?           @map("updated_by") @db.Uuid
+  deletedAt           DateTime?         @map("deleted_at")
 
   asset Asset @relation(fields: [assetId], references: [id])
 
@@ -1130,18 +1135,18 @@ model AssetMaintenance {
 }
 
 model AssetDisposal {
-  id            String    @id @default(uuid()) @db.Uuid
-  assetId       String    @unique @map("asset_id") @db.Uuid
-  disposalDate  DateTime  @map("disposal_date")
-  method        String    @map("disposal_method")
-  reason        String    @map("disposal_reason")
-  disposalValue Decimal?  @map("disposal_value") @db.Decimal(14, 2)
-  currency      String?   @map("currency")
-  approvedById  String?   @map("approved_by") @db.Uuid
-  documentId    String    @map("document_id") @db.Uuid
-  notes         String?   @map("notes")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  createdById   String?   @map("created_by") @db.Uuid
+  id            String   @id @default(uuid()) @db.Uuid
+  assetId       String   @unique @map("asset_id") @db.Uuid
+  disposalDate  DateTime @map("disposal_date")
+  method        String   @map("disposal_method")
+  reason        String   @map("disposal_reason")
+  disposalValue Decimal? @map("disposal_value") @db.Decimal(14, 2)
+  currency      String?  @map("currency")
+  approvedById  String?  @map("approved_by") @db.Uuid
+  documentId    String   @map("document_id") @db.Uuid
+  notes         String?  @map("notes")
+  createdAt     DateTime @default(now()) @map("created_at")
+  createdById   String?  @map("created_by") @db.Uuid
 
   asset    Asset    @relation(fields: [assetId], references: [id])
   document Document @relation(fields: [documentId], references: [id])
@@ -1151,23 +1156,23 @@ model AssetDisposal {
 
 /// Electronic handover of one or more assets to an employee (Doc 11 Ch6).
 model Handover {
-  id             String         @id @default(uuid()) @db.Uuid
-  companyId      String         @map("company_id") @db.Uuid
-  personId       String         @map("person_id") @db.Uuid
-  status         HandoverStatus @default(PENDING) @map("status")
-  documentId     String?        @map("document_id") @db.Uuid
-  sentAt         DateTime?      @map("sent_at")
-  acknowledgedAt DateTime?      @map("acknowledged_at")
+  id                       String         @id @default(uuid()) @db.Uuid
+  companyId                String         @map("company_id") @db.Uuid
+  personId                 String         @map("person_id") @db.Uuid
+  status                   HandoverStatus @default(PENDING) @map("status")
+  documentId               String?        @map("document_id") @db.Uuid
+  sentAt                   DateTime?      @map("sent_at")
+  acknowledgedAt           DateTime?      @map("acknowledged_at")
   /// Electronic-acknowledgement evidence: where and how the receipt was signed,
   /// the version of the terms shown, and a hash of the exact signed content so
   /// any later change is detectable.
-  acknowledgedIp           String? @map("acknowledged_ip")
-  acknowledgedUserAgent    String? @map("acknowledged_user_agent")
-  acknowledgedTermsVersion String? @map("acknowledged_terms_version")
-  acknowledgedHash         String? @map("acknowledged_hash")
-  createdAt      DateTime       @default(now()) @map("created_at")
-  createdById    String?        @map("created_by") @db.Uuid
-  updatedAt      DateTime       @updatedAt @map("updated_at")
+  acknowledgedIp           String?        @map("acknowledged_ip")
+  acknowledgedUserAgent    String?        @map("acknowledged_user_agent")
+  acknowledgedTermsVersion String?        @map("acknowledged_terms_version")
+  acknowledgedHash         String?        @map("acknowledged_hash")
+  createdAt                DateTime       @default(now()) @map("created_at")
+  createdById              String?        @map("created_by") @db.Uuid
+  updatedAt                DateTime       @updatedAt @map("updated_at")
 
   company  Company         @relation(fields: [companyId], references: [id])
   person   Person          @relation(fields: [personId], references: [id])
@@ -1264,18 +1269,18 @@ model AssignmentChange {
 
 /// Asset clearance when an employee leaves / transfers (Doc 11 Ch7).
 model Clearance {
-  id             String          @id @default(uuid()) @db.Uuid
-  companyId      String          @map("company_id") @db.Uuid
-  personId       String          @map("person_id") @db.Uuid
-  status         ClearanceStatus @default(IN_PROGRESS) @map("status")
-  documentId     String?         @map("document_id") @db.Uuid
-  completedAt    DateTime?       @map("completed_at")
-  completedById  String?         @map("completed_by") @db.Uuid
-  itRepresentativeId String?     @map("it_representative") @db.Uuid
-  notes          String?         @map("notes")
-  createdAt      DateTime        @default(now()) @map("created_at")
-  createdById    String?         @map("created_by") @db.Uuid
-  updatedAt      DateTime        @updatedAt @map("updated_at")
+  id                 String          @id @default(uuid()) @db.Uuid
+  companyId          String          @map("company_id") @db.Uuid
+  personId           String          @map("person_id") @db.Uuid
+  status             ClearanceStatus @default(IN_PROGRESS) @map("status")
+  documentId         String?         @map("document_id") @db.Uuid
+  completedAt        DateTime?       @map("completed_at")
+  completedById      String?         @map("completed_by") @db.Uuid
+  itRepresentativeId String?         @map("it_representative") @db.Uuid
+  notes              String?         @map("notes")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  createdById        String?         @map("created_by") @db.Uuid
+  updatedAt          DateTime        @updatedAt @map("updated_at")
 
   company  Company         @relation(fields: [companyId], references: [id])
   person   Person          @relation(fields: [personId], references: [id])
@@ -1293,19 +1298,19 @@ enum ClearanceItemKind {
 }
 
 model ClearanceItem {
-  id                String              @id @default(uuid()) @db.Uuid
-  clearanceId       String              @map("clearance_id") @db.Uuid
-  kind              ClearanceItemKind   @default(ASSET) @map("kind")
+  id                      String              @id @default(uuid()) @db.Uuid
+  clearanceId             String              @map("clearance_id") @db.Uuid
+  kind                    ClearanceItemKind   @default(ASSET) @map("kind")
   /// Exactly one of the assignment references below is set, per `kind`.
-  assetAssignmentId       String?       @map("asset_assignment_id") @db.Uuid
-  applicationAssignmentId String?       @map("application_assignment_id") @db.Uuid
-  licenseAssignmentId     String?       @map("license_assignment_id") @db.Uuid
-  status            ClearanceItemStatus @default(PENDING) @map("status")
-  comments          String?             @map("comments")
-  verifiedAt        DateTime?           @map("verified_at")
-  verifiedById      String?             @map("verified_by") @db.Uuid
-  createdAt         DateTime            @default(now()) @map("created_at")
-  updatedAt         DateTime            @updatedAt @map("updated_at")
+  assetAssignmentId       String?             @map("asset_assignment_id") @db.Uuid
+  applicationAssignmentId String?             @map("application_assignment_id") @db.Uuid
+  licenseAssignmentId     String?             @map("license_assignment_id") @db.Uuid
+  status                  ClearanceItemStatus @default(PENDING) @map("status")
+  comments                String?             @map("comments")
+  verifiedAt              DateTime?           @map("verified_at")
+  verifiedById            String?             @map("verified_by") @db.Uuid
+  createdAt               DateTime            @default(now()) @map("created_at")
+  updatedAt               DateTime            @updatedAt @map("updated_at")
 
   clearance             Clearance              @relation(fields: [clearanceId], references: [id])
   assetAssignment       AssetAssignment?       @relation(fields: [assetAssignmentId], references: [id])
@@ -1334,7 +1339,15 @@ model Contract {
   renewalType    ContractRenewalType @default(MANUAL) @map("renewal_type")
   cost           Decimal?            @map("cost") @db.Decimal(14, 2)
   currency       String?             @map("currency")
-  ownerPersonId  String?             @map("owner_person_id") @db.Uuid
+  /// The supplier's own contact for this contract - their account manager, not
+  /// anybody here. Held per contract rather than taken from the vendor record
+  /// because one vendor can run several contracts through different people.
+  contactName    String?             @map("contact_name")
+  contactEmail   String?             @map("contact_email")
+  contactPhone   String?             @map("contact_phone")
+  /// Addresses that receive this contract's renewal reminders. See
+  /// License.alertEmails: same rules, same fallback.
+  alertEmails    Json?               @map("alert_emails")
   /// Reminder lead times in days before renewal/end date
   reminderDays   Json?               @map("reminder_days")
   notes          String?             @map("notes")
@@ -1346,7 +1359,6 @@ model Contract {
   deletedById    String?             @map("deleted_by") @db.Uuid
 
   company  Company           @relation(fields: [companyId], references: [id])
-  owner    Person?           @relation("contract_owner", fields: [ownerPersonId], references: [id])
   renewals ContractRenewal[]
   links    ContractLink[]
   licenses License[]
@@ -1379,12 +1391,12 @@ model ContractRenewal {
 /// Optional links from a contract to vendors' applications, licenses and
 /// assets (Doc 00 §9).
 model ContractLink {
-  id         String   @id @default(uuid()) @db.Uuid
-  contractId String   @map("contract_id") @db.Uuid
-  entityType String   @map("entity_type")
-  entityId   String   @map("entity_id") @db.Uuid
-  createdAt  DateTime @default(now()) @map("created_at")
-  createdById String? @map("created_by") @db.Uuid
+  id          String   @id @default(uuid()) @db.Uuid
+  contractId  String   @map("contract_id") @db.Uuid
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  createdById String?  @map("created_by") @db.Uuid
 
   contract Contract @relation(fields: [contractId], references: [id])
 
@@ -1411,10 +1423,10 @@ model Workflow {
   deletedAt   DateTime? @map("deleted_at")
   deletedById String?   @map("deleted_by") @db.Uuid
 
-  company  Company           @relation(fields: [companyId], references: [id])
-  versions WorkflowVersion[]
-  forms    Form[] @relation("form_workflow")
-  thirdPartyForms Form[] @relation("form_third_party_workflow")
+  company         Company           @relation(fields: [companyId], references: [id])
+  versions        WorkflowVersion[]
+  forms           Form[]            @relation("form_workflow")
+  thirdPartyForms Form[]            @relation("form_third_party_workflow")
   applications    Application[]
   assetCategories AssetCategory[]
 
@@ -1426,12 +1438,12 @@ model Workflow {
 /// Editing an active workflow creates a new version; running instances remain
 /// pinned to the version they started with (Doc 13 Ch2).
 model WorkflowVersion {
-  id            String    @id @default(uuid()) @db.Uuid
-  workflowId    String    @map("workflow_id") @db.Uuid
-  versionNumber Int       @map("version_number")
-  isActive      Boolean   @default(true) @map("is_active")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  createdById   String?   @map("created_by") @db.Uuid
+  id            String   @id @default(uuid()) @db.Uuid
+  workflowId    String   @map("workflow_id") @db.Uuid
+  versionNumber Int      @map("version_number")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  createdById   String?  @map("created_by") @db.Uuid
 
   workflow  Workflow           @relation(fields: [workflowId], references: [id])
   steps     WorkflowStep[]
@@ -1600,51 +1612,51 @@ model RequestType {
 }
 
 model Form {
-  id                  String     @id @default(uuid()) @db.Uuid
+  id                      String     @id @default(uuid()) @db.Uuid
   /// Null means the form serves every company: the applications and asset
   /// categories offered are resolved from the requested-for employee's own
   /// company instead of being fixed when the form is built.
-  companyId           String?    @map("company_id") @db.Uuid
-  requestTypeId       String     @map("request_type_id") @db.Uuid
-  workflowId          String     @map("workflow_id") @db.Uuid
-  name                String     @map("name")
-  description         String?    @map("description")
+  companyId               String?    @map("company_id") @db.Uuid
+  requestTypeId           String     @map("request_type_id") @db.Uuid
+  workflowId              String     @map("workflow_id") @db.Uuid
+  name                    String     @map("name")
+  description             String?    @map("description")
   /// URL-safe public identifier for the public request link
-  slug                String     @unique @map("slug")
-  status              FormStatus @default(DRAFT) @map("status")
-  confirmationMessage String?    @map("confirmation_message")
+  slug                    String     @unique @map("slug")
+  status                  FormStatus @default(DRAFT) @map("status")
+  confirmationMessage     String?    @map("confirmation_message")
   /// ASSET_REQUEST forms: category ids requestable through this form (null = all).
-  allowedAssetCategoryIds Json?  @map("allowed_asset_category_ids")
+  allowedAssetCategoryIds Json?      @map("allowed_asset_category_ids")
   /// A form dedicated to one application or one asset category: the requester
   /// never picks the target, only its role and its request fields.
-  applicationId       String?    @map("application_id") @db.Uuid
-  assetCategoryId     String?    @map("asset_category_id") @db.Uuid
+  applicationId           String?    @map("application_id") @db.Uuid
+  assetCategoryId         String?    @map("asset_category_id") @db.Uuid
   /// All-in-one form: item rows choose Application or Asset per row, so a new
   /// joiner asks for everything at once instead of one request per system.
-  allowsMixedItems    Boolean    @default(false) @map("allows_mixed_items")
+  allowsMixedItems        Boolean    @default(false) @map("allows_mixed_items")
   /// Third parties (contractors, tenants) may be requested for through this
   /// form. They belong to no department here, so department-head approval
   /// cannot resolve for them and such requests run thirdPartyWorkflow instead.
-  allowsThirdParty    Boolean    @default(false) @map("allows_third_party")
-  thirdPartyWorkflowId String?   @map("third_party_workflow_id") @db.Uuid
-  currentVersionId    String?    @unique @map("current_version_id") @db.Uuid
-  isActive            Boolean    @default(true) @map("is_active")
-  createdAt           DateTime   @default(now()) @map("created_at")
-  createdById         String?    @map("created_by") @db.Uuid
-  updatedAt           DateTime   @updatedAt @map("updated_at")
-  updatedById         String?    @map("updated_by") @db.Uuid
-  deletedAt           DateTime?  @map("deleted_at")
-  deletedById         String?    @map("deleted_by") @db.Uuid
+  allowsThirdParty        Boolean    @default(false) @map("allows_third_party")
+  thirdPartyWorkflowId    String?    @map("third_party_workflow_id") @db.Uuid
+  currentVersionId        String?    @unique @map("current_version_id") @db.Uuid
+  isActive                Boolean    @default(true) @map("is_active")
+  createdAt               DateTime   @default(now()) @map("created_at")
+  createdById             String?    @map("created_by") @db.Uuid
+  updatedAt               DateTime   @updatedAt @map("updated_at")
+  updatedById             String?    @map("updated_by") @db.Uuid
+  deletedAt               DateTime?  @map("deleted_at")
+  deletedById             String?    @map("deleted_by") @db.Uuid
 
-  company        Company?       @relation(fields: [companyId], references: [id])
-  requestType    RequestType    @relation(fields: [requestTypeId], references: [id])
-  workflow       Workflow       @relation("form_workflow", fields: [workflowId], references: [id])
-  thirdPartyWorkflow Workflow?  @relation("form_third_party_workflow", fields: [thirdPartyWorkflowId], references: [id])
-  application    Application?   @relation(fields: [applicationId], references: [id])
-  assetCategory  AssetCategory? @relation(fields: [assetCategoryId], references: [id])
-  currentVersion FormVersion?  @relation("form_current_version", fields: [currentVersionId], references: [id])
-  versions       FormVersion[] @relation("form_versions")
-  requests       Request[]
+  company            Company?       @relation(fields: [companyId], references: [id])
+  requestType        RequestType    @relation(fields: [requestTypeId], references: [id])
+  workflow           Workflow       @relation("form_workflow", fields: [workflowId], references: [id])
+  thirdPartyWorkflow Workflow?      @relation("form_third_party_workflow", fields: [thirdPartyWorkflowId], references: [id])
+  application        Application?   @relation(fields: [applicationId], references: [id])
+  assetCategory      AssetCategory? @relation(fields: [assetCategoryId], references: [id])
+  currentVersion     FormVersion?   @relation("form_current_version", fields: [currentVersionId], references: [id])
+  versions           FormVersion[]  @relation("form_versions")
+  requests           Request[]
 
   @@unique([companyId, name])
   @@index([companyId, status])
@@ -1661,10 +1673,10 @@ model FormVersion {
   publishedById String?   @map("published_by") @db.Uuid
   createdAt     DateTime  @default(now()) @map("created_at")
 
-  form           Form        @relation("form_versions", fields: [formId], references: [id])
-  currentOfForm  Form?       @relation("form_current_version")
-  fields         FormField[]
-  requests       Request[]
+  form          Form        @relation("form_versions", fields: [formId], references: [id])
+  currentOfForm Form?       @relation("form_current_version")
+  fields        FormField[]
+  requests      Request[]
 
   @@unique([formId, versionNumber])
   @@map("form_versions")
@@ -1708,51 +1720,51 @@ model Request {
   formVersionId String        @map("form_version_id") @db.Uuid
   status        RequestStatus @default(SUBMITTED) @map("status")
 
-  requesterPersonId  String? @map("requester_person_id") @db.Uuid
-  requesterName      String  @map("requester_name")
-  requesterEmail     String  @map("requester_email")
+  requesterPersonId   String? @map("requester_person_id") @db.Uuid
+  requesterName       String  @map("requester_name")
+  requesterEmail      String  @map("requester_email")
   requesterEmployeeId String? @map("requester_employee_id")
   requesterDepartment String? @map("requester_department")
-  requesterPosition  String? @map("requester_position")
+  requesterPosition   String? @map("requester_position")
   /// Company of the requester; with the employee ID this resolves their People record.
-  requesterCompanyId String? @map("requester_company_id") @db.Uuid
+  requesterCompanyId  String? @map("requester_company_id") @db.Uuid
 
-  requestedForPersonId String? @map("requested_for_person_id") @db.Uuid
-  requestedForName     String  @map("requested_for_name")
-  requestedForEmail    String  @map("requested_for_email")
-  requestedForEmployeeId String? @map("requested_for_employee_id")
-  requestedForDepartment String? @map("requested_for_department")
-  requestedForPosition String? @map("requested_for_position")
-  requestedForDepartmentId String? @map("requested_for_department_id") @db.Uuid
+  requestedForPersonId        String? @map("requested_for_person_id") @db.Uuid
+  requestedForName            String  @map("requested_for_name")
+  requestedForEmail           String  @map("requested_for_email")
+  requestedForEmployeeId      String? @map("requested_for_employee_id")
+  requestedForDepartment      String? @map("requested_for_department")
+  requestedForPosition        String? @map("requested_for_position")
+  requestedForDepartmentId    String? @map("requested_for_department_id") @db.Uuid
   /// Company the requested-for employee belongs to. Forms can be shared across
   /// companies, so this (with the employee ID) resolves the People record.
-  requestedForCompanyId String? @map("requested_for_company_id") @db.Uuid
+  requestedForCompanyId       String? @map("requested_for_company_id") @db.Uuid
   /// Third-party request: the requested-for person's own employer, which is not
   /// a company in Axivo, snapshotted as text.
-  isThirdParty          Boolean @default(false) @map("is_third_party")
+  isThirdParty                Boolean @default(false) @map("is_third_party")
   requestedForExternalCompany String? @map("requested_for_external_company")
 
   /// Immutable snapshot of the submitted custom field values
-  fieldData     Json      @map("field_data")
-  submittedAt   DateTime  @default(now()) @map("submitted_at")
-  completedAt   DateTime? @map("completed_at")
-  cancelledAt   DateTime? @map("cancelled_at")
-  cancelledById String?   @map("cancelled_by") @db.Uuid
-  sourceIp      String?   @map("source_ip")
+  fieldData       Json      @map("field_data")
+  submittedAt     DateTime  @default(now()) @map("submitted_at")
+  completedAt     DateTime? @map("completed_at")
+  cancelledAt     DateTime? @map("cancelled_at")
+  cancelledById   String?   @map("cancelled_by") @db.Uuid
+  sourceIp        String?   @map("source_ip")
   /// Submission electronic-signature evidence: the submitter's device and a hash
   /// of the exact submitted content, alongside sourceIp above.
-  sourceUserAgent String? @map("source_user_agent")
-  submissionHash  String? @map("submission_hash")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
-  deletedAt     DateTime? @map("deleted_at")
-  deletedById   String?   @map("deleted_by") @db.Uuid
+  sourceUserAgent String?   @map("source_user_agent")
+  submissionHash  String?   @map("submission_hash")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+  deletedById     String?   @map("deleted_by") @db.Uuid
 
-  company      Company     @relation(fields: [companyId], references: [id])
-  form         Form        @relation(fields: [formId], references: [id])
-  formVersion  FormVersion @relation(fields: [formVersionId], references: [id])
-  requester    Person?     @relation("request_requester", fields: [requesterPersonId], references: [id])
-  requestedFor Person?     @relation("request_requested_for", fields: [requestedForPersonId], references: [id])
+  company      Company             @relation(fields: [companyId], references: [id])
+  form         Form                @relation(fields: [formId], references: [id])
+  formVersion  FormVersion         @relation(fields: [formVersionId], references: [id])
+  requester    Person?             @relation("request_requester", fields: [requesterPersonId], references: [id])
+  requestedFor Person?             @relation("request_requested_for", fields: [requestedForPersonId], references: [id])
   items        RequestItem[]
   corrections  RequestCorrection[]
 
@@ -1764,44 +1776,44 @@ model Request {
 }
 
 model RequestItem {
-  id                String            @id @default(uuid()) @db.Uuid
-  requestId         String            @map("request_id") @db.Uuid
-  itemType          RequestItemType   @map("item_type")
-  applicationId     String?           @map("application_id") @db.Uuid
-  applicationRoleId String?           @map("application_role_id") @db.Uuid
-  assetCategoryId   String?           @map("asset_category_id") @db.Uuid
-  description       String?           @map("description")
+  id                  String            @id @default(uuid()) @db.Uuid
+  requestId           String            @map("request_id") @db.Uuid
+  itemType            RequestItemType   @map("item_type")
+  applicationId       String?           @map("application_id") @db.Uuid
+  applicationRoleId   String?           @map("application_role_id") @db.Uuid
+  assetCategoryId     String?           @map("asset_category_id") @db.Uuid
+  description         String?           @map("description")
   /// Item-specific submitted data (editable only through the correction process)
-  itemData          Json?             @map("item_data")
+  itemData            Json?             @map("item_data")
   /// Names captured at submission so the request still reads correctly after the
   /// application, category or form it referenced is renamed or deleted.
-  formNameSnapshot        String? @map("form_name_snapshot")
-  targetNameSnapshot      String? @map("target_name_snapshot")
-  roleNameSnapshot        String? @map("role_name_snapshot")
+  formNameSnapshot    String?           @map("form_name_snapshot")
+  targetNameSnapshot  String?           @map("target_name_snapshot")
+  roleNameSnapshot    String?           @map("role_name_snapshot")
   /// Field labels keyed by fieldKey, so answers stay readable after the request
   /// field definitions change or go away.
-  fieldLabelsSnapshot     Json?   @map("field_labels_snapshot")
-  status            RequestItemStatus @default(PENDING_APPROVAL) @map("status")
-  implementedAt     DateTime?         @map("implemented_at")
-  implementedById   String?           @map("implemented_by") @db.Uuid
+  fieldLabelsSnapshot Json?             @map("field_labels_snapshot")
+  status              RequestItemStatus @default(PENDING_APPROVAL) @map("status")
+  implementedAt       DateTime?         @map("implemented_at")
+  implementedById     String?           @map("implemented_by") @db.Uuid
   /// Human name of the IT staff who implemented this item, for the evidence PDF.
-  implementedByLabel String?          @map("implemented_by_label")
-  implementationNotes String?         @map("implementation_notes")
-  createdAt         DateTime          @default(now()) @map("created_at")
-  updatedAt         DateTime          @updatedAt @map("updated_at")
+  implementedByLabel  String?           @map("implemented_by_label")
+  implementationNotes String?           @map("implementation_notes")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
 
-  request          Request                 @relation(fields: [requestId], references: [id])
-  application      Application?            @relation(fields: [applicationId], references: [id], onDelete: SetNull)
-  applicationRole  ApplicationRole?        @relation(fields: [applicationRoleId], references: [id], onDelete: SetNull)
-  assetCategory    AssetCategory?          @relation(fields: [assetCategoryId], references: [id], onDelete: SetNull)
-  workflowInstances WorkflowInstance[]
-  corrections      RequestCorrection[]
-  appAssignments   ApplicationAssignment[]
-  licenseAssignments LicenseAssignment[]
-  assetAssignments AssetAssignment[]
+  request              Request                 @relation(fields: [requestId], references: [id])
+  application          Application?            @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  applicationRole      ApplicationRole?        @relation(fields: [applicationRoleId], references: [id], onDelete: SetNull)
+  assetCategory        AssetCategory?          @relation(fields: [assetCategoryId], references: [id], onDelete: SetNull)
+  workflowInstances    WorkflowInstance[]
+  corrections          RequestCorrection[]
+  appAssignments       ApplicationAssignment[]
+  licenseAssignments   LicenseAssignment[]
+  assetAssignments     AssetAssignment[]
   credentialDeliveries CredentialDelivery[]
-  assetCheckouts   AssetCheckout[]
-  assignmentChanges AssignmentChange[]
+  assetCheckouts       AssetCheckout[]
+  assignmentChanges    AssignmentChange[]
 
   @@index([requestId])
   @@index([status])
@@ -1811,16 +1823,16 @@ model RequestItem {
 /// Correction round for a specific request item (Doc 09 Ch4/6). The original
 /// data snapshot is preserved so the timeline stays intact.
 model RequestCorrection {
-  id             String    @id @default(uuid()) @db.Uuid
-  requestId      String    @map("request_id") @db.Uuid
-  requestItemId  String    @map("request_item_id") @db.Uuid
-  requestedById  String?   @map("requested_by_person_id") @db.Uuid
-  requestComments String   @map("request_comments")
-  previousData   Json?     @map("previous_data")
-  correctedData  Json?     @map("corrected_data")
-  requestedAt    DateTime  @default(now()) @map("requested_at")
-  submittedAt    DateTime? @map("submitted_at")
-  createdAt      DateTime  @default(now()) @map("created_at")
+  id              String    @id @default(uuid()) @db.Uuid
+  requestId       String    @map("request_id") @db.Uuid
+  requestItemId   String    @map("request_item_id") @db.Uuid
+  requestedById   String?   @map("requested_by_person_id") @db.Uuid
+  requestComments String    @map("request_comments")
+  previousData    Json?     @map("previous_data")
+  correctedData   Json?     @map("corrected_data")
+  requestedAt     DateTime  @default(now()) @map("requested_at")
+  submittedAt     DateTime? @map("submitted_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
 
   request     Request     @relation(fields: [requestId], references: [id])
   requestItem RequestItem @relation(fields: [requestItemId], references: [id])
@@ -1880,24 +1892,24 @@ model DocumentCategory {
 }
 
 model Document {
-  id            String         @id @default(uuid()) @db.Uuid
-  companyId     String         @map("company_id") @db.Uuid
-  categoryId    String?        @map("category_id") @db.Uuid
-  name          String         @map("name")
-  kind          DocumentKind   @map("kind")
-  status        DocumentStatus @default(ACTIVE) @map("status")
-  currentVersion Int           @default(1) @map("current_version")
-  isGenerated   Boolean        @default(false) @map("is_generated")
-  notes         String?        @map("notes")
-  createdAt     DateTime       @default(now()) @map("created_at")
-  createdById   String?        @map("created_by") @db.Uuid
-  updatedAt     DateTime       @updatedAt @map("updated_at")
-  updatedById   String?        @map("updated_by") @db.Uuid
+  id             String         @id @default(uuid()) @db.Uuid
+  companyId      String         @map("company_id") @db.Uuid
+  categoryId     String?        @map("category_id") @db.Uuid
+  name           String         @map("name")
+  kind           DocumentKind   @map("kind")
+  status         DocumentStatus @default(ACTIVE) @map("status")
+  currentVersion Int            @default(1) @map("current_version")
+  isGenerated    Boolean        @default(false) @map("is_generated")
+  notes          String?        @map("notes")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  createdById    String?        @map("created_by") @db.Uuid
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  updatedById    String?        @map("updated_by") @db.Uuid
   /// Soft delete: the row is hidden everywhere but the stored file and the
   /// records that reference it (handovers, clearances, disposals) survive, so
   /// deleting evidence by mistake is recoverable and no reference is orphaned.
-  deletedAt     DateTime?      @map("deleted_at")
-  deletedById   String?        @map("deleted_by") @db.Uuid
+  deletedAt      DateTime?      @map("deleted_at")
+  deletedById    String?        @map("deleted_by") @db.Uuid
 
   company  Company           @relation(fields: [companyId], references: [id])
   category DocumentCategory? @relation(fields: [categoryId], references: [id])
@@ -1937,14 +1949,14 @@ model DocumentVersion {
 
 /// One stored document may link to many business records (Doc 12 Ch5).
 model DocumentLink {
-  id         String   @id @default(uuid()) @db.Uuid
-  documentId String   @map("document_id") @db.Uuid
-  entityType String   @map("entity_type")
-  entityId   String   @map("entity_id") @db.Uuid
-  createdAt  DateTime @default(now()) @map("created_at")
-  createdById String? @map("created_by") @db.Uuid
-  removedAt  DateTime? @map("removed_at")
-  removedById String? @map("removed_by") @db.Uuid
+  id          String    @id @default(uuid()) @db.Uuid
+  documentId  String    @map("document_id") @db.Uuid
+  entityType  String    @map("entity_type")
+  entityId    String    @map("entity_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+  createdById String?   @map("created_by") @db.Uuid
+  removedAt   DateTime? @map("removed_at")
+  removedById String?   @map("removed_by") @db.Uuid
 
   document Document @relation(fields: [documentId], references: [id])
 
@@ -1958,20 +1970,20 @@ model DocumentLink {
 // =============================================================================
 
 model NotificationTemplate {
-  id        String   @id @default(uuid()) @db.Uuid
-  key       String   @map("key")
-  version   Int      @default(1) @map("version")
-  name      String   @map("name")
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @map("key")
+  version     Int      @default(1) @map("version")
+  name        String   @map("name")
   /// Notification type, e.g. APPROVAL_REQUIRED, CREDENTIAL_DELIVERY
-  type      String   @map("type")
-  subject   String   @map("subject")
-  body      String   @map("body")
+  type        String   @map("type")
+  subject     String   @map("subject")
+  body        String   @map("body")
   /// Documented variables available to this template
-  variables Json?    @map("variables")
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  createdById String? @map("created_by") @db.Uuid
-  updatedAt DateTime @updatedAt @map("updated_at")
+  variables   Json?    @map("variables")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  createdById String?  @map("created_by") @db.Uuid
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   notifications Notification[]
 
@@ -1981,33 +1993,33 @@ model NotificationTemplate {
 }
 
 model Notification {
-  id           String              @id @default(uuid()) @db.Uuid
-  companyId    String?             @map("company_id") @db.Uuid
-  templateId   String?             @map("template_id") @db.Uuid
-  channel      NotificationChannel @map("channel")
+  id            String              @id @default(uuid()) @db.Uuid
+  companyId     String?             @map("company_id") @db.Uuid
+  templateId    String?             @map("template_id") @db.Uuid
+  channel       NotificationChannel @map("channel")
   /// Business event that produced this notification
-  eventType    String              @map("event_type")
+  eventType     String              @map("event_type")
   /// Deduplication key preventing duplicate notifications for one event
-  dedupeKey    String?             @map("dedupe_key")
-  subject      String              @map("subject")
-  body         String              @map("body")
-  status       NotificationStatus  @default(QUEUED) @map("status")
-  attempts     Int                 @default(0) @map("attempts")
-  lastError    String?             @map("last_error")
-  entityType   String?             @map("entity_type")
-  entityId     String?             @map("entity_id") @db.Uuid
-  scheduledAt  DateTime            @default(now()) @map("scheduled_at")
-  sentAt       DateTime?           @map("sent_at")
-  cancelledAt  DateTime?           @map("cancelled_at")
-  cancelledById String?            @map("cancelled_by") @db.Uuid
+  dedupeKey     String?             @map("dedupe_key")
+  subject       String              @map("subject")
+  body          String              @map("body")
+  status        NotificationStatus  @default(QUEUED) @map("status")
+  attempts      Int                 @default(0) @map("attempts")
+  lastError     String?             @map("last_error")
+  entityType    String?             @map("entity_type")
+  entityId      String?             @map("entity_id") @db.Uuid
+  scheduledAt   DateTime            @default(now()) @map("scheduled_at")
+  sentAt        DateTime?           @map("sent_at")
+  cancelledAt   DateTime?           @map("cancelled_at")
+  cancelledById String?             @map("cancelled_by") @db.Uuid
   /// Failed deliveries an administrator has cleared from the dashboard alert;
   /// the immutable delivery history itself is untouched.
-  archivedAt   DateTime?           @map("archived_at")
-  createdAt    DateTime            @default(now()) @map("created_at")
-  updatedAt    DateTime            @updatedAt @map("updated_at")
+  archivedAt    DateTime?           @map("archived_at")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
 
-  company    Company?                  @relation(fields: [companyId], references: [id])
-  template   NotificationTemplate?     @relation(fields: [templateId], references: [id])
+  company    Company?                @relation(fields: [companyId], references: [id])
+  template   NotificationTemplate?   @relation(fields: [templateId], references: [id])
   recipients NotificationRecipient[]
 
   @@index([status, scheduledAt])
@@ -2141,15 +2153,15 @@ model SystemSettingHistory {
 /// asset models (child of a manufacturer), suppliers, vendors and contract
 /// categories used as dropdown sources across the platform.
 model CatalogItem {
-  id        String      @id @default(uuid()) @db.Uuid
-  kind      CatalogKind @map("kind")
-  name      String      @map("name")
-  parentId  String?     @map("parent_id") @db.Uuid
-  isActive  Boolean     @default(true) @map("is_active")
-  createdAt DateTime    @default(now()) @map("created_at")
-  createdById String?   @map("created_by") @db.Uuid
-  updatedAt DateTime    @updatedAt @map("updated_at")
-  deletedAt DateTime?   @map("deleted_at")
+  id          String      @id @default(uuid()) @db.Uuid
+  kind        CatalogKind @map("kind")
+  name        String      @map("name")
+  parentId    String?     @map("parent_id") @db.Uuid
+  isActive    Boolean     @default(true) @map("is_active")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  createdById String?     @map("created_by") @db.Uuid
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+  deletedAt   DateTime?   @map("deleted_at")
 
   parent   CatalogItem?  @relation("catalog_parent", fields: [parentId], references: [id])
   children CatalogItem[] @relation("catalog_parent")
@@ -2214,17 +2226,17 @@ model Manufacturer {
 }
 
 model AssetModel {
-  id             String        @id @default(uuid()) @db.Uuid
-  name           String        @map("name")
-  manufacturerId String?       @map("manufacturer_id") @db.Uuid
-  fieldSetId     String?       @map("field_set_id") @db.Uuid
+  id             String    @id @default(uuid()) @db.Uuid
+  name           String    @map("name")
+  manufacturerId String?   @map("manufacturer_id") @db.Uuid
+  fieldSetId     String?   @map("field_set_id") @db.Uuid
   /// Default image applied to assets of this model unless overridden per asset.
-  imagePath      String?       @map("image_path")
-  notes          String?       @map("notes")
-  isActive       Boolean       @default(true) @map("is_active")
-  createdAt      DateTime      @default(now()) @map("created_at")
-  updatedAt      DateTime      @updatedAt @map("updated_at")
-  deletedAt      DateTime?     @map("deleted_at")
+  imagePath      String?   @map("image_path")
+  notes          String?   @map("notes")
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
 
   manufacturer Manufacturer? @relation(fields: [manufacturerId], references: [id])
   fieldSet     FieldSet?     @relation(fields: [fieldSetId], references: [id])
@@ -2267,12 +2279,12 @@ model CustomField {
 /// A named group of custom fields (Settings → Fieldsets). One fieldset may be
 /// attached to an asset model; its fields are then collected on the asset.
 model FieldSet {
-  id        String          @id @default(uuid()) @db.Uuid
-  name      String          @unique @map("name")
-  isActive  Boolean         @default(true) @map("is_active")
-  createdAt DateTime        @default(now()) @map("created_at")
-  updatedAt DateTime        @updatedAt @map("updated_at")
-  deletedAt DateTime?       @map("deleted_at")
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String    @unique @map("name")
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   fields FieldSetField[]
   models AssetModel[]

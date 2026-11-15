@@ -6,7 +6,7 @@ import { db } from "@/shared/db";
 import { requirePermission } from "@/shared/auth/guard";
 import { recordAudit } from "@/shared/audit/audit";
 import { ok, toActionError, BusinessRuleError, type ActionResult } from "@/shared/errors";
-import { parseInput as parse } from "@/shared/validation/common";
+import { parseInput as parse, emailListSchema } from "@/shared/validation/common";
 import { getSetting, setSetting, saveSmtpConfig, SETTING_KEYS } from "@/shared/settings/settings";
 import { revokeTokensForTarget } from "@/shared/tokens/secure-tokens";
 
@@ -138,6 +138,9 @@ const notificationSettingsSchema = z
     notifyRequesterOnFinalApproval: z.boolean(),
     contractReminderDays: z.array(z.coerce.number().int().min(1).max(365)).min(1).max(10),
     licenseReminderDays: z.array(z.coerce.number().int().min(1).max(365)).min(1).max(10),
+    /** Default recipients for records that name none of their own. */
+    contractAlertEmails: emailListSchema(),
+    licenseAlertEmails: emailListSchema(),
   })
   .strict();
 
@@ -153,6 +156,8 @@ export async function saveNotificationSettingsAction(raw: unknown): Promise<Acti
       { key: SETTING_KEYS.NOTIFY_REQUESTER_ON_FINAL_APPROVAL, value: input.notifyRequesterOnFinalApproval },
       { key: SETTING_KEYS.CONTRACT_REMINDER_DAYS, value: input.contractReminderDays },
       { key: SETTING_KEYS.LICENSE_REMINDER_DAYS, value: input.licenseReminderDays },
+      { key: SETTING_KEYS.CONTRACT_ALERT_EMAILS, value: input.contractAlertEmails },
+      { key: SETTING_KEYS.LICENSE_ALERT_EMAILS, value: input.licenseAlertEmails },
     ];
     for (const entry of entries) {
       await setSetting(audit, { key: entry.key, value: entry.value as never, category: "notifications" });

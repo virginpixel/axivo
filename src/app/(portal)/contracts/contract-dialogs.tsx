@@ -16,7 +16,6 @@ import { useToast } from "@/shared/ui/toast";
 import { Button } from "@/shared/ui/button";
 import { Input, Select, Textarea, Label, FieldError, HelperText } from "@/shared/ui/input";
 import { Combobox } from "@/shared/ui/combobox";
-import { PersonPicker } from "@/shared/ui/person-picker";
 import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
 import type { ActionResult } from "@/shared/errors";
 
@@ -46,7 +45,10 @@ export interface ContractRecord {
   renewalType: string;
   cost: number | null;
   currency: string | null;
-  ownerPersonId: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  alertEmails: string[];
   notes: string | null;
 }
 
@@ -58,12 +60,10 @@ export interface ContractCatalogs {
 
 export function ContractDialog({
   companies,
-  peopleByCompany,
   catalogs,
   contract,
 }: {
   companies: { id: string; name: string }[];
-  peopleByCompany: Record<string, { id: string; name: string; hint?: string }[]>;
   catalogs: ContractCatalogs;
   contract?: ContractRecord;
 }) {
@@ -81,7 +81,10 @@ export function ContractDialog({
     renewalType: contract?.renewalType ?? "ANNUAL",
     cost: contract?.cost !== null && contract?.cost !== undefined ? String(contract.cost) : "",
     currency: contract?.currency ?? "USD",
-    ownerPersonId: contract?.ownerPersonId ?? "",
+    contactName: contract?.contactName ?? "",
+    contactEmail: contract?.contactEmail ?? "",
+    contactPhone: contract?.contactPhone ?? "",
+    alertEmails: (contract?.alertEmails ?? []).join(", "),
     notes: contract?.notes ?? "",
   });
 
@@ -97,7 +100,10 @@ export function ContractDialog({
       renewalType: form.renewalType,
       cost: form.cost ? Number(form.cost) : undefined,
       currency: form.currency || undefined,
-      ownerPersonId: form.ownerPersonId || undefined,
+      contactName: form.contactName,
+      contactEmail: form.contactEmail,
+      contactPhone: form.contactPhone,
+      alertEmails: form.alertEmails,
       notes: form.notes || undefined,
     };
     await run(
@@ -126,7 +132,7 @@ export function ContractDialog({
             <Combobox
               id="con-company" value={form.companyId} disabled={!!contract}
               options={companies.map((company) => ({ value: company.id, label: company.name }))}
-              onChange={(value) => setForm({ ...form, companyId: value, ownerPersonId: "" })}
+              onChange={(value) => setForm({ ...form, companyId: value })}
             />
           </div>
           <div>
@@ -165,18 +171,46 @@ export function ContractDialog({
             <FieldError message={fieldErrors.contractNumber} />
           </div>
           <div>
-            <Label htmlFor="con-owner">Contract owner</Label>
-            <PersonPicker
-              id="con-owner"
-              value={form.ownerPersonId}
-              companyId={form.companyId}
-              people={peopleByCompany[form.companyId] ?? []}
-              placeholder="No owner"
-              emptyLabel="No owner"
-              onChange={(value) => setForm({ ...form, ownerPersonId: value })}
+            <Label htmlFor="con-contact-name">Vendor contact</Label>
+            <Input
+              id="con-contact-name"
+              value={form.contactName}
+              placeholder="Their account manager"
+              onChange={(e) => setForm({ ...form, contactName: e.target.value })}
             />
+            <FieldError message={fieldErrors.contactName} />
+          </div>
+          <div>
+            <Label htmlFor="con-contact-email">Contact email</Label>
+            <Input
+              id="con-contact-email"
+              type="email"
+              value={form.contactEmail}
+              onChange={(e) => setForm({ ...form, contactEmail: e.target.value })}
+            />
+            <FieldError message={fieldErrors.contactEmail} />
+          </div>
+          <div>
+            <Label htmlFor="con-contact-phone">Contact phone</Label>
+            <Input
+              id="con-contact-phone"
+              value={form.contactPhone}
+              onChange={(e) => setForm({ ...form, contactPhone: e.target.value })}
+            />
+            <FieldError message={fieldErrors.contactPhone} />
+          </div>
+          <div className="sm:col-span-2">
+            <Label htmlFor="con-alert-emails">Renewal alerts to</Label>
+            <Input
+              id="con-alert-emails"
+              value={form.alertEmails}
+              placeholder="it@example.com, procurement@example.com"
+              onChange={(e) => setForm({ ...form, alertEmails: e.target.value })}
+            />
+            <FieldError message={fieldErrors.alertEmails} />
             <HelperText>
-              The employee responsible for managing this contract; they receive renewal and expiry reminders.
+              Separate addresses with commas. They need not be Axivo users - a shared mailbox is
+              fine. Leave blank to use the default recipients set in Settings.
             </HelperText>
           </div>
           <div>
@@ -276,13 +310,11 @@ export function AttachPdfDialog({ contractId, contractName }: { contractId: stri
 export function ContractRowActions({
   contract,
   companies,
-  peopleByCompany,
   catalogs,
   hideView,
 }: {
   contract: ContractRecord;
   companies: { id: string; name: string }[];
-  peopleByCompany: Record<string, { id: string; name: string; hint?: string }[]>;
   catalogs: ContractCatalogs;
   hideView?: boolean;
 }) {
@@ -307,7 +339,7 @@ export function ContractRowActions({
           <Eye className="h-4 w-4 text-primary" />
         </Link>
       ) : null}
-      <ContractDialog companies={companies} peopleByCompany={peopleByCompany} catalogs={catalogs} contract={contract} />
+      <ContractDialog companies={companies} catalogs={catalogs} contract={contract} />
       {contract.status === "DRAFT" ? (
         <Button
           variant="ghost" size="sm" className="text-xs" loading={loading}

@@ -7,7 +7,7 @@ import { PageHeader, StatCard, Pagination } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge } from "@/shared/ui/badge";
 import { Input, Select } from "@/shared/ui/input";
-import { formatDate, fullName } from "@/shared/utils";
+import { formatDate, fullName, enumLabel } from "@/shared/utils";
 import { ContractDialog, ContractRowActions } from "./contract-dialogs";
 import type { Prisma, ContractStatus } from "@prisma/client";
 
@@ -51,7 +51,7 @@ export default async function ContractsPage({
   };
 
   const soon = new Date(Date.now() + 60 * 86_400_000);
-  const [contracts, contractTotal, companies, people, activeCount, expiringCount, totalCost, catalogItems] = await Promise.all([
+  const [contracts, contractTotal, companies, activeCount, expiringCount, totalCost, catalogItems] = await Promise.all([
     db.contract.findMany({
       where,
       skip: (page - 1) * pageSize,
@@ -59,7 +59,6 @@ export default async function ContractsPage({
       orderBy: [{ endDate: "asc" }, { contractNumber: "asc" }],
       include: {
         company: { select: { name: true } },
-        owner: true,
         renewals: { orderBy: { renewalDate: "desc" }, take: 1 },
       },
     }),
@@ -67,10 +66,6 @@ export default async function ContractsPage({
     db.company.findMany({
       where: { deletedAt: null, isActive: true, ...(isGlobalAdmin ? {} : { id: user.companyId }) },
       orderBy: { name: "asc" }, select: { id: true, name: true },
-    }),
-    db.person.findMany({
-      where: { deletedAt: null, isActive: true, ...companyScope },
-      orderBy: { lastName: "asc" }, select: { id: true, firstName: true, lastName: true, companyId: true, employeeId: true },
     }),
     db.contract.count({ where: { deletedAt: null, ...companyScope, status: { in: ["ACTIVE", "EXPIRING", "RENEWED"] } } }),
     db.contract.count({
@@ -110,14 +105,6 @@ export default async function ContractsPage({
     currencies: currencyItems.map((c) => ({ code: c.code, name: c.name })),
   };
 
-  const peopleByCompany: Record<string, { id: string; name: string; hint?: string }[]> = {};
-  for (const person of people) {
-    (peopleByCompany[person.companyId] ??= []).push({
-      id: person.id,
-      name: fullName(person),
-      hint: person.employeeId,
-    });
-  }
 
   return (
     <div>
@@ -126,7 +113,7 @@ export default async function ContractsPage({
         description="Vendor contracts, subscriptions, warranties and renewals with automatic reminders."
         actions={
           canManage ? (
-            <ContractDialog companies={companies} peopleByCompany={peopleByCompany} catalogs={catalogs} />
+            <ContractDialog companies={companies} catalogs={catalogs} />
           ) : undefined
         }
       />
@@ -171,7 +158,7 @@ export default async function ContractsPage({
         <Table>
           <THead>
             <TR>
-              <TH>Contract</TH><TH>Vendor</TH><TH>Category</TH><TH>Company</TH><TH>Period</TH><TH>Renewal</TH><TH>Cost</TH><TH>Owner</TH><TH>Status</TH>
+              <TH>Contract</TH><TH>Vendor</TH><TH>Category</TH><TH>Company</TH><TH>Period</TH><TH>Renewal</TH><TH>Cost</TH><TH>Contact</TH><TH>Status</TH>
               {canManage ? <TH className="text-right">Actions</TH> : null}
             </TR>
           </THead>
@@ -194,10 +181,15 @@ export default async function ContractsPage({
                 </TD>
                 <TD className="text-xs">
                   {contract.renewalDate ? formatDate(contract.renewalDate) : "None"}
-                  <p className="text-muted-foreground">{contract.renewalType.toLowerCase()}</p>
+                  <p className="text-muted-foreground">{enumLabel(contract.renewalType)}</p>
                 </TD>
                 <TD>{contract.cost ? `${Number(contract.cost).toLocaleString()} ${contract.currency ?? ""}` : "None"}</TD>
-                <TD>{contract.owner ? fullName(contract.owner) : "None"}</TD>
+                <TD>
+                  {contract.contactName ?? "None"}
+                  {contract.contactEmail ? (
+                    <p className="text-xs text-muted-foreground">{contract.contactEmail}</p>
+                  ) : null}
+                </TD>
                 <TD><StatusBadge status={contract.status} /></TD>
                 {canManage ? (
                   <TD className="text-right">
@@ -216,11 +208,13 @@ export default async function ContractsPage({
                         renewalType: contract.renewalType,
                         cost: contract.cost ? Number(contract.cost) : null,
                         currency: contract.currency,
-                        ownerPersonId: contract.ownerPersonId,
+                        contactName: contract.contactName,
+                        contactEmail: contract.contactEmail,
+                        contactPhone: contract.contactPhone,
+                        alertEmails: (contract.alertEmails as string[] | null) ?? [],
                         notes: contract.notes,
                       }}
                       companies={companies}
-                      peopleByCompany={peopleByCompany}
                       catalogs={catalogs}
                     />
                   </TD>

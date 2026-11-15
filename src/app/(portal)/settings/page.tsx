@@ -669,7 +669,10 @@ async function EmailTab({ canManage }: { canManage: boolean }) {
 }
 
 async function NotificationsTab({ canManage }: { canManage: boolean }) {
-  const [approvalHours, implementationHours, ackHours, onRejection, onFinal, contractDays, licenseDays] =
+  const [
+    approvalHours, implementationHours, ackHours, onRejection, onFinal,
+    contractDays, licenseDays, contractAlerts, licenseAlerts,
+  ] =
     await Promise.all([
       getSetting<number>(SETTING_KEYS.REMINDER_APPROVAL_HOURS),
       getSetting<number>(SETTING_KEYS.REMINDER_IMPLEMENTATION_HOURS),
@@ -678,6 +681,8 @@ async function NotificationsTab({ canManage }: { canManage: boolean }) {
       getSetting<boolean>(SETTING_KEYS.NOTIFY_REQUESTER_ON_FINAL_APPROVAL),
       getSetting<number[]>(SETTING_KEYS.CONTRACT_REMINDER_DAYS),
       getSetting<number[]>(SETTING_KEYS.LICENSE_REMINDER_DAYS),
+      getSetting<string[]>(SETTING_KEYS.CONTRACT_ALERT_EMAILS),
+      getSetting<string[]>(SETTING_KEYS.LICENSE_ALERT_EMAILS),
     ]);
   return (
     <NotificationSettingsForm
@@ -689,6 +694,8 @@ async function NotificationsTab({ canManage }: { canManage: boolean }) {
         notifyRequesterOnFinalApproval: onFinal,
         contractReminderDays: contractDays,
         licenseReminderDays: licenseDays,
+        contractAlertEmails: contractAlerts ?? [],
+        licenseAlertEmails: licenseAlerts ?? [],
       }}
       readOnly={!canManage}
     />

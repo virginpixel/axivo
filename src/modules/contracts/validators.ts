@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { uuidSchema, requiredText, optionalText, dateSchema, nonNegativeDecimal, nullableUuid, nullableDate, nullableDecimal } from "@/shared/validation/common";
+import { uuidSchema, requiredText, optionalText, dateSchema, nonNegativeDecimal, nullableDate, nullableDecimal, nullableEmail, emailListSchema } from "@/shared/validation/common";
 
 /** Contracts module validation (SDS Doc 23). */
 
@@ -28,7 +28,12 @@ export const contractSchema = z
     renewalType: z.enum(["MANUAL", "MONTHLY", "QUARTERLY", "ANNUAL", "CUSTOM"]).default("MANUAL"),
     cost: nullableDecimal("Cost"),
     currency: optionalText(10),
-    ownerPersonId: nullableUuid(),
+    /** The supplier's own contact for this contract, not anybody here. */
+    contactName: optionalText(200),
+    contactEmail: nullableEmail(),
+    contactPhone: optionalText(50),
+    /** Who hears about this renewal; empty falls back to Settings. */
+    alertEmails: emailListSchema(),
     reminderDays: z.array(z.number().int().positive()).max(10).optional(),
     notes: optionalText(),
   })

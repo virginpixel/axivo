@@ -77,6 +77,51 @@ export function formatDateTimeWithZone(value: Date | string | null | undefined, 
   return base === "None" ? base : `${base} (${timeZoneLabel(timeZone)})`;
 }
 
+/**
+ * Midnight at the start of a date. Expiry and start dates are entered as plain
+ * dates and stored at midnight, so whole-day comparisons belong on this
+ * boundary rather than on the current instant.
+ */
+export function startOfDayUtc(value: Date = new Date()): Date {
+  const start = new Date(value);
+  start.setUTCHours(0, 0, 0, 0);
+  return start;
+}
+
+/**
+ * Whole days from today to a date: 0 on the day itself, negative once it has
+ * passed. Comparing instants instead would make "days left" depend on the time
+ * of day the job happened to run.
+ */
+export function daysUntil(target: Date, now: Date = new Date()): number {
+  return Math.round((startOfDayUtc(target).getTime() - startOfDayUtc(now).getTime()) / 86_400_000);
+}
+
+/**
+ * Has a dated-through value passed? Cover runs to the END of the date entered,
+ * so a licence or contract dated the 15th is still live all through the 15th
+ * and lapses on the 16th. Comparing the stored midnight against "now" directly
+ * retired it a day early, at one minute past midnight on the day it covered.
+ *
+ * Measured in UTC against stored midnights. Ahead of UTC that leaves a few
+ * hours of grace on the final evening, which errs on the side of not cutting
+ * cover off early - the direction that cannot cause a false alarm.
+ */
+export function hasDatePassed(value: Date, now: Date = new Date()): boolean {
+  return daysUntil(value, now) < 0;
+}
+
+/**
+ * An enum constant as a label: NEW_PURCHASE becomes "New purchase". Lower-cased
+ * with only the first letter raised, so it reads as prose next to the rest of
+ * the interface instead of shouting, and matches the wording of the dropdowns
+ * these values are chosen from.
+ */
+export function enumLabel(value: string): string {
+  const words = value.replace(/_/g, " ").toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 export function fullName(person: { firstName: string; lastName: string }): string {
   return `${person.firstName} ${person.lastName}`;
 }

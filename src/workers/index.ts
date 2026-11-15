@@ -6,6 +6,7 @@ import { expireOverdueSecrets } from "@/modules/credentials/service";
 import { recordAudit, SYSTEM_ACTOR } from "@/shared/audit/audit";
 import { getSetting, SETTING_KEYS } from "@/shared/settings/settings";
 import { sendApprovalEmails } from "@/modules/workflow/engine";
+import { daysUntil, startOfDayUtc } from "@/shared/utils";
 
 /**
  * Axivo background worker (SDS Doc 02 Ch7).
@@ -14,6 +15,33 @@ import { sendApprovalEmails } from "@/modules/workflow/engine";
  * reminders and session cleanup. Recoverable failures retry with exponential
  * backoff; the worker never talks to browsers.
  */
+
+/**
+ * Who is told that something expires.
+ *
+ * The record's own addresses win outright: somebody typed them because they are
+ * the people who chase this particular renewal. Failing that, the Settings
+ * default covers the common case of every reminder going to one IT mailbox.
+ * Only when neither is set does it fall back to the company's administrators,
+ * which is what happened before any of this was configurable - an expiry
+ * nobody is told about is the one outcome worth ruling out.
+ */
+async function alertRecipients(
+  companyId: string,
+  recordEmails: unknown,
+  defaultKey: typeof SETTING_KEYS.CONTRACT_ALERT_EMAILS | typeof SETTING_KEYS.LICENSE_ALERT_EMAILS,
+): Promise<{ email: string; name: string }[]> {
+  const named = Array.isArray(recordEmails)
+    ? recordEmails.filter((entry): entry is string => typeof entry === "string" && entry.trim() !== "")
+    : [];
+  if (named.length > 0) return named.map((email) => ({ email, name: email }));
+
+  const fallback = (await getSetting<string[]>(defaultKey)) ?? [];
+  const configured = fallback.filter((entry) => typeof entry === "string" && entry.trim() !== "");
+  if (configured.length > 0) return configured.map((email) => ({ email, name: email }));
+
+  return getNotifiableAdmins(companyId);
+}
 
 async function processEmail(job: Job<EmailJobPayload>): Promise<void> {
   await deliverEmailNotification(job.data.notificationId);
@@ -61,14 +89,17 @@ async function contractReminders(): Promise<void> {
       status: { in: ["ACTIVE", "EXPIRING", "RENEWED"] },
       OR: [{ endDate: { not: null } }, { renewalDate: { not: null } }],
     },
-    include: { owner: true, company: true },
+    include: { company: true },
   });
-  const now = Date.now();
   for (const contract of contracts) {
     const reminderDays = (contract.reminderDays as number[] | null) ?? defaultDays;
     const targetDate = contract.renewalDate ?? contract.endDate;
     if (!targetDate) continue;
-    const daysLeft = Math.ceil((targetDate.getTime() - now) / 86_400_000);
+    // Whole days between dates: 0 on the day itself, negative once past. Cover
+    // runs to the end of the date entered, so a contract ending today has not
+    // expired yet. Measuring from instants made the answer depend on what time
+    // of day this job happened to run.
+    const daysLeft = daysUntil(targetDate);
 
     if (daysLeft < 0 && contract.status !== "EXPIRED") {
       await db.contract.update({ where: { id: contract.id }, data: { status: "EXPIRED" } });
@@ -89,11 +120,11 @@ async function contractReminders(): Promise<void> {
       await db.contract.update({ where: { id: contract.id }, data: { status: "EXPIRING" } });
     }
     if (reminderDays.includes(daysLeft)) {
-      const admins = await getNotifiableAdmins(contract.companyId);
-      const recipients = [
-        ...(contract.owner ? [{ email: contract.owner.email, name: `${contract.owner.firstName} ${contract.owner.lastName}` }] : []),
-        ...admins,
-      ];
+      const recipients = await alertRecipients(
+        contract.companyId,
+        contract.alertEmails,
+        SETTING_KEYS.CONTRACT_ALERT_EMAILS,
+      );
       await queueNotification({
         companyId: contract.companyId,
         eventType: "CONTRACT_RENEWAL_REMINDER",
@@ -114,37 +145,70 @@ async function licenseReminders(): Promise<void> {
   const purchases = await db.licensePurchase.findMany({
     where: {
       deletedAt: null,
-      expiryDate: { not: null, gte: new Date() },
+      // gte start-of-today, not "now": a licence expiring today is still
+      // covered today and should still be reminded about.
+      expiryDate: { not: null, gte: startOfDayUtc() },
       license: { deletedAt: null, status: "ACTIVE", licenseType: "SUBSCRIPTION" },
     },
     include: { license: { include: { company: true } } },
   });
-  const now = Date.now();
   const seenLicenses = new Set<string>();
   for (const purchase of purchases) {
     if (seenLicenses.has(purchase.licenseId)) continue;
-    const daysLeft = Math.ceil((purchase.expiryDate!.getTime() - now) / 86_400_000);
+    const daysLeft = daysUntil(purchase.expiryDate!);
     if (!reminderDays.includes(daysLeft)) continue;
     seenLicenses.add(purchase.licenseId);
-    const admins = await getNotifiableAdmins(purchase.license.companyId);
+    const recipients = await alertRecipients(
+      purchase.license.companyId,
+      purchase.license.alertEmails,
+      SETTING_KEYS.LICENSE_ALERT_EMAILS,
+    );
     await queueNotification({
       companyId: purchase.license.companyId,
       eventType: "LICENSE_EXPIRY_REMINDER",
       subject: `License "${purchase.license.name}" expires in ${daysLeft} day(s)`,
       body: `The subscription license <strong>${purchase.license.name}</strong> for ${purchase.license.company.name} expires on ${purchase.expiryDate!.toISOString().slice(0, 10)}. Renew it to avoid access interruption.`,
-      recipients: admins,
+      recipients,
       entityType: "license",
       entityId: purchase.licenseId,
       dedupeKey: `license-reminder:${purchase.licenseId}:${purchase.expiryDate!.toISOString().slice(0, 10)}:${daysLeft}`,
     });
   }
+  // Bring back any licence whose cover has been restored. Expiry was a one-way
+  // door: a licence renewed after it lapsed stayed marked Expired for ever,
+  // contradicting the cover date shown beside it. Recording a purchase fixes
+  // it immediately; this catches the ones already in that state.
+  const revived = await db.license.findMany({
+    where: {
+      deletedAt: null,
+      status: "EXPIRED",
+      licenseType: "SUBSCRIPTION",
+      purchases: { some: { deletedAt: null, expiryDate: { gte: startOfDayUtc() } } },
+    },
+  });
+  for (const license of revived) {
+    await db.license.update({ where: { id: license.id }, data: { status: "ACTIVE" } });
+    await recordAudit(
+      { ...SYSTEM_ACTOR, companyId: license.companyId },
+      {
+        module: "licenses",
+        eventType: "license.reactivated",
+        action: `License "${license.name}" returned to active: it is covered again`,
+        targetType: "license",
+        targetId: license.id,
+        targetLabel: license.name,
+      },
+    );
+  }
+
   // Mark licenses whose latest window has fully expired.
   const expired = await db.license.findMany({
     where: {
       deletedAt: null,
       status: "ACTIVE",
       licenseType: "SUBSCRIPTION",
-      purchases: { every: { OR: [{ expiryDate: null }, { expiryDate: { lt: new Date() } }] } },
+      // lt start-of-today: a term expiring today still covers today.
+      purchases: { every: { OR: [{ expiryDate: null }, { expiryDate: { lt: startOfDayUtc() } }] } },
     },
   });
   for (const license of expired) {

@@ -293,6 +293,8 @@ export function NotificationSettingsForm({
     notifyRequesterOnFinalApproval: boolean;
     contractReminderDays: number[];
     licenseReminderDays: number[];
+    contractAlertEmails: string[];
+    licenseAlertEmails: string[];
   };
   readOnly: boolean;
 }) {
@@ -301,6 +303,8 @@ export function NotificationSettingsForm({
     ...current,
     contractDaysText: current.contractReminderDays.join(", "),
     licenseDaysText: current.licenseReminderDays.join(", "),
+    contractAlertText: current.contractAlertEmails.join(", "),
+    licenseAlertText: current.licenseAlertEmails.join(", "),
   });
 
   function parseDays(text: string): number[] {
@@ -351,6 +355,23 @@ export function NotificationSettingsForm({
             <Input id="not-license-days" value={form.licenseDaysText} readOnly={readOnly}
               onChange={(e) => setForm({ ...form, licenseDaysText: e.target.value })} placeholder="60, 30, 14, 7" />
           </div>
+          <div>
+            <Label htmlFor="not-contract-alerts">Default contract alert recipients</Label>
+            <Input id="not-contract-alerts" value={form.contractAlertText} readOnly={readOnly}
+              onChange={(e) => setForm({ ...form, contractAlertText: e.target.value })}
+              placeholder="it@example.com, procurement@example.com" />
+            <HelperText>Used for contracts that name no recipients of their own.</HelperText>
+          </div>
+          <div>
+            <Label htmlFor="not-license-alerts">Default licence alert recipients</Label>
+            <Input id="not-license-alerts" value={form.licenseAlertText} readOnly={readOnly}
+              onChange={(e) => setForm({ ...form, licenseAlertText: e.target.value })}
+              placeholder="it@example.com, procurement@example.com" />
+            <HelperText>
+              Used for licences that name none. With both blank, reminders fall back to the
+              company&apos;s administrators.
+            </HelperText>
+          </div>
         </div>
         <div className="flex flex-col gap-2 text-sm">
           <label className="flex items-center gap-2">
@@ -379,6 +400,8 @@ export function NotificationSettingsForm({
                       notifyRequesterOnFinalApproval: form.notifyRequesterOnFinalApproval,
                       contractReminderDays: parseDays(form.contractDaysText),
                       licenseReminderDays: parseDays(form.licenseDaysText),
+                      contractAlertEmails: form.contractAlertText,
+                      licenseAlertEmails: form.licenseAlertText,
                     }),
                   { successMessage: "Notification settings saved." },
                 )

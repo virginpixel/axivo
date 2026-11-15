@@ -46,6 +46,13 @@ export const SETTING_KEYS = {
   // Contracts / licenses (Docs 10/23)
   CONTRACT_REMINDER_DAYS: "contracts.reminderDays",
   LICENSE_REMINDER_DAYS: "licenses.reminderDays",
+  /**
+   * Addresses that receive renewal/expiry reminders for records that name none
+   * of their own, so the common case - every reminder to one IT mailbox - is
+   * configured once instead of on every contract and licence.
+   */
+  CONTRACT_ALERT_EMAILS: "contracts.alertEmails",
+  LICENSE_ALERT_EMAILS: "licenses.alertEmails",
 
   // System
   MAINTENANCE_MODE: "system.maintenanceMode",
@@ -84,6 +91,10 @@ const DEFAULTS: Record<string, unknown> = {
   [SETTING_KEYS.EMAIL_RETRY_LIMIT]: 5,
   [SETTING_KEYS.CONTRACT_REMINDER_DAYS]: [60, 30, 14, 7],
   [SETTING_KEYS.LICENSE_REMINDER_DAYS]: [60, 30, 14, 7],
+  // Empty by default: with nothing configured anywhere, reminders fall through
+  // to the company's administrators, which is what happened before this existed.
+  [SETTING_KEYS.CONTRACT_ALERT_EMAILS]: [],
+  [SETTING_KEYS.LICENSE_ALERT_EMAILS]: [],
   [SETTING_KEYS.MAINTENANCE_MODE]: { enabled: false, message: "" },
   [SETTING_KEYS.TUNNEL]: { enabled: false, hostname: "" },
   [SETTING_KEYS.BRANDING]: {

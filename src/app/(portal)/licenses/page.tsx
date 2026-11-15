@@ -6,7 +6,7 @@ import { PageHeader, StatCard, Pagination } from "@/shared/ui/page";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge, Badge } from "@/shared/ui/badge";
 import { UtilizationBar } from "@/shared/ui/utilization-bar";
-import { formatDate, fullName } from "@/shared/utils";
+import { formatDate, fullName, enumLabel } from "@/shared/utils";
 import { LiveSearch } from "@/shared/ui/live-search";
 import { LicenseDialog, PurchaseDialog, LicenseAssignDialog, LicenseDeleteButton } from "./license-dialogs";
 
@@ -147,7 +147,7 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
                     </Link>
                     <p className="text-xs text-muted-foreground">
                       {license.application ? `${license.application.name} · ` : ""}
-                      {license.isShared ? "All companies" : license.company.name} · {license.licenseType.toLowerCase()}
+                      {license.isShared ? "All companies" : license.company.name} · {enumLabel(license.licenseType)}
                       {license.contract
                         ? ` · contract ${license.contract.contractNumber ?? license.contract.name}`
                         : ""}
@@ -194,6 +194,7 @@ export default async function LicensesPage({ searchParams }: { searchParams: Pro
                                 licenseType: license.licenseType,
                                 isShared: license.isShared,
                                 licenseKey: license.licenseKey,
+                                alertEmails: (license.alertEmails as string[] | null) ?? [],
                                 contractId: license.contractId,
                                 notes: license.notes,
                               }}

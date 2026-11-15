@@ -2,6 +2,7 @@ import { db, type DbClient } from "@/shared/db";
 import { recordAudit, diffRecords, type AuditContext } from "@/shared/audit/audit";
 import { BusinessRuleError, NotFoundError, ValidationError } from "@/shared/errors";
 import type { LicenseStatus } from "@prisma/client";
+import { hasDatePassed, startOfDayUtc } from "@/shared/utils";
 import type { LicenseInput, LicensePurchaseInput, LicenseAssignmentInput } from "./validators";
 
 /**
@@ -14,18 +15,40 @@ import type { LicenseInput, LicensePurchaseInput, LicenseAssignmentInput } from 
 const MODULE = "licenses";
 
 export interface LicenseAvailability {
+  /** Seats from purchases in force today, not every purchase ever made. */
   purchased: number;
   assigned: number;
+  /** Never negative; see {@link LicenseAvailability.over} for the shortfall. */
   available: number;
+  /** Seats assigned beyond the ones currently paid for. */
+  over: number;
 }
 
 export async function getLicenseAvailability(
   licenseId: string,
   client: DbClient = db,
 ): Promise<LicenseAvailability> {
+  // Only purchases in force today count. Summing every purchase ever recorded
+  // made a renewal ADD to the seats it replaced - a licence cut from 300 seats
+  // to 240 read as 540, and grew again every year it was renewed. A term that
+  // has ended is history, not capacity.
+  //
+  // Terms that overlap still add up, which is what "Additional seats" bought
+  // mid-term are for.
+  const now = new Date();
+  const today = startOfDayUtc(now);
   const [purchases, assigned] = await Promise.all([
     client.licensePurchase.aggregate({
-      where: { licenseId, deletedAt: null },
+      where: {
+        licenseId,
+        deletedAt: null,
+        AND: [
+          { OR: [{ startDate: null }, { startDate: { lte: now } }] },
+          // Cover runs through the end of the expiry date, so a term expiring
+          // today is still in force today.
+          { OR: [{ expiryDate: null }, { expiryDate: { gte: today } }] },
+        ],
+      },
       _sum: { quantity: true },
     }),
     client.licenseAssignment.count({
@@ -33,7 +56,12 @@ export async function getLicenseAvailability(
     }),
   ]);
   const purchased = purchases._sum.quantity ?? 0;
-  return { purchased, assigned, available: purchased - assigned };
+  return {
+    purchased,
+    assigned,
+    available: Math.max(0, purchased - assigned),
+    over: Math.max(0, assigned - purchased),
+  };
 }
 
 /** How a licence's cover reads once every purchase is taken into account. */
@@ -64,7 +92,8 @@ export function getLicenseCoverage(
   if (dates.length === 0) return { expiresAt: null, state: "none" };
 
   const expiresAt = dates.reduce((latest, date) => (date > latest ? date : latest));
-  if (expiresAt < now) return { expiresAt, state: "expired" };
+  // Dated through: a licence expiring today is covered for the whole of today.
+  if (hasDatePassed(expiresAt, now)) return { expiresAt, state: "expired" };
   const warnFrom = new Date(now.getTime() + LICENSE_EXPIRY_WARNING_DAYS * 86_400_000);
   return { expiresAt, state: expiresAt <= warnFrom ? "expiring" : "valid" };
 }
@@ -309,6 +338,33 @@ export async function recordPurchase(context: AuditContext, input: LicensePurcha
       },
       tx,
     );
+    // A renewal on a licence the expiry job already retired has to bring it
+    // back. Nothing else did, so a renewed licence sat marked Expired for ever,
+    // contradicting the cover date printed beside it. Only EXPIRED is reversed:
+    // Draft, Suspended and Retired are states somebody chose on purpose.
+    if (license.status === "EXPIRED") {
+      const purchases = await tx.licensePurchase.findMany({
+        where: { licenseId: license.id, deletedAt: null },
+        select: { expiryDate: true },
+      });
+      if (getLicenseCoverage(purchases).state !== "expired") {
+        await tx.license.update({ where: { id: license.id }, data: { status: "ACTIVE" } });
+        await recordAudit(
+          { ...context, companyId: license.companyId },
+          {
+            module: MODULE,
+            eventType: "license.reactivated",
+            action: `License "${license.name}" returned to active: cover now runs to ${
+              getLicenseCoverage(purchases).expiresAt?.toISOString().slice(0, 10) ?? "no expiry"
+            }`,
+            targetType: "license",
+            targetId: license.id,
+            targetLabel: license.name,
+          },
+          tx,
+        );
+      }
+    }
     return purchase;
   });
 }
@@ -344,7 +400,10 @@ export async function assignLicense(
     const availability = await getLicenseAvailability(input.licenseId, tx);
     if (availability.available <= 0) {
       throw new BusinessRuleError(
-        `No available seats for "${license.name}" (${availability.assigned}/${availability.purchased} assigned).`,
+        availability.over > 0
+          ? `"${license.name}" has ${availability.purchased} seat(s) with ${availability.assigned} assigned - ` +
+            `${availability.over} over. Release seats or record a purchase before assigning more.`
+          : `No available seats for "${license.name}" (${availability.assigned}/${availability.purchased} assigned).`,
       );
     }
 

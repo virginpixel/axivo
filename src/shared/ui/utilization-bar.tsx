@@ -19,16 +19,34 @@ export function UtilizationBar({
   className?: string;
 }) {
   if (total <= 0) {
+    // Nothing paid for, but seats can still be held: a lapsed licence keeps its
+    // assignments until somebody takes them off. Saying only "no seats
+    // purchased" would hide the people still holding one.
+    const stranded = used > 0;
     return (
       <div className={cn("min-w-32", className)}>
-        <div className="h-1.5 w-full rounded-full bg-muted" />
-        <p className="mt-1 text-micro text-muted-foreground">No seats purchased</p>
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          {stranded ? <div className="h-full w-full rounded-full bg-destructive" /> : null}
+        </div>
+        <p
+          className={cn(
+            "mt-1 text-micro font-medium",
+            stranded ? "text-destructive" : "text-muted-foreground",
+          )}
+        >
+          {stranded ? `${used} assigned · no seats in force` : "No seats purchased"}
+        </p>
       </div>
     );
   }
 
   const percent = (used / total) * 100;
   const remaining = total - used;
+  // Over-allocation happens without anybody doing anything: a term ends, the
+  // seats it paid for drop away, and assignments that were fine yesterday are
+  // suddenly beyond what is owned. "No seats left" understated that badly, so
+  // the number says how far over.
+  const over = used - total;
   const tone =
     remaining <= 0 ? "destructive" : remaining <= Math.max(2, total * 0.05) ? "warning" : "primary";
 
@@ -51,7 +69,7 @@ export function UtilizationBar({
         aria-valuenow={Math.round(percent)}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-label={`${used} of ${total} seats assigned`}
+        aria-label={`${used} of ${total} seats assigned${over > 0 ? `, ${over} over` : ""}`}
       >
         <div
           className={cn("h-full rounded-full transition-[width]", barClass)}
@@ -61,11 +79,13 @@ export function UtilizationBar({
       </div>
       <p className={cn("mt-1 text-micro font-medium tabular-nums", textClass)}>
         {percent.toFixed(1)}%
-        {remaining <= 0
-          ? " · no seats left"
-          : remaining <= Math.max(2, total * 0.05)
-            ? ` · ${remaining} left`
-            : ""}
+        {over > 0
+          ? ` · ${over} over`
+          : remaining === 0
+            ? " · no seats left"
+            : remaining <= Math.max(2, total * 0.05)
+              ? ` · ${remaining} left`
+              : ""}
       </p>
     </div>
   );

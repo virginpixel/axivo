@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { uuidSchema, requiredText, optionalText, dateSchema, positiveInt, nonNegativeDecimal, nullableUuid } from "@/shared/validation/common";
+import { uuidSchema, requiredText, optionalText, dateSchema, positiveInt, nonNegativeDecimal, nullableUuid, emailListSchema } from "@/shared/validation/common";
 
 /** Licenses module validation (SDS Doc 10 Ch10). */
 
@@ -14,6 +14,8 @@ export const licenseSchema = z
     isShared: z.boolean().default(false),
     licenseKey: optionalText(500),
     contractId: nullableUuid(),
+    /** Who hears about this licence expiring; empty falls back to Settings. */
+    alertEmails: emailListSchema(),
     notes: optionalText(),
   })
   .strict();

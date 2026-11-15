@@ -6,7 +6,7 @@ import { PageHeader, StatCard, Pagination } from "@/shared/ui/page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
 import { StatusBadge, Badge } from "@/shared/ui/badge";
-import { formatDate, fullName } from "@/shared/utils";
+import { formatDate, fullName, enumLabel } from "@/shared/utils";
 import { UtilizationBar } from "@/shared/ui/utilization-bar";
 import { LicenseAssignDialog, LicenseAssignmentActions, PurchaseDialog } from "../license-dialogs";
 
@@ -48,6 +48,7 @@ export default async function LicenseDetailPage({
 
   const availability = await getLicenseAvailability(license.id);
   const coverage = getLicenseCoverage(license.purchases);
+  const alertEmails = (license.alertEmails as string[] | null) ?? [];
   const historyWhere = {
     licenseId: license.id,
     deletedAt: null,
@@ -90,7 +91,7 @@ export default async function LicenseDetailPage({
         description={[
           license.application?.name ?? undefined,
           license.isShared ? "All companies" : license.company.name,
-          license.licenseType.toLowerCase(),
+          enumLabel(license.licenseType),
           license.purchases[0]?.supplier ?? undefined,
         ]
           .filter(Boolean)
@@ -123,11 +124,32 @@ export default async function LicenseDetailPage({
         }
       />
 
+      {availability.over > 0 ? (
+        <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <strong>{availability.over} seat(s) over.</strong> {availability.assigned} assigned against{" "}
+          {availability.purchased} currently paid for. This can happen without anybody doing
+          anything - a term ends and the seats it covered stop counting. Release seats or record a
+          purchase; nothing is revoked automatically.
+        </div>
+      ) : null}
+
       <div className="mb-5 grid grid-cols-3 gap-4">
         <StatCard label="Purchased seats" value={availability.purchased} />
-        <StatCard label="Available" value={availability.available} tone={availability.available <= 0 ? "warning" : "success"} />
+        <StatCard
+          label="Available"
+          value={availability.over > 0 ? `0 · ${availability.over} over` : availability.available}
+          tone={availability.over > 0 ? "warning" : availability.available === 0 ? "warning" : "success"}
+        />
         <StatCard label="Assigned" value={availability.assigned} />
       </div>
+
+      <p className="mb-5 text-xs text-muted-foreground">
+        Expiry alerts go to{" "}
+        <span className="text-foreground">
+          {alertEmails.length > 0 ? alertEmails.join(", ") : "the default recipients set in Settings"}
+        </span>
+        .
+      </p>
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Card>
@@ -211,7 +233,7 @@ export default async function LicenseDetailPage({
                 <TBody>
                   {license.purchases.map((purchase) => (
                     <TR key={purchase.id}>
-                      <TD>{purchase.purchaseType.replace(/_/g, " ").toLowerCase()}</TD>
+                      <TD>{enumLabel(purchase.purchaseType)}</TD>
                       <TD>{purchase.quantity}</TD>
                       <TD>{formatDate(purchase.purchaseDate)}</TD>
                       <TD>{purchase.startDate ? formatDate(purchase.startDate) : "None"}</TD>

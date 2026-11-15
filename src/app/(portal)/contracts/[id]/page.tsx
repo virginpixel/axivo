@@ -5,7 +5,7 @@ import { db } from "@/shared/db";
 import { PageHeader } from "@/shared/ui/page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { StatusBadge } from "@/shared/ui/badge";
-import { formatDate, fullName } from "@/shared/utils";
+import { formatDate, enumLabel } from "@/shared/utils";
 import { ContractRowActions } from "../contract-dialogs";
 import { ContractDocuments } from "./contract-documents";
 import { DeleteButton } from "@/shared/ui/delete-button";
@@ -24,21 +24,16 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
     where: { id, deletedAt: null, ...(isGlobalAdmin ? {} : { companyId: user.companyId }) },
     include: {
       company: { select: { id: true, name: true } },
-      owner: true,
       renewals: { orderBy: { renewalDate: "desc" } },
       licenses: { where: { deletedAt: null }, select: { id: true, name: true } },
     },
   });
   if (!contract) notFound();
 
-  const [companies, people, docLinks, vendorItems, categoryItems] = await Promise.all([
+  const [companies, docLinks, vendorItems, categoryItems] = await Promise.all([
     db.company.findMany({
       where: { deletedAt: null, isActive: true, ...(isGlobalAdmin ? {} : { id: user.companyId }) },
       orderBy: { name: "asc" }, select: { id: true, name: true },
-    }),
-    db.person.findMany({
-      where: { deletedAt: null, isActive: true, companyId: contract.companyId },
-      orderBy: { lastName: "asc" }, select: { id: true, firstName: true, lastName: true, companyId: true, employeeId: true },
     }),
     db.documentLink.findMany({
       where: { entityType: "contract", entityId: contract.id, removedAt: null },
@@ -50,14 +45,9 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
   ]);
   const currencyItems = await db.currency.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { code: "asc" }, select: { code: true, name: true } });
 
-  const peopleByCompany: Record<string, { id: string; name: string; hint?: string }[]> = {};
-  for (const person of people) {
-    (peopleByCompany[person.companyId] ??= []).push({
-      id: person.id,
-      name: fullName(person),
-      hint: person.employeeId,
-    });
-  }
+  // Who the renewal reminder actually reaches, resolved for display only: the
+  // worker applies the same order when it sends.
+  const alertEmails = (contract.alertEmails as string[] | null) ?? [];
   const catalogs = { vendors: vendorItems, categories: categoryItems, currencies: currencyItems };
   const documents = docLinks
     .filter((link) => link.document)
@@ -87,11 +77,13 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
                 renewalType: contract.renewalType,
                 cost: contract.cost ? Number(contract.cost) : null,
                 currency: contract.currency,
-                ownerPersonId: contract.ownerPersonId,
+                contactName: contract.contactName,
+                contactEmail: contract.contactEmail,
+                contactPhone: contract.contactPhone,
+                alertEmails: (contract.alertEmails as string[] | null) ?? [],
                 notes: contract.notes,
               }}
               companies={companies}
-              peopleByCompany={peopleByCompany}
               catalogs={catalogs}
               hideView
             />
@@ -120,9 +112,17 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
               <Row label="Vendor" value={contract.vendor} />
               <Row label="Category" value={contract.category} />
               <Row label="Period" value={`${contract.startDate ? formatDate(contract.startDate) : "None"} → ${contract.endDate ? formatDate(contract.endDate) : "None"}`} />
-              <Row label="Renewal" value={`${contract.renewalDate ? formatDate(contract.renewalDate) : "None"} (${contract.renewalType.toLowerCase()})`} />
+              <Row label="Renewal" value={`${contract.renewalDate ? formatDate(contract.renewalDate) : "None"} (${enumLabel(contract.renewalType)})`} />
               <Row label="Cost" value={contract.cost ? `${Number(contract.cost).toLocaleString()} ${contract.currency ?? ""}` : "None"} />
-              <Row label="Owner" value={contract.owner ? fullName(contract.owner) : "None"} />
+              <Row label="Vendor contact" value={contract.contactName ?? "None"} />
+              <Row label="Contact email" value={contract.contactEmail ?? "None"} />
+              <Row label="Contact phone" value={contract.contactPhone ?? "None"} />
+              <Row
+                label="Renewal alerts to"
+                value={
+                  alertEmails.length > 0 ? alertEmails.join(", ") : "Default recipients (Settings)"
+                }
+              />
               {contract.notes ? <Row label="Notes" value={contract.notes} /> : null}
             </dl>
             {contract.licenses.length > 0 ? (

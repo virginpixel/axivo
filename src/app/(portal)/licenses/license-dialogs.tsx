@@ -34,6 +34,7 @@ export function LicenseDialog({
     isShared: boolean;
     licenseKey: string | null;
     contractId: string | null;
+    alertEmails: string[];
     notes: string | null;
   };
 }) {
@@ -47,6 +48,7 @@ export function LicenseDialog({
     isShared: license?.isShared ?? false,
     licenseKey: license?.licenseKey ?? "",
     contractId: license?.contractId ?? "",
+    alertEmails: (license?.alertEmails ?? []).join(", "),
     notes: license?.notes ?? "",
   });
 
@@ -62,7 +64,8 @@ export function LicenseDialog({
       isShared: form.isShared,
       licenseKey: form.licenseKey || undefined,
       contractId: form.contractId || undefined,
-      notes: form.notes || undefined,
+      alertEmails: form.alertEmails,
+      notes: form.notes,
     };
     await run(
       () => (license ? updateLicenseAction(license.id, payload) : createLicenseAction(payload)),
@@ -153,6 +156,20 @@ export function LicenseDialog({
                 onChange={(value) => setForm({ ...form, contractId: value })}
               />
             </div>
+          </div>
+          <div>
+            <Label htmlFor="lic-alert-emails">Expiry alerts to</Label>
+            <Input
+              id="lic-alert-emails"
+              value={form.alertEmails}
+              placeholder="it@example.com, procurement@example.com"
+              onChange={(e) => setForm({ ...form, alertEmails: e.target.value })}
+            />
+            <FieldError message={fieldErrors.alertEmails} />
+            <HelperText>
+              Separate addresses with commas. They need not be Axivo users - a shared mailbox is
+              fine. Leave blank to use the default recipients set in Settings.
+            </HelperText>
           </div>
           <div>
             <Label htmlFor="lic-notes">Notes</Label>

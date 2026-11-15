@@ -23,6 +23,53 @@ export const nullableEmail = () =>
     .union([z.literal(""), z.null(), z.undefined(), emailSchema])
     .transform((value) => (value === "" || value == null ? null : value));
 
+/** Comma, semicolon or line break - however somebody pastes a list of addresses. */
+const SEPARATORS = /[,;\r\n]+/;
+
+/**
+ * A list of email addresses typed into one box, separated by commas, semicolons
+ * or newlines. Free text rather than a person picker on purpose: the people who
+ * need to hear that something expires are not always Axivo users, and a shared
+ * mailbox is not a person at all.
+ *
+ * Duplicates are dropped and the order typed is kept, so the list reads back
+ * the way it was written.
+ */
+export const emailListSchema = (max = 20) =>
+  z
+    .union([z.string(), z.array(z.string()), z.null(), z.undefined()])
+    .transform((value) => {
+      const raw = value == null ? [] : Array.isArray(value) ? value : value.split(SEPARATORS);
+      const seen = new Set<string>();
+      const list: string[] = [];
+      for (const entry of raw) {
+        const address = entry.trim().toLowerCase();
+        if (!address || seen.has(address)) continue;
+        seen.add(address);
+        list.push(address);
+      }
+      return list;
+    })
+    .superRefine((list, ctx) => {
+      if (list.length > max) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Please enter at most ${max} email addresses.`,
+        });
+        return;
+      }
+      const invalid = list.filter((address) => !z.string().email().safeParse(address).success);
+      if (invalid.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            invalid.length === 1
+              ? `"${invalid[0]}" is not a valid email address.`
+              : `These are not valid email addresses: ${invalid.join(", ")}.`,
+        });
+      }
+    });
+
 export const requiredText = (label: string, max = 200) =>
   z
     .string({ required_error: `${label} is required.` })

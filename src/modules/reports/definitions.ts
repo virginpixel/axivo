@@ -1083,10 +1083,10 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           ],
         },
         orderBy: { endDate: "asc" },
-        include: { company: true, owner: true },
+        include: { company: true },
       });
       return {
-        headers: ["Contract", "Name", "Vendor", "Company", "End date", "Renewal date", "Cost", "Owner"],
+        headers: ["Contract", "Name", "Vendor", "Company", "End date", "Renewal date", "Cost", "Contact"],
         rows: contracts.map((contract) => [
           contract.contractNumber ?? "None",
           contract.name,
@@ -1095,7 +1095,7 @@ export const STANDARD_REPORTS: ReportDefinition[] = [
           contract.endDate ? formatDate(contract.endDate) : "None",
           contract.renewalDate ? formatDate(contract.renewalDate) : "None",
           contract.cost ? `${Number(contract.cost).toLocaleString()} ${contract.currency ?? ""}` : "None",
-          contract.owner ? fullName(contract.owner) : "None",
+          contract.contactName ?? "None",
         ]),
       };
     },

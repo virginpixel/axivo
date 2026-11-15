@@ -39,12 +39,6 @@ export async function createContract(context: AuditContext, input: ContractInput
       throw new ValidationError(undefined, { contractNumber: "This contract number already exists." });
     }
   }
-  if (input.ownerPersonId) {
-    const owner = await db.person.findFirst({
-      where: { id: input.ownerPersonId, companyId: input.companyId, deletedAt: null },
-    });
-    if (!owner) throw new BusinessRuleError("The contract owner must belong to the same company.");
-  }
   return db.$transaction(async (tx) => {
     const contract = await tx.contract.create({
       data: {
@@ -114,7 +108,10 @@ export async function updateContract(context: AuditContext, id: string, input: C
         fieldChanges: diffRecords(
           existing as unknown as Record<string, unknown>,
           contract as unknown as Record<string, unknown>,
-          ["name", "vendor", "category", "startDate", "endDate", "renewalDate", "renewalType", "cost", "currency", "ownerPersonId", "notes"],
+          [
+            "name", "vendor", "category", "startDate", "endDate", "renewalDate", "renewalType",
+            "cost", "currency", "contactName", "contactEmail", "contactPhone", "notes",
+          ],
         ),
       },
       tx,
