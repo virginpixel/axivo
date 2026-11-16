@@ -21,6 +21,7 @@ import {
   ScrollText,
   Menu,
   X,
+  Server,
 } from "lucide-react";
 import { cn } from "@/shared/utils";
 
@@ -56,6 +57,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/licenses", label: "Licenses", icon: <KeyRound className="h-4 w-4" />, permission: "licenses.view" },
   { href: "/assets", label: "Assets", icon: <Monitor className="h-4 w-4" />, permission: "assets.view" },
   { href: "/contracts", label: "Contracts", icon: <FileSignature className="h-4 w-4" />, permission: "contracts.view" },
+  { href: "/infrastructure", label: "Infrastructure", icon: <Server className="h-4 w-4" />, permission: "infrastructure.view" },
   { href: "/forms", label: "Forms", icon: <FormInput className="h-4 w-4" />, permission: "forms.view" },
   { href: "/workflows", label: "Workflows", icon: <GitBranch className="h-4 w-4" />, permission: "workflows.view" },
   { href: "/documents", label: "Documents", icon: <FolderOpen className="h-4 w-4" />, permission: "documents.view" },

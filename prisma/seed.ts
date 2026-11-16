@@ -134,6 +134,7 @@ const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     "licenses.view", "licenses.manage", "licenses.assignments.manage",
     "assets.view", "assets.manage", "assets.assignments.manage", "assets.maintenance.manage", "assets.disposal.manage",
     "contracts.view", "contracts.manage",
+    "infrastructure.view", "infrastructure.manage", "infrastructure.credentials.manage",
     "forms.view", "forms.manage",
     "workflows.view", "workflows.manage", "workflows.admin",
     "requests.view", "requests.admin", "requests.implement",
@@ -147,14 +148,14 @@ const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     "applications.view", "applications.assignments.manage", "applications.credentials.deliver",
     "licenses.view", "licenses.assignments.manage",
     "assets.view", "assets.assignments.manage", "assets.maintenance.manage",
-    "contracts.view", "forms.view", "workflows.view",
+    "contracts.view", "infrastructure.view", "forms.view", "workflows.view",
     "requests.view", "requests.implement",
     "documents.view", "documents.manage",
     "notifications.view", "reports.view",
   ],
   READ_ONLY: [
     "organization.view", "people.view", "applications.view", "licenses.view",
-    "assets.view", "contracts.view", "forms.view", "workflows.view",
+    "assets.view", "contracts.view", "infrastructure.view", "forms.view", "workflows.view",
     "requests.view", "documents.view", "notifications.view", "reports.view", "audit.view",
   ],
 };
@@ -166,6 +167,7 @@ const ALL_PERMISSIONS = [
   "licenses.view", "licenses.manage", "licenses.assignments.manage",
   "assets.view", "assets.manage", "assets.assignments.manage", "assets.maintenance.manage", "assets.disposal.manage",
   "contracts.view", "contracts.manage",
+  "infrastructure.view", "infrastructure.manage", "infrastructure.credentials.manage", "infrastructure.credentials.reveal",
   "forms.view", "forms.manage",
   "workflows.view", "workflows.manage", "workflows.admin",
   "requests.view", "requests.admin", "requests.implement",
@@ -195,6 +197,28 @@ async function main(): Promise<void> {
         update: {},
       });
     }
+  }
+
+  // Device types are seeded once, on an empty table, so a type an admin
+  // removed or renamed is not brought back by the next upgrade.
+  if ((await prisma.infraDeviceType.count()) === 0) {
+    console.log("[seed] Seeding infrastructure device types...");
+    const types: Array<{ kind: "NETWORK" | "SERVER"; name: string }> = [
+      { kind: "NETWORK", name: "Switch" },
+      { kind: "NETWORK", name: "Firewall" },
+      { kind: "NETWORK", name: "Router" },
+      { kind: "NETWORK", name: "Wireless Controller" },
+      { kind: "NETWORK", name: "Access Point" },
+      { kind: "SERVER", name: "Physical Server" },
+      { kind: "SERVER", name: "Virtual Machine" },
+      { kind: "SERVER", name: "Hypervisor" },
+      { kind: "SERVER", name: "NAS / Storage" },
+      { kind: "SERVER", name: "Appliance" },
+      { kind: "SERVER", name: "Workstation" },
+    ];
+    await prisma.infraDeviceType.createMany({
+      data: types.map((type, index) => ({ ...type, sortOrder: index })),
+    });
   }
 
   console.log("[seed] Seeding approval roles...");

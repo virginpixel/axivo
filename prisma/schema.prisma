@@ -360,6 +360,8 @@ model Company {
   assignmentChanges       AssignmentChange[]
   settings                SystemSetting[]
   notifications           Notification[]
+  infraDevices            InfraDevice[]
+  credentialSets          CredentialSet[]
 
   @@index([isActive])
   @@map("companies")
@@ -406,12 +408,13 @@ model Location {
   deletedAt   DateTime? @map("deleted_at")
   deletedById String?   @map("deleted_by") @db.Uuid
 
-  company                Company      @relation(fields: [companyId], references: [id])
-  parent                 Location?    @relation("location_sublocations", fields: [parentId], references: [id])
-  children               Location[]   @relation("location_sublocations")
+  company                Company       @relation(fields: [companyId], references: [id])
+  parent                 Location?     @relation("location_sublocations", fields: [parentId], references: [id])
+  children               Location[]    @relation("location_sublocations")
   people                 Person[]
   assets                 Asset[]
-  departmentsWithDefault Department[] @relation("department_default_location")
+  departmentsWithDefault Department[]  @relation("department_default_location")
+  infraDevices           InfraDevice[]
 
   @@unique([companyId, name])
   @@index([companyId, isActive])
@@ -718,6 +721,7 @@ model Application {
   requestFields        RequestField[]
   forms                Form[]
   workflow             Workflow?                    @relation(fields: [workflowId], references: [id])
+  infraDevices         InfraDeviceApplication[]
 
   @@unique([companyId, name])
   @@index([companyId, isActive])
@@ -2227,13 +2231,14 @@ model Currency {
 }
 
 model Manufacturer {
-  id        String       @id @default(uuid()) @db.Uuid
-  name      String       @unique @map("name")
-  isActive  Boolean      @default(true) @map("is_active")
-  createdAt DateTime     @default(now()) @map("created_at")
-  updatedAt DateTime     @updatedAt @map("updated_at")
-  deletedAt DateTime?    @map("deleted_at")
+  id        String        @id @default(uuid()) @db.Uuid
+  name      String        @unique @map("name")
+  isActive  Boolean       @default(true) @map("is_active")
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+  deletedAt DateTime?     @map("deleted_at")
   models    AssetModel[]
+  devices   InfraDevice[]
 
   @@index([isActive])
   @@map("manufacturers")
@@ -2329,4 +2334,140 @@ model Counter {
   value Int    @default(0) @map("value")
 
   @@map("counters")
+}
+
+// =============================================================================
+// Infrastructure & credential vault (Doc 24, Doc 00 §14)
+// =============================================================================
+
+enum InfraDeviceKind {
+  NETWORK
+  SERVER
+}
+
+enum InfraDeviceStatus {
+  ACTIVE
+  /// Kept powered off or idle until needed, e.g. a failover clone.
+  STANDBY
+  DECOMMISSIONED
+}
+
+/// Switch, Firewall, Virtual Machine... Configurable in Settings.
+model InfraDeviceType {
+  id        String          @id @default(uuid()) @db.Uuid
+  kind      InfraDeviceKind @map("kind")
+  name      String          @unique @map("name")
+  sortOrder Int             @default(0) @map("sort_order")
+  isActive  Boolean         @default(true) @map("is_active")
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+  deletedAt DateTime?       @map("deleted_at")
+
+  devices InfraDevice[]
+
+  @@index([kind, isActive])
+  @@map("infra_device_types")
+}
+
+/// A network device or a server/host. The kind is copied from the type so
+/// the two registers can be listed without a join.
+model InfraDevice {
+  id              String            @id @default(uuid()) @db.Uuid
+  companyId       String            @map("company_id") @db.Uuid
+  kind            InfraDeviceKind   @map("kind")
+  typeId          String            @map("type_id") @db.Uuid
+  name            String            @map("name")
+  /// The real DNS hostname, when it differs from the name people use.
+  hostname        String?           @map("hostname")
+  ipAddress       String?           @map("ip_address")
+  locationId      String?           @map("location_id") @db.Uuid
+  manufacturerId  String?           @map("manufacturer_id") @db.Uuid
+  model           String?           @map("model")
+  serialNumber    String?           @map("serial_number")
+  operatingSystem String?           @map("operating_system")
+  version         String?           @map("version")
+  domain          String?           @map("domain")
+  purpose         String?           @map("purpose")
+  status          InfraDeviceStatus @default(ACTIVE) @map("status")
+  /// The host a virtual machine runs on.
+  hostDeviceId    String?           @map("host_device_id") @db.Uuid
+  notes           String?           @map("notes")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  createdById     String?           @map("created_by") @db.Uuid
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  updatedById     String?           @map("updated_by") @db.Uuid
+  deletedAt       DateTime?         @map("deleted_at")
+  deletedById     String?           @map("deleted_by") @db.Uuid
+
+  company      Company                  @relation(fields: [companyId], references: [id])
+  type         InfraDeviceType          @relation(fields: [typeId], references: [id])
+  location     Location?                @relation(fields: [locationId], references: [id])
+  manufacturer Manufacturer?            @relation(fields: [manufacturerId], references: [id])
+  host         InfraDevice?             @relation("infra_device_host", fields: [hostDeviceId], references: [id])
+  guests       InfraDevice[]            @relation("infra_device_host")
+  applications InfraDeviceApplication[]
+  credentials  InfraDeviceCredential[]
+
+  @@index([companyId, kind, status])
+  @@index([ipAddress])
+  @@index([serialNumber])
+  @@index([hostDeviceId])
+  @@map("infra_devices")
+}
+
+model InfraDeviceApplication {
+  id            String   @id @default(uuid()) @db.Uuid
+  deviceId      String   @map("device_id") @db.Uuid
+  applicationId String   @map("application_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  createdById   String?  @map("created_by") @db.Uuid
+
+  device      InfraDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  application Application @relation(fields: [applicationId], references: [id])
+
+  @@unique([deviceId, applicationId])
+  @@index([applicationId])
+  @@map("infra_device_applications")
+}
+
+/// One login (username + encrypted password) that any number of devices can
+/// use. A null company means the set is shared by every company.
+model CredentialSet {
+  id                String    @id @default(uuid()) @db.Uuid
+  companyId         String?   @map("company_id") @db.Uuid
+  name              String    @map("name")
+  username          String?   @map("username")
+  /// AES-256-GCM ciphertext; never selected for lists.
+  secretCiphertext  String?   @map("secret_ciphertext")
+  passwordChangedAt DateTime? @map("password_changed_at")
+  notes             String?   @map("notes")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  createdById       String?   @map("created_by") @db.Uuid
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  updatedById       String?   @map("updated_by") @db.Uuid
+  deletedAt         DateTime? @map("deleted_at")
+  deletedById       String?   @map("deleted_by") @db.Uuid
+
+  company Company?                @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  devices InfraDeviceCredential[]
+
+  @@index([companyId])
+  @@map("credential_sets")
+}
+
+model InfraDeviceCredential {
+  id              String   @id @default(uuid()) @db.Uuid
+  deviceId        String   @map("device_id") @db.Uuid
+  credentialSetId String   @map("credential_set_id") @db.Uuid
+  /// What the login is for on this device: SSH, Web UI, Enable, iLO...
+  purpose         String?  @map("purpose")
+  createdAt       DateTime @default(now()) @map("created_at")
+  createdById     String?  @map("created_by") @db.Uuid
+
+  device        InfraDevice   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  credentialSet CredentialSet @relation(fields: [credentialSetId], references: [id])
+
+  @@unique([deviceId, credentialSetId])
+  @@index([credentialSetId])
+  @@map("infra_device_credentials")
 }

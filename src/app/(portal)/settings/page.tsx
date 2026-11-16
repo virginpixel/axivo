@@ -34,6 +34,8 @@ import { CategoryDialog } from "../assets/asset-dialogs";
 import { OrgEntityDialog, ToggleActiveButton } from "../organization/org-dialogs";
 import { DeleteButton } from "@/shared/ui/delete-button";
 import { deleteLocationAction } from "@/modules/organization/actions";
+import { deleteDeviceTypeAction } from "@/modules/infrastructure/actions";
+import { DeviceTypeDialog, DeviceTypeToggle } from "./device-type-dialogs";
 
 export const metadata = { title: "Settings" };
 export const dynamic = "force-dynamic";
@@ -48,6 +50,7 @@ const TABS = [
   { key: "locations", label: "Asset Locations" },
   { key: "contract-categories", label: "Contract Categories" },
   { key: "currencies", label: "Currencies" },
+  { key: "device-types", label: "Device Types" },
   { key: "security", label: "Security" },
   { key: "email", label: "Email (SMTP)" },
   { key: "notifications", label: "Notifications" },
@@ -101,6 +104,7 @@ export default async function SettingsPage({
           {tab === "locations" ? <LocationsTab canManage={canManage} isGlobalAdmin={user.systemRoleKey === "SYSTEM_ADMINISTRATOR"} companyId={user.companyId} /> : null}
           {tab === "contract-categories" ? <ContractCategoriesTab canManage={canManage} /> : null}
           {tab === "currencies" ? <CurrenciesTab canManage={canManage} /> : null}
+          {tab === "device-types" ? <DeviceTypesTab canManage={canManage} /> : null}
           {tab === "security" ? <SecurityTab canManage={canSecurity} /> : null}
           {tab === "email" ? <EmailTab canManage={canManage} /> : null}
           {tab === "notifications" ? <NotificationsTab canManage={canManage} /> : null}
@@ -367,6 +371,50 @@ async function ContractCategoriesTab({ canManage }: { canManage: boolean }) {
       description="Selectable when creating contracts."
       items={items}
     />
+  );
+}
+
+/** Infrastructure device types (Doc 24). Global: every company picks from the same list. */
+async function DeviceTypesTab({ canManage }: { canManage: boolean }) {
+  const types = await db.infraDeviceType.findMany({
+    where: { deletedAt: null },
+    orderBy: [{ kind: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
+    include: { _count: { select: { devices: { where: { deletedAt: null } } } } },
+  });
+  return (
+    <section aria-label="Device types">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold">Device types</h2>
+          <p className="text-sm text-muted-foreground">What a network device or server can be. Each type is listed under one of the two Infrastructure registers.</p>
+        </div>
+        {canManage ? <DeviceTypeDialog /> : null}
+      </div>
+      <Table>
+        <THead><TR><TH>Type</TH><TH>Listed under</TH><TH>Devices</TH><TH>Status</TH>{canManage ? <TH className="text-right">Actions</TH> : null}</TR></THead>
+        <TBody>
+          {types.map((type) => (
+            <TR key={type.id}>
+              <TD className="font-medium">{type.name}</TD>
+              <TD>{type.kind === "NETWORK" ? "Network devices" : "Servers & hosts"}</TD>
+              <TD className="tabular-nums">{type._count.devices}</TD>
+              <TD>{type.isActive ? "Active" : "Inactive"}</TD>
+              {canManage ? (
+                <TD className="text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <DeviceTypeDialog type={{ id: type.id, name: type.name, kind: type.kind }} />
+                    <DeviceTypeToggle id={type.id} isActive={type.isActive} />
+                    {type._count.devices === 0 ? (
+                      <DeleteButton action={deleteDeviceTypeAction} id={type.id} entityLabel={type.name} successMessage="Device type deleted." />
+                    ) : null}
+                  </div>
+                </TD>
+              ) : null}
+            </TR>
+          ))}
+        </TBody>
+      </Table>
+    </section>
   );
 }
 

@@ -39,6 +39,12 @@ export const PERMISSIONS = {
   "contracts.view": "View contracts",
   "contracts.manage": "Manage contracts and renewals",
 
+  // Infrastructure (Doc 24)
+  "infrastructure.view": "View network devices, servers and credential sets (never passwords)",
+  "infrastructure.manage": "Create and edit network devices and servers, and import them",
+  "infrastructure.credentials.manage": "Create credential sets, set passwords and link them to devices",
+  "infrastructure.credentials.reveal": "Reveal stored passwords (every reveal is audited)",
+
   // Forms
   "forms.view": "View forms",
   "forms.manage": "Create, edit, publish and archive forms",
@@ -104,6 +110,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "assets.disposal.manage",
     "contracts.view",
     "contracts.manage",
+    "infrastructure.view",
+    "infrastructure.manage",
+    "infrastructure.credentials.manage",
     "forms.view",
     "forms.manage",
     "workflows.view",
@@ -133,6 +142,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "assets.assignments.manage",
     "assets.maintenance.manage",
     "contracts.view",
+    "infrastructure.view",
     "forms.view",
     "workflows.view",
     "requests.view",
@@ -149,6 +159,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "licenses.view",
     "assets.view",
     "contracts.view",
+    "infrastructure.view",
     "forms.view",
     "workflows.view",
     "requests.view",

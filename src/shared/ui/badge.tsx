@@ -79,6 +79,8 @@ const STATUS_VARIANTS: Record<string, VariantProps<typeof badgeVariants>["varian
   DAMAGED: "warning",
   RECEIVED: "success",
   SCHEDULED: "info",
+  STANDBY: "info",
+  DECOMMISSIONED: "default",
 };
 
 export function StatusBadge({ status, label }: { status: string; label?: string }) {

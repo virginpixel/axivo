@@ -205,10 +205,46 @@ The official SDS includes:
 
 -   Document 22 -- Forms & Form Builder
 -   Document 23 -- Contracts & Agreements
+-   Document 24 -- Infrastructure & Credential Vault
 
 ------------------------------------------------------------------------
 
-# 14. Authority
+# 14. Infrastructure Register and Credential Vault
+
+Added to scope on 17 November 2026 at the owner's request. This
+overrides the "Finance" and "Procurement" exclusions in Document 01
+only as far as described here and in Document 24.
+
+The Infrastructure module records the IT estate itself, separate from
+the assets issued to people:
+
+-   Network devices (switches, firewalls, routers, wireless
+    controllers) and servers & hosts (physical servers, virtual
+    machines, NAS, appliances), classified by configurable device
+    types.
+-   Each device belongs to one company and may sit at a nested
+    location. A virtual machine may name the host it runs on.
+    Servers may list the Applications that run on them.
+-   A credential vault. One credential set (username + password) may
+    be shared by many devices. Passwords are encrypted at rest,
+    never shown in lists or exports, and only revealed on demand to
+    holders of `infrastructure.credentials.reveal`. Every reveal is
+    audited. That permission is granted to System Administrators by
+    default.
+-   Spreadsheet import with a preview step. Logins found in an
+    imported sheet are encrypted on the server and grouped into
+    credential sets; they are never sent back to the browser.
+
+Planned later phases, each in its own release: an IP & VLAN plan
+(sites, VLANs, subnets, address usage), then OPEX and CAPEX budgets in
+USD with company splits. Their scope will be recorded here before they
+are built.
+
+Built-in network discovery remains a future module (Document 01).
+
+------------------------------------------------------------------------
+
+# 15. Authority
 
 This document supersedes conflicting statements elsewhere in the SDS.
 
