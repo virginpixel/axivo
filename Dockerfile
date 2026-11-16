@@ -19,8 +19,13 @@ RUN npm ci --no-audit --no-fund
 
 FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS prod-deps
 WORKDIR /app
+# The lockfile alone, deliberately - not the prisma folder. This layer becomes
+# the worker's ~200MB node_modules, and anything copied in before `npm ci` is
+# part of its cache key. With the schema here, every release that added a
+# migration reinstalled every package and shipped all of it again, though not
+# one dependency had changed. The worker generates its Prisma client in its
+# own stage below, so nothing here needs the schema.
 COPY package.json package-lock.json ./
-COPY prisma ./prisma
 RUN npm ci --omit=dev --no-audit --no-fund
 
 FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS builder
