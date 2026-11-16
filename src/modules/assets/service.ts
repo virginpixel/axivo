@@ -1,7 +1,7 @@
 import { db, type DbClient } from "@/shared/db";
 import { emailButton } from "@/shared/email/template";
 import { formatDateTimeWithZone } from "@/shared/utils";
-import { recordAudit, diffRecords, type AuditContext } from "@/shared/audit/audit";
+import { recordAudit, diffRecords, withVendorName, type AuditContext } from "@/shared/audit/audit";
 import { signatureHash } from "@/shared/audit/signature";
 import { handoverTerms, HANDOVER_TERMS_VERSION } from "./handover-terms";
 import { BusinessRuleError, NotFoundError, ValidationError } from "@/shared/errors";
@@ -281,7 +281,10 @@ export async function createAsset(context: AuditContext, input: AssetInput) {
 }
 
 export async function updateAsset(context: AuditContext, id: string, input: AssetInput) {
-  const existing = await db.asset.findFirst({ where: { id, deletedAt: null } });
+  const existing = await db.asset.findFirst({
+    where: { id, deletedAt: null },
+    include: { vendor: { select: { name: true } } },
+  });
   if (!existing) throw new NotFoundError("Asset not found.");
   if (existing.companyId !== input.companyId) {
     throw new BusinessRuleError("Assets cannot be moved between companies unless explicitly transferred.");
@@ -292,6 +295,7 @@ export async function updateAsset(context: AuditContext, id: string, input: Asse
     const asset = await tx.asset.update({
       where: { id },
       data: { ...input, customFields: customFields ?? undefined, assetTag: input.assetTag ?? null, updatedById: context.actorUserId ?? null },
+      include: { vendor: { select: { name: true } } },
     });
     await recordAudit(
       { ...context, companyId: input.companyId },
@@ -303,13 +307,13 @@ export async function updateAsset(context: AuditContext, id: string, input: Asse
         targetId: id,
         targetLabel: asset.name,
         fieldChanges: diffRecords(
-          existing as unknown as Record<string, unknown>,
-          asset as unknown as Record<string, unknown>,
+          withVendorName(existing),
+          withVendorName(asset),
           // Every field the edit form can change, so a correction is always
           // traceable - the price especially, now that it can be edited.
           [
             "name", "assetTag", "serialNumber", "manufacturer", "model", "categoryId",
-            "locationId", "vendorId", "purchaseDate", "purchasePrice", "currency",
+            "locationId", "vendor", "purchaseDate", "purchasePrice", "currency",
             "warrantyExpiry", "isShared", "notes",
           ],
         ),

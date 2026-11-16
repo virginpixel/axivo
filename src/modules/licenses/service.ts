@@ -1,5 +1,5 @@
 import { db, type DbClient } from "@/shared/db";
-import { recordAudit, diffRecords, type AuditContext } from "@/shared/audit/audit";
+import { recordAudit, diffRecords, withVendorName, type AuditContext } from "@/shared/audit/audit";
 import { BusinessRuleError, NotFoundError, ValidationError } from "@/shared/errors";
 import type { LicenseStatus } from "@prisma/client";
 import { hasDatePassed, startOfDayUtc } from "@/shared/utils";
@@ -409,7 +409,7 @@ export async function updatePurchase(
 ) {
   const existing = await db.licensePurchase.findFirst({
     where: { id, deletedAt: null },
-    include: { license: true },
+    include: { license: true, vendor: { select: { name: true } } },
   });
   if (!existing) throw new NotFoundError("Purchase not found.");
   if (existing.licenseId !== input.licenseId) {
@@ -443,6 +443,7 @@ export async function updatePurchase(
         notes: input.notes,
         updatedById: context.actorUserId ?? null,
       },
+      include: { vendor: { select: { name: true } } },
     });
     await recordAudit(
       { ...context, companyId: license.companyId },
@@ -454,11 +455,11 @@ export async function updatePurchase(
         targetId: purchase.id,
         targetLabel: license.name,
         fieldChanges: diffRecords(
-          existing as unknown as Record<string, unknown>,
-          purchase as unknown as Record<string, unknown>,
+          withVendorName(existing),
+          withVendorName(purchase),
           [
             "purchaseType", "quantity", "purchaseDate", "startDate", "expiryDate",
-            "price", "currency", "vendorId", "purchaseReference", "notes",
+            "price", "currency", "vendor", "purchaseReference", "notes",
           ],
         ),
       },

@@ -298,10 +298,14 @@ export function AssetDialog({
     vendorId: base?.vendorId ?? "",
     purchaseDate: base?.purchaseDate ?? "",
     purchasePrice: base?.purchasePrice != null ? String(base.purchasePrice) : "",
-    currency:
-      base?.currency ??
-      companies.find((company) => company.id === (base?.companyId ?? companies[0]?.id))?.currency ??
-      "",
+    // The company's currency is a starting point for a NEW asset only. On an
+    // edit it would quietly stamp a currency onto an asset that never had one -
+    // a change nobody chose, recorded in the audit trail as if they had.
+    currency: asset
+      ? asset.currency ?? ""
+      : base?.currency ??
+        companies.find((company) => company.id === (base?.companyId ?? companies[0]?.id))?.currency ??
+        "",
     warrantyExpiry: base?.warrantyExpiry ?? "",
     notes: base?.notes ?? "",
     isShared: base?.isShared ?? false,

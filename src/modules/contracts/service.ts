@@ -1,5 +1,5 @@
 import { db } from "@/shared/db";
-import { recordAudit, diffRecords, type AuditContext } from "@/shared/audit/audit";
+import { recordAudit, diffRecords, withVendorName, type AuditContext } from "@/shared/audit/audit";
 import { BusinessRuleError, NotFoundError, ValidationError } from "@/shared/errors";
 import type { ContractStatus } from "@prisma/client";
 import type { ContractInput, ContractRenewalInput, ContractLinkInput } from "./validators";
@@ -69,7 +69,10 @@ export async function createContract(context: AuditContext, input: ContractInput
 }
 
 export async function updateContract(context: AuditContext, id: string, input: ContractInput) {
-  const existing = await db.contract.findFirst({ where: { id, deletedAt: null } });
+  const existing = await db.contract.findFirst({
+    where: { id, deletedAt: null },
+    include: { vendor: { select: { name: true } } },
+  });
   if (!existing) throw new NotFoundError("Contract not found.");
   if (existing.companyId !== input.companyId) {
     throw new BusinessRuleError("Contracts cannot be moved between companies.");
@@ -101,6 +104,7 @@ export async function updateContract(context: AuditContext, id: string, input: C
         reminderDays: input.reminderDays ?? undefined,
         updatedById: context.actorUserId ?? null,
       },
+      include: { vendor: { select: { name: true } } },
     });
     await recordAudit(
       { ...context, companyId: input.companyId },
@@ -112,10 +116,10 @@ export async function updateContract(context: AuditContext, id: string, input: C
         targetId: id,
         targetLabel: contract.contractNumber ?? contract.name,
         fieldChanges: diffRecords(
-          existing as unknown as Record<string, unknown>,
-          contract as unknown as Record<string, unknown>,
+          withVendorName(existing),
+          withVendorName(contract),
           [
-            "name", "vendorId", "category", "startDate", "endDate", "renewalDate", "renewalType",
+            "name", "vendor", "category", "startDate", "endDate", "renewalDate", "renewalType",
             "cost", "currency", "contactName", "contactEmail", "contactPhone", "notes",
           ],
         ),

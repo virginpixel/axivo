@@ -114,6 +114,19 @@ export async function recordAudit(
 }
 
 /** Compute field-level diffs between two flat records for change tracking. */
+/**
+ * A record with its vendor reference swapped for the vendor's name, for
+ * diffing into the audit trail. Contracts, licence purchases and assets hold a
+ * vendor id; logging that id would turn a readable change ("Core Systems ->
+ * Nice") into two UUIDs nobody can read back. The name is what changed, as far
+ * as anybody reviewing the log is concerned.
+ */
+export function withVendorName<T extends { vendor?: { name: string } | null }>(
+  record: T,
+): Record<string, unknown> {
+  return { ...record, vendor: record.vendor?.name ?? null } as Record<string, unknown>;
+}
+
 export function diffRecords(
   before: Record<string, unknown>,
   after: Record<string, unknown>,
