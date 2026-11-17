@@ -133,6 +133,9 @@ A connection is one cable: a port on one device to a port on another.
   asset: to the unlinked asset with the same serial number, else the
   same name, else a new asset in a chosen category. It shows the result
   per device before anything is changed.
+- A linked asset is In Use (Document 11): a new one is created In Use,
+  an Available one becomes In Use when linked, and an In Use one goes
+  back to Available when unlinked. Other statuses are left alone.
 - An asset's page links to its device. Deleting a device leaves its
   asset in place.
 

@@ -184,6 +184,9 @@ enum LicenseAssignmentStatus {
 enum AssetStatus {
   AVAILABLE
   ASSIGNED
+  /// Installed and working where it stands, not held by a person: a switch,
+  /// an access point, a server. Set when the asset is linked to a device.
+  IN_USE
   UNDER_REPAIR
   OUT_OF_ORDER
   RESERVED

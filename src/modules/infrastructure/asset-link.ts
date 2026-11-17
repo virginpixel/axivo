@@ -104,6 +104,7 @@ async function createAssetFor(tx: DbClient, audit: AuditContext, deviceId: strin
       manufacturer: device.manufacturer?.name ?? null,
       model: device.model,
       locationId: device.locationId,
+      status: "IN_USE",
       createdById: audit.actorUserId ?? null,
     },
   });
@@ -127,7 +128,7 @@ export async function applyAssetPlan(tx: DbClient, audit: AuditContext, deviceId
   if (plan.type === "keep") return;
   const device = await tx.infraDevice.findUniqueOrThrow({
     where: { id: deviceId },
-    include: { asset: { select: { id: true, name: true, assetTag: true } } },
+    include: { asset: { select: { id: true, name: true, assetTag: true, status: true } } },
   });
   let assetId: string | null = null;
   let label: string | null = null;
@@ -141,6 +142,15 @@ export async function applyAssetPlan(tx: DbClient, audit: AuditContext, deviceId
   }
   if ((device.assetId ?? null) === assetId) return;
   await tx.infraDevice.update({ where: { id: deviceId }, data: { assetId } });
+  // A linked asset is installed: In use. One that comes off its device and
+  // was only In use because of it goes back to Available. Assigned, under
+  // repair and the rest are left as they are.
+  if (assetId && plan.type === "link") {
+    await tx.asset.updateMany({ where: { id: assetId, status: "AVAILABLE" }, data: { status: "IN_USE" } });
+  }
+  if (device.asset && device.asset.id !== assetId && device.asset.status === "IN_USE") {
+    await tx.asset.update({ where: { id: device.asset.id }, data: { status: "AVAILABLE" } });
+  }
   await recordAudit(
     { ...audit, companyId: device.companyId },
     {

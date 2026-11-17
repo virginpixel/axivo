@@ -48,6 +48,7 @@ export const assetSchema = z
 export const assetStatusSchema = z.enum([
   "AVAILABLE",
   "ASSIGNED",
+  "IN_USE",
   "UNDER_REPAIR",
   "OUT_OF_ORDER",
   "RESERVED",

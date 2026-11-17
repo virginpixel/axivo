@@ -325,8 +325,9 @@ export async function updateAsset(context: AuditContext, id: string, input: Asse
 }
 
 const MANUAL_STATUS_TRANSITIONS: Record<AssetStatus, AssetStatus[]> = {
-  AVAILABLE: ["RESERVED", "OUT_OF_ORDER", "UNDER_REPAIR"],
+  AVAILABLE: ["IN_USE", "RESERVED", "OUT_OF_ORDER", "UNDER_REPAIR"],
   ASSIGNED: [], // leave via return / clearance only
+  IN_USE: ["AVAILABLE", "OUT_OF_ORDER", "UNDER_REPAIR"],
   UNDER_REPAIR: ["AVAILABLE", "OUT_OF_ORDER"],
   OUT_OF_ORDER: ["AVAILABLE", "UNDER_REPAIR"],
   RESERVED: ["AVAILABLE"],

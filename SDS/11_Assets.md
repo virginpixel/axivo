@@ -213,6 +213,12 @@ Supported statuses:
 
 - Available
 - Assigned
+- In Use (added 18 November 2026): installed and working where it
+  stands, not held by a person: a switch, an access point, a server.
+  An asset becomes In Use when it is linked to a network device or
+  server (Document 24) and returns to Available when unlinked. It can
+  also be set by hand from Available. An In Use asset is not assigned
+  to people.
 - Under Repair
 - Out of Order
 - Reserved

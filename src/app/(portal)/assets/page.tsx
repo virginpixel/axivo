@@ -6,7 +6,7 @@ import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { StatusBadge } from "@/shared/ui/badge";
 import { Input, Select } from "@/shared/ui/input";
 import { LiveSearch } from "@/shared/ui/live-search";
-import { fullName, formatDate, personHint } from "@/shared/utils";
+import { fullName, personHint } from "@/shared/utils";
 import { AssetDialog, AssetRowActions } from "./asset-dialogs";
 import { HolderList } from "@/shared/ui/holder-list";
 import type { Prisma, AssetStatus } from "@prisma/client";
@@ -14,7 +14,7 @@ import type { Prisma, AssetStatus } from "@prisma/client";
 export const metadata = { title: "Assets" };
 export const dynamic = "force-dynamic";
 
-const ASSET_STATUSES: AssetStatus[] = ["AVAILABLE", "ASSIGNED", "UNDER_REPAIR", "OUT_OF_ORDER", "RESERVED", "DISCARDED"];
+const ASSET_STATUSES: AssetStatus[] = ["AVAILABLE", "ASSIGNED", "IN_USE", "UNDER_REPAIR", "OUT_OF_ORDER", "RESERVED", "DISCARDED"];
 
 /** Asset management (SDS Doc 11). Categories and catalogs are managed in Settings. */
 export default async function AssetsPage({
@@ -128,12 +128,14 @@ export default async function AssetsPage({
     }),
   ]);
 
-  // Compose "Parent → Child" labels so sub-locations read clearly in pickers.
+  // Compose "Parent → Child" labels so sub-locations read clearly in pickers
+  // and in the list.
   const locationOptions = locations.map((location) => ({
     id: location.id,
     companyId: location.companyId,
     name: location.parent ? `${location.parent.name} → ${location.name}` : location.name,
   }));
+  const locationLabels = new Map(locationOptions.map((location) => [location.id, location.name]));
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const counts = Object.fromEntries(statusCounts.map((entry) => [entry.status, entry._count]));
   const peopleByCompany: Record<string, { id: string; name: string; hint?: string }[]> = {};
@@ -201,9 +203,10 @@ export default async function AssetsPage({
         }
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-5">
         <StatCard label="Available" value={counts.AVAILABLE ?? 0} tone="success" />
         <StatCard label="Assigned" value={counts.ASSIGNED ?? 0} tone="info" />
+        <StatCard label="In use" value={counts.IN_USE ?? 0} hint="Installed, e.g. switches" />
         <StatCard label="Under repair / out of order" value={(counts.UNDER_REPAIR ?? 0) + (counts.OUT_OF_ORDER ?? 0)} tone="warning" />
         <StatCard label="Discarded" value={counts.DISCARDED ?? 0} />
       </div>
@@ -235,7 +238,7 @@ export default async function AssetsPage({
           <Table>
             <THead>
               <TR>
-                <TH>Asset</TH>{isGlobalAdmin ? <TH>Company</TH> : null}<TH>Category</TH><TH>Manufacturer / model</TH><TH>Serial</TH><TH>Assigned to</TH><TH>Warranty</TH><TH>Status</TH>
+                <TH>Asset</TH>{isGlobalAdmin ? <TH>Company</TH> : null}<TH>Category</TH><TH>Manufacturer / model</TH><TH>Serial</TH><TH>Assigned to</TH><TH>Location</TH><TH>Status</TH>
                 <TH className="text-right">Actions</TH>
               </TR>
             </THead>
@@ -305,7 +308,7 @@ export default async function AssetsPage({
                         )}
                       />
                     </TD>
-                    <TD>{asset.warrantyExpiry ? formatDate(asset.warrantyExpiry) : "None"}</TD>
+                    <TD className="text-xs">{asset.locationId ? (locationLabels.get(asset.locationId) ?? asset.location?.name ?? "None") : "None"}</TD>
                     <TD><StatusBadge status={asset.status} /></TD>
                     <TD className="text-right">
                       <AssetRowActions

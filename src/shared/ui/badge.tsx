@@ -66,6 +66,7 @@ const STATUS_VARIANTS: Record<string, VariantProps<typeof badgeVariants>["varian
   DRAFT: "default",
   PUBLISHED: "success",
   UNDER_REPAIR: "warning",
+  IN_USE: "info",
   OUT_OF_ORDER: "destructive",
   RESERVED: "info",
   RETIRED: "default",

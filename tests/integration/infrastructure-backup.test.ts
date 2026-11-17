@@ -330,7 +330,7 @@ describe("devices and assets", () => {
       device({ name: "CORE-A", serialNumber: "FOC111", model: "C9500", assetMode: "create", assetCategoryId: category.id, assetLookup: "CXR-NET-001" }),
     );
     const linked = await db.infraDevice.findUniqueOrThrow({ where: { id: created.id }, include: { asset: true } });
-    expect(linked.asset).toMatchObject({ name: "CORE-A", assetTag: "CXR-NET-001", serialNumber: "FOC111", model: "C9500", companyId: cxr.id });
+    expect(linked.asset).toMatchObject({ name: "CORE-A", assetTag: "CXR-NET-001", serialNumber: "FOC111", model: "C9500", companyId: cxr.id, status: "IN_USE" });
 
     await db.asset.create({ data: { companyId: cxr.id, categoryId: category.id, name: "CORE-B", serialNumber: "FOC222" } });
     await expect(
@@ -342,13 +342,15 @@ describe("devices and assets", () => {
     const tagged = await db.asset.create({ data: { companyId: cxr.id, categoryId: category.id, name: "Spare switch", assetTag: "CXR-NET-050" } });
     const made = await service.createDevice(admin(), device({ name: "ACC-50", assetMode: "link", assetLookup: "cxr-net-050" }));
     expect((await db.infraDevice.findUniqueOrThrow({ where: { id: made.id } })).assetId).toBe(tagged.id);
+    expect((await db.asset.findUniqueOrThrow({ where: { id: tagged.id } })).status).toBe("IN_USE");
     await expect(
       service.createDevice(admin(), device({ name: "ACC-51", assetMode: "link", assetLookup: "CXR-NET-050" })),
     ).rejects.toMatchObject({ fieldErrors: { assetLookup: expect.stringMatching(/already linked to "ACC-50"/) } });
     // Unlinking leaves the asset in place.
     await service.updateDevice(admin(), made.id, device({ name: "ACC-50", assetMode: "none" }));
     expect((await db.infraDevice.findUniqueOrThrow({ where: { id: made.id } })).assetId).toBeNull();
-    expect(await db.asset.findUnique({ where: { id: tagged.id } })).not.toBeNull();
+    // Unlinked, it is no longer installed anywhere: back to Available.
+    expect((await db.asset.findUniqueOrThrow({ where: { id: tagged.id } })).status).toBe("AVAILABLE");
   });
 
   it("links many at once: serial first, then name, else a new asset", async () => {

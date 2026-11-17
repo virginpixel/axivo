@@ -14,7 +14,8 @@ import { AssetDiscardDialog, type DiscardCandidate } from "./asset-discard-dialo
  * the approved discard form is captured with it.
  */
 const MANUAL_TRANSITIONS: Record<string, string[]> = {
-  AVAILABLE: ["RESERVED", "OUT_OF_ORDER", "UNDER_REPAIR", "DISCARDED"],
+  AVAILABLE: ["IN_USE", "RESERVED", "OUT_OF_ORDER", "UNDER_REPAIR", "DISCARDED"],
+  IN_USE: ["AVAILABLE", "OUT_OF_ORDER", "UNDER_REPAIR", "DISCARDED"],
   UNDER_REPAIR: ["AVAILABLE", "OUT_OF_ORDER", "DISCARDED"],
   OUT_OF_ORDER: ["AVAILABLE", "UNDER_REPAIR", "DISCARDED"],
   RESERVED: ["AVAILABLE", "DISCARDED"],
