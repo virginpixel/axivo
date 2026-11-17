@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ReactFlow, ReactFlowProvider, Background, Controls, MiniMap, Handle, Position, BaseEdge, EdgeLabelRenderer,
@@ -24,7 +24,6 @@ export type MapLink = TopologyLink & { seenLabel: string | null };
 interface Props {
   nodes: TopologyNode[];
   links: MapLink[];
-  unconnected: { id: string; name: string }[];
   canManage: boolean;
   devices: DeviceOption[];
   focusId?: string;
@@ -69,33 +68,40 @@ function portText(port: string | null) {
   return port ?? "?";
 }
 
-function useDarkMode() {
-  const [dark, setDark] = useState(false);
+interface CanvasTheme {
+  dark: boolean;
+  colours: { primary: string; destructive: string; node: string; mask: string };
+}
+
+/**
+ * The app's light or dark theme and the colours the minimap needs (SVG
+ * attributes cannot read CSS variables). Null until the page is on screen:
+ * the server cannot know the theme, and drawing the canvas light first, then
+ * switching to dark, is the flicker people saw.
+ */
+function useCanvasTheme(): CanvasTheme | null {
+  const [theme, setTheme] = useState<CanvasTheme | null>(null);
   useEffect(() => {
     const root = document.documentElement;
-    const update = () => setDark(root.classList.contains("dark"));
-    update();
-    const observer = new MutationObserver(update);
+    const read = () => {
+      const style = getComputedStyle(root);
+      const token = (name: string, alpha = 1) => `hsl(${style.getPropertyValue(name).trim()} / ${alpha})`;
+      setTheme({
+        dark: root.classList.contains("dark"),
+        colours: {
+          primary: token("--primary"),
+          destructive: token("--destructive"),
+          node: token("--muted-foreground", 0.55),
+          mask: token("--background", 0.72),
+        },
+      });
+    };
+    read();
+    const observer = new MutationObserver(read);
     observer.observe(root, { attributes: true, attributeFilter: ["class"] });
     return () => observer.disconnect();
   }, []);
-  return dark;
-}
-
-/** SVG attributes cannot read CSS variables, so the minimap gets resolved colours. */
-function useTokenColours(dark: boolean) {
-  const [colours, setColours] = useState({ primary: "#4f63d2", destructive: "#d23c32", node: "#9aa0b4", mask: "rgb(240 242 248 / 0.7)" });
-  useEffect(() => {
-    const style = getComputedStyle(document.documentElement);
-    const token = (name: string, alpha = 1) => `hsl(${style.getPropertyValue(name).trim()} / ${alpha})`;
-    setColours({
-      primary: token("--primary"),
-      destructive: token("--destructive"),
-      node: token("--muted-foreground", 0.55),
-      mask: token("--background", 0.72),
-    });
-  }, [dark]);
-  return colours;
+  return theme;
 }
 
 // ---------------------------------------------------------------------------
@@ -254,10 +260,9 @@ const edgeTypes = { cable: CableEdge };
 // ---------------------------------------------------------------------------
 
 function MapCanvas({
-  nodes, links, unconnected, focusId, canManage, devices,
+  nodes, links, focusId, canManage, devices,
 }: Props) {
-  const dark = useDarkMode();
-  const colours = useTokenColours(dark);
+  const theme = useCanvasTheme();
   const flow = useReactFlow();
   const [direction, setDirection] = useState<Direction>("LR");
   const [selectedId, setSelectedId] = useState<string | null>(focusId ?? null);
@@ -270,6 +275,16 @@ function MapCanvas({
       // Private windows may block storage; the default direction is fine.
     }
   }, []);
+
+  // Another company picked: the page does not reload, so fit the new map and
+  // drop a selection that is no longer on it.
+  const firstNodes = useRef(nodes);
+  useEffect(() => {
+    if (firstNodes.current === nodes) return;
+    firstNodes.current = nodes;
+    setSelectedId((current) => (current && nodes.some((n) => n.id === current) ? current : null));
+    requestAnimationFrame(() => flow.fitView({ padding: 0.1, duration: 300 }));
+  }, [nodes, flow]);
 
   function changeDirection(next: Direction) {
     setDirection(next);
@@ -350,7 +365,6 @@ function MapCanvas({
     requestAnimationFrame(() => flow.fitView({ nodes: [{ id }], maxZoom: 1.1, duration: 400, padding: 0.6 }));
   }
 
-  const loopNodes = nodes.filter((n) => laid.loops.has(n.id));
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
 
   return (
@@ -385,12 +399,13 @@ function MapCanvas({
             ))}
           </div>
         </div>
+        {theme ? (
         <ReactFlow
           nodes={flowNodes}
           edges={flowEdges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
-          colorMode={dark ? "dark" : "light"}
+          colorMode={theme.dark ? "dark" : "light"}
           onNodeClick={(_, node) => setSelectedId((current) => (current === node.id ? null : node.id))}
           onPaneClick={() => setSelectedId(null)}
           onInit={(instance) => {
@@ -415,15 +430,17 @@ function MapCanvas({
             zoomable
             position="bottom-right"
             className="!hidden !rounded-xl !border !bg-card sm:!block"
-            nodeColor={(n) => (n.id === selectedId ? colours.primary : laid.loops.has(n.id) ? colours.destructive : colours.node)}
+            nodeColor={(n) => (n.id === selectedId ? theme.colours.primary : laid.loops.has(n.id) ? theme.colours.destructive : theme.colours.node)}
             nodeBorderRadius={6}
-            maskColor={colours.mask}
+            maskColor={theme.colours.mask}
           />
         </ReactFlow>
+        ) : null}
       </div>
 
-      <aside className="w-full shrink-0 lg:w-80">
-        {selected ? (
+      {/* Only while a device is picked: its ports and what they connect to. */}
+      {selected ? (
+        <aside className="w-full shrink-0 lg:w-80">
           <DevicePanel
             node={selected}
             links={links}
@@ -433,77 +450,14 @@ function MapCanvas({
             canManage={canManage}
             devices={devices}
           />
-        ) : (
-          <OverviewPanel nodes={nodes} links={links} loopNodes={loopNodes} unconnected={unconnected} onSelect={focus} />
-        )}
-      </aside>
+        </aside>
+      ) : null}
     </div>
   );
 }
 
 function PanelCard({ children, className }: { children: React.ReactNode; className?: string }) {
   return <div className={cn("rounded-2xl border bg-card p-4 text-sm", className)}>{children}</div>;
-}
-
-function OverviewPanel({
-  nodes, links, loopNodes, unconnected, onSelect,
-}: {
-  nodes: TopologyNode[];
-  links: MapLink[];
-  loopNodes: TopologyNode[];
-  unconnected: { id: string; name: string }[];
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <div className="space-y-4">
-      <PanelCard>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <p className="text-2xl font-semibold tabular-nums">{nodes.length}</p>
-            <p className="text-xs text-muted-foreground">devices on the map</p>
-          </div>
-          <div>
-            <p className="text-2xl font-semibold tabular-nums">{links.length}</p>
-            <p className="text-xs text-muted-foreground">cables</p>
-          </div>
-        </div>
-        <p className="mt-3 text-xs text-muted-foreground">
-          Click a device to see its ports. Labels read <span className="font-mono">port → port</span>, from the side nearer the core.
-          A dashed line was added by hand; a solid one came from a neighbour table.
-        </p>
-      </PanelCard>
-      {loopNodes.length > 0 ? (
-        <PanelCard className="border-destructive/40">
-          <p className="mb-2 flex items-center gap-1.5 font-medium text-destructive">
-            <TriangleAlert className="h-4 w-4" aria-hidden /> {loopNodes.length} device{loopNodes.length === 1 ? " sees" : "s see"} itself
-          </p>
-          <p className="mb-2 text-xs text-muted-foreground">Two of its ports lead to the same place. Usually a loop cable or a small switch plugged in twice.</p>
-          <ul className="space-y-1">
-            {loopNodes.map((node) => (
-              <li key={node.id}>
-                <button type="button" onClick={() => onSelect(node.id)} className="text-left font-medium hover:underline">{node.name}</button>
-              </li>
-            ))}
-          </ul>
-        </PanelCard>
-      ) : null}
-      {unconnected.length > 0 ? (
-        <PanelCard>
-          <details>
-            <summary className="cursor-pointer font-medium">Not on the map yet ({unconnected.length})</summary>
-            <p className="mt-2 text-xs text-muted-foreground">Network devices with no cable recorded. Import a neighbour table, or add the cables on each device.</p>
-            <ul className="mt-2 max-h-64 space-y-1 overflow-y-auto">
-              {unconnected.map((device) => (
-                <li key={device.id}>
-                  <Link href={`/infrastructure/devices/${device.id}`} className="hover:underline">{device.name}</Link>
-                </li>
-              ))}
-            </ul>
-          </details>
-        </PanelCard>
-      ) : null}
-    </div>
-  );
 }
 
 interface PortRow {
@@ -680,7 +634,8 @@ export function TopologyView(props: Props) {
   const [view, setView] = useState<"map" | "list">("map");
   return (
     <div>
-      <div className="mb-3 flex rounded-full border bg-card p-0.5 shadow-sm w-fit" role="group" aria-label="View">
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+      <div className="flex w-fit rounded-full border bg-card p-0.5 shadow-sm" role="group" aria-label="View">
         {([["map", MapIcon, "Map"], ["list", List, "Cable list"]] as const).map(([value, Icon, label]) => (
           <button
             key={value}
@@ -695,6 +650,12 @@ export function TopologyView(props: Props) {
             <Icon className="h-3.5 w-3.5" aria-hidden /> {label}
           </button>
         ))}
+      </div>
+        <p className="text-sm text-muted-foreground">
+          <span className="font-medium text-foreground tabular-nums">{props.nodes.length}</span> devices
+          <span className="mx-1.5">·</span>
+          <span className="font-medium text-foreground tabular-nums">{props.links.length}</span> cables
+        </p>
       </div>
       {view === "map" ? (
         <ReactFlowProvider>

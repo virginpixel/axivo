@@ -3,12 +3,12 @@ import { requirePermission } from "@/shared/auth/guard";
 import { db } from "@/shared/db";
 import { PageHeader } from "@/shared/ui/page";
 import { EmptyState } from "@/shared/ui/table";
-import { Select } from "@/shared/ui/input";
 import { buttonVariants } from "@/shared/ui/button";
 import { formatDate } from "@/shared/utils";
 import { loadTopology } from "@/modules/infrastructure/topology";
 import { TopologyView } from "./topology-map";
 import { LinkDialog } from "../link-dialogs";
+import { CompanyFilter } from "./company-filter";
 
 export const metadata = { title: "Topology" };
 export const dynamic = "force-dynamic";
@@ -55,15 +55,7 @@ export default async function TopologyPage({
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {isGlobalAdmin && companies.length > 1 ? (
-              <form method="get" className="flex items-center gap-2">
-                <Select name="company" defaultValue={params.company ?? ""} className="w-48" aria-label="Filter by company">
-                  <option value="">All companies</option>
-                  {companies.map((company) => (
-                    <option key={company.id} value={company.id}>{company.name}</option>
-                  ))}
-                </Select>
-                <button type="submit" className="h-9 rounded-full border border-input bg-card px-4 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent hover:text-accent-foreground">Show</button>
-              </form>
+              <CompanyFilter companies={companies} value={params.company ?? ""} />
             ) : null}
             {canManage ? <LinkDialog devices={deviceOptions} /> : null}
           </div>
@@ -83,7 +75,6 @@ export default async function TopologyPage({
         <TopologyView
           nodes={data.nodes}
           links={links}
-          unconnected={data.unconnected}
           canManage={canManage}
           devices={deviceOptions}
           focusId={params.focus}

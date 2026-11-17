@@ -95,6 +95,9 @@ A connection is one cable: a port on one device to a port on another.
   ports, and every cable is also listed in a table view. Clicking a
   device lists its ports. Another company's device at the far end of a
   visible cable shows only its name.
+- The page shows how many devices and cables are on the map next to the
+  Map / Cable list switch; choosing a company redraws it at once. Devices
+  without any cable are not drawn. A loop shows in red on the device.
 - Deleting a device removes its cables.
 
 ## Configuration backups
