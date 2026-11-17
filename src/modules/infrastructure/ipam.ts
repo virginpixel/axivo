@@ -269,19 +269,33 @@ export interface SubnetSummary {
 /** Every VLAN and subnet in scope, with how full each subnet is and what it overlaps. */
 export async function loadPlan(scope: Scope, companyId?: string) {
   const where = { ...companyFilter(scope), ...(companyId && scope.isGlobalAdmin ? { companyId } : {}) };
-  const [vlans, subnets, addresses] = await Promise.all([
+  const [vlans, subnets, addresses, devices] = await Promise.all([
     db.vlan.findMany({ where, orderBy: [{ companyId: "asc" }, { number: "asc" }], include: { company: { select: { name: true } } } }),
     db.subnet.findMany({ where, orderBy: [{ rangeStart: "asc" }, { prefix: "asc" }], include: { company: { select: { name: true } } } }),
-    db.ipAddress.findMany({ where, select: { companyId: true, addressNum: true } }),
+    db.ipAddress.findMany({ where, select: { companyId: true, address: true, addressNum: true } }),
+    db.infraDevice.findMany({ where: { ...where, deletedAt: null, ipAddress: { not: null } }, select: { companyId: true, ipAddress: true } }),
   ]);
 
   const summaries = new Map<string, SubnetSummary>();
   const ranges = subnets.map((s) => ({ s, start: Number(s.rangeStart), end: Number(s.rangeEnd) }));
   // Addresses sorted once; each subnet counts its own range by binary search.
   const sortedByCompany = new Map<string, number[]>();
-  for (const a of addresses) {
+  // Used = recorded addresses, plus devices in the register using one that
+  // is not recorded: the same count the subnet's own page shows.
+  const recorded = new Set(addresses.map((a) => `${a.companyId}|${a.address}`));
+  const used = [
+    ...addresses.map((a) => ({ companyId: a.companyId, n: Number(a.addressNum) })),
+    ...devices
+      .filter((d) => !recorded.has(`${d.companyId}|${d.ipAddress}`))
+      .map((d) => ({ companyId: d.companyId, n: ipToNumber(d.ipAddress!) }))
+      .filter((d): d is { companyId: string; n: number } => d.n !== null),
+  ];
+  const seen = new Set<string>();
+  for (const a of used) {
+    if (seen.has(`${a.companyId}|${a.n}`)) continue;
+    seen.add(`${a.companyId}|${a.n}`);
     const list = sortedByCompany.get(a.companyId) ?? [];
-    list.push(Number(a.addressNum));
+    list.push(a.n);
     sortedByCompany.set(a.companyId, list);
   }
   for (const list of sortedByCompany.values()) list.sort((x, y) => x - y);

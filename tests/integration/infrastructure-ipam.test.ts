@@ -86,7 +86,8 @@ describe("VLANs, subnets and addresses", () => {
 
     const plan = await ipam.loadPlan(admin());
     const mgmt = plan.vlans.find((v) => v.number === 5 && v.companyId === cxr.id)!;
-    expect(mgmt.subnets[0]).toMatchObject({ cidr: "10.100.100.0/24", used: 2, usable: 254, overlapsWith: ["10.100.0.0/16"] });
+    // Two recorded addresses and the CORE switch from the register.
+    expect(mgmt.subnets[0]).toMatchObject({ cidr: "10.100.100.0/24", used: 3, usable: 254, overlapsWith: ["10.100.0.0/16"] });
     expect(plan.looseSubnets.find((s) => s.id === wide.id)).toMatchObject({ overlapsWith: ["10.100.100.0/24"] });
 
     const detail = await ipam.loadSubnet(admin(), mgmt.subnets[0]!.id);
