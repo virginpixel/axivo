@@ -14,7 +14,6 @@ import { deleteIpAddressAction, deleteSubnetAction } from "@/modules/infrastruct
 import { IP_PLAN_STATUS_LABELS } from "@/modules/infrastructure/validators";
 import { loadIpCatalogs } from "../../catalogs";
 import { AddressDialog, SubnetDialog } from "../../ip-dialogs";
-import { SubnetUsage } from "../../usage";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Subnet" };
@@ -42,7 +41,6 @@ export default async function SubnetPage({ params }: { params: Promise<{ id: str
   const cidr = cidrFromParts(subnet.network, subnet.prefix);
   const recorded = new Set(addresses.map((a) => a.address));
   const registerOnly = devices.filter((d) => !recorded.has(d.ipAddress!));
-  const usedCount = new Set([...addresses.map((a) => a.addressNum), ...devices.map((d) => ipToNumber(d.ipAddress!)!)]).size;
 
   return (
     <div>
@@ -106,9 +104,6 @@ export default async function SubnetPage({ params }: { params: Promise<{ id: str
               <Row label="Status" value={IP_PLAN_STATUS_LABELS[subnet.status]} />
               {subnet.purpose ? <Row label="Purpose" value={subnet.purpose} /> : null}
             </dl>
-            <div className="mt-4 border-t pt-3">
-              <SubnetUsage used={usedCount} usable={facts.usable} />
-            </div>
             <div className="mt-4 rounded-xl border bg-muted/40 px-3 py-2.5 text-sm">
               <p className="text-xs text-muted-foreground">Next free address</p>
               <div className="mt-1 flex items-center justify-between gap-2">

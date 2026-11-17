@@ -13,7 +13,6 @@ import { deleteVlanAction } from "@/modules/infrastructure/actions";
 import { IP_PLAN_STATUS_LABELS } from "@/modules/infrastructure/validators";
 import { loadIpCatalogs } from "./catalogs";
 import { SubnetDialog, VlanDialog } from "./ip-dialogs";
-import { SubnetUsage } from "./usage";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "IP & VLANs" };
@@ -82,7 +81,7 @@ export default async function IpPlanPage({
     <div>
       <PageHeader
         title="IP & VLANs"
-        description="Each company's VLANs and subnets, how full each subnet is, and which addresses are taken. Search an IP address to see where it lives."
+        description="Each company's VLANs and subnets, and which subnets overlap. Search an IP address to see which subnet and VLAN it belongs to."
         actions={
           canManage ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -93,10 +92,9 @@ export default async function IpPlanPage({
         }
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-3">
         <StatCard label="VLANs" value={plan.counts.vlans} />
         <StatCard label="Subnets" value={plan.counts.subnets} />
-        <StatCard label="Addresses recorded" value={plan.counts.addresses.toLocaleString()} hint="Used or reserved" />
         <StatCard label="Overlapping subnets" value={plan.counts.overlapping} tone={plan.counts.overlapping > 0 ? "warning" : "default"} hint="Share addresses with another" />
       </div>
 
@@ -139,7 +137,6 @@ export default async function IpPlanPage({
                   {showCompany ? <TH>Company</TH> : null}
                   <TH>Subnet</TH>
                   <TH>Gateway</TH>
-                  <TH>Usage</TH>
                   <TH>Status</TH>
                   {canManage ? <TH className="text-right">Actions</TH> : null}
                 </TR>
@@ -170,14 +167,10 @@ export default async function IpPlanPage({
                       )}
                     </TD>
                     <TD className="font-mono text-xs">{vlan.subnets.map((s) => s.gateway).filter(Boolean).join(", ") || "None"}</TD>
-                    <TD>
-                      {vlan.subnets.map((s) => <SubnetUsage key={s.id} used={s.used} usable={s.usable} className="mb-1 last:mb-0" />)}
-                    </TD>
                     <TD><Badge variant={STATUS_BADGE[vlan.status]}>{IP_PLAN_STATUS_LABELS[vlan.status]}</Badge></TD>
                     {canManage ? (
                       <TD className="text-right">
                         <div className="flex justify-end">
-                          <SubnetDialog catalogs={catalogs} defaults={{ companyId: vlan.companyId, vlanId: vlan.id }} />
                           <VlanDialog
                             catalogs={catalogs}
                             vlan={{ id: vlan.id, companyId: vlan.companyId, number: vlan.number, name: vlan.name, purpose: vlan.purpose, status: vlan.status, notes: vlan.notes }}
@@ -207,7 +200,6 @@ export default async function IpPlanPage({
                     <TH>Subnet</TH>
                     {showCompany ? <TH>Company</TH> : null}
                     <TH>Gateway</TH>
-                    <TH>Usage</TH>
                     <TH>Purpose</TH>
                   </TR>
                 </THead>
@@ -220,7 +212,6 @@ export default async function IpPlanPage({
                       </TD>
                       {showCompany ? <TD className="text-xs">{s.companyName}</TD> : null}
                       <TD className="font-mono text-xs">{s.gateway ?? "None"}</TD>
-                      <TD><SubnetUsage used={s.used} usable={s.usable} /></TD>
                       <TD className="text-xs">{s.purpose ?? ""}</TD>
                     </TR>
                   ))}

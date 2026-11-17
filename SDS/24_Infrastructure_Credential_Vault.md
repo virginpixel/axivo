@@ -154,9 +154,8 @@ A connection is one cable: a port on one device to a port on another.
 - Addresses are recorded per company, unique within it, as Used or
   Reserved, with name, MAC address and vendor, the device they belong
   to, the switch and port discovery saw them on, and when.
-- The IP & VLANs page lists each VLAN with its subnets, gateway and how
-  full each subnet is, flags subnets that overlap another of the same
-  company, and finds any IP address: the subnets holding it, its record
+- The IP & VLANs page lists each VLAN with its subnets and gateway,
+  flags subnets that overlap another of the same company, and finds any IP address: the subnets holding it, its record
   and the devices using it. A subnet's page shows its range, a map of
   every address (up to /22), the next free address and every recorded
   address, including devices in the register that use one. A device's

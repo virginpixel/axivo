@@ -261,58 +261,20 @@ export interface SubnetSummary {
   dhcpRelay: string | null;
   status: string;
   purpose: string | null;
-  usable: number;
-  used: number;
   overlapsWith: string[];
 }
 
-/** Every VLAN and subnet in scope, with how full each subnet is and what it overlaps. */
+/** Every VLAN and subnet in scope, and which subnets overlap. */
 export async function loadPlan(scope: Scope, companyId?: string) {
   const where = { ...companyFilter(scope), ...(companyId && scope.isGlobalAdmin ? { companyId } : {}) };
-  const [vlans, subnets, addresses, devices] = await Promise.all([
+  const [vlans, subnets] = await Promise.all([
     db.vlan.findMany({ where, orderBy: [{ companyId: "asc" }, { number: "asc" }], include: { company: { select: { name: true } } } }),
     db.subnet.findMany({ where, orderBy: [{ rangeStart: "asc" }, { prefix: "asc" }], include: { company: { select: { name: true } } } }),
-    db.ipAddress.findMany({ where, select: { companyId: true, address: true, addressNum: true } }),
-    db.infraDevice.findMany({ where: { ...where, deletedAt: null, ipAddress: { not: null } }, select: { companyId: true, ipAddress: true } }),
   ]);
 
   const summaries = new Map<string, SubnetSummary>();
   const ranges = subnets.map((s) => ({ s, start: Number(s.rangeStart), end: Number(s.rangeEnd) }));
-  // Addresses sorted once; each subnet counts its own range by binary search.
-  const sortedByCompany = new Map<string, number[]>();
-  // Used = recorded addresses, plus devices in the register using one that
-  // is not recorded: the same count the subnet's own page shows.
-  const recorded = new Set(addresses.map((a) => `${a.companyId}|${a.address}`));
-  const used = [
-    ...addresses.map((a) => ({ companyId: a.companyId, n: Number(a.addressNum) })),
-    ...devices
-      .filter((d) => !recorded.has(`${d.companyId}|${d.ipAddress}`))
-      .map((d) => ({ companyId: d.companyId, n: ipToNumber(d.ipAddress!) }))
-      .filter((d): d is { companyId: string; n: number } => d.n !== null),
-  ];
-  const seen = new Set<string>();
-  for (const a of used) {
-    if (seen.has(`${a.companyId}|${a.n}`)) continue;
-    seen.add(`${a.companyId}|${a.n}`);
-    const list = sortedByCompany.get(a.companyId) ?? [];
-    list.push(a.n);
-    sortedByCompany.set(a.companyId, list);
-  }
-  for (const list of sortedByCompany.values()) list.sort((x, y) => x - y);
-  const lowerBound = (list: number[], value: number) => {
-    let lo = 0;
-    let hi = list.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (list[mid]! < value) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
-  };
-
-  for (const { s, start, end } of ranges) {
-    const list = sortedByCompany.get(s.companyId) ?? [];
-    const used = lowerBound(list, end + 1) - lowerBound(list, start);
+  for (const { s } of ranges) {
     summaries.set(s.id, {
       id: s.id,
       companyId: s.companyId,
@@ -323,8 +285,6 @@ export async function loadPlan(scope: Scope, companyId?: string) {
       dhcpRelay: s.dhcpRelay,
       status: s.status,
       purpose: s.purpose,
-      usable: subnetFacts(s.network, s.prefix).usable,
-      used,
       overlapsWith: [],
     });
   }
@@ -362,7 +322,6 @@ export async function loadPlan(scope: Scope, companyId?: string) {
     counts: {
       vlans: vlans.length,
       subnets: subnets.length,
-      addresses: addresses.length,
       overlapping: [...summaries.values()].filter((s) => s.overlapsWith.length > 0).length,
     },
   };

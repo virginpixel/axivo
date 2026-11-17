@@ -119,22 +119,19 @@ export function VlanDialog({
 export function SubnetDialog({
   catalogs,
   subnet,
-  defaults,
 }: {
   catalogs: IpCatalogs;
   subnet?: {
     id: string; companyId: string; cidr: string; vlanId: string | null; gateway: string | null; dhcpRelay: string | null;
     locationId: string | null; purpose: string | null; status: PlanStatus; notes: string | null;
   };
-  /** Prefill for "add a subnet to this VLAN". */
-  defaults?: { companyId: string; vlanId: string };
 }) {
   const { run, loading, fieldErrors } = useAction();
   const [open, setOpen] = useState(false);
   const blank = () => ({
-    companyId: subnet?.companyId ?? defaults?.companyId ?? firstCompany(catalogs),
+    companyId: subnet?.companyId ?? firstCompany(catalogs),
     cidr: subnet?.cidr ?? "",
-    vlanId: subnet?.vlanId ?? defaults?.vlanId ?? "",
+    vlanId: subnet?.vlanId ?? "",
     gateway: subnet?.gateway ?? "",
     dhcpRelay: subnet?.dhcpRelay ?? "",
     locationId: subnet?.locationId ?? "",
@@ -151,13 +148,7 @@ export function SubnetDialog({
   return (
     <Dialog open={open} onOpenChange={(next) => { if (next) setForm(blank()); setOpen(next); }}>
       <DialogTrigger asChild>
-        <span>
-          {defaults && !subnet ? (
-            <Button variant="ghost" size="icon" aria-label="Add a subnet to this VLAN"><Plus className="h-4 w-4" /></Button>
-          ) : (
-            <Trigger editing={!!subnet} noun="subnet" />
-          )}
-        </span>
+        <span><Trigger editing={!!subnet} noun="subnet" /></span>
       </DialogTrigger>
       <DialogContent title={subnet ? `Edit ${subnet.cidr}` : "Add subnet"} wide>
         <div className="grid gap-3 sm:grid-cols-2">
