@@ -272,9 +272,22 @@ the assets issued to people:
     VLAN. The discovery workbooks ("VLAN plan" and "Live devices"
     sheets) import as they are. IPv6 is out of scope for now.
 
-Planned later phases, each in its own release: OPEX and CAPEX budgets
-in USD with company splits. Their scope will be recorded here before
-they are built.
+-   IT budgets: OPEX and CAPEX (added 18 November 2026, Document 25).
+    This brings yearly IT budgeting into scope, which Document 01 had
+    left out with Finance and Procurement; accounting, purchasing and
+    spend tracking stay out. One OPEX and one CAPEX budget per year,
+    in USD. Each line is split between companies by percentage and a
+    company's totals count only its share. OPEX lines are spread
+    evenly over the twelve months unless amounts per month are given.
+    CAPEX lines carry quantity, unit price, associated cost, priority,
+    CAPEX type, required quarter and justification. A budget moves
+    Draft → Submitted → Approved; only a draft can be changed, and
+    returning or reopening one needs a reason. Every step is audited;
+    there are no saved revisions. Budgets are organisation-wide: a
+    holder of `budgets.view` sees every company's share. Lines can be
+    copied from an earlier year and imported from the IT OPEX sheet
+    and the CAPEX wish list as they are. No export in the corporate
+    template layout.
 
 Built-in network discovery remains a future module (Document 01).
 

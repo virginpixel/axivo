@@ -46,6 +46,11 @@ export const PERMISSIONS = {
   "infrastructure.credentials.reveal": "Reveal stored passwords (every reveal is audited)",
   "infrastructure.configs.view": "View and download saved device configurations (they hold keys and password hashes; every view is audited)",
 
+  // Budgets (Doc 25)
+  "budgets.view": "View OPEX and CAPEX budgets, every company's share",
+  "budgets.manage": "Create budgets and edit their lines while in draft, and submit them",
+  "budgets.approve": "Approve budgets, return them to draft and reopen approved ones",
+
   // Forms
   "forms.view": "View forms",
   "forms.manage": "Create, edit, publish and archive forms",
@@ -115,6 +120,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "infrastructure.manage",
     "infrastructure.credentials.manage",
     "infrastructure.configs.view",
+    "budgets.view",
+    "budgets.manage",
     "forms.view",
     "forms.manage",
     "workflows.view",

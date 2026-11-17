@@ -366,6 +366,7 @@ model Company {
   infraDevices            InfraDevice[]
   credentialSets          CredentialSet[]
   vlans                   Vlan[]
+  budgetAllocations       BudgetAllocation[]
   subnets                 Subnet[]
   ipAddresses             IpAddress[]
 
@@ -2215,6 +2216,7 @@ model Vendor {
   assets           Asset[]
   contracts        Contract[]
   licensePurchases LicensePurchase[]
+  budgetLines      BudgetLine[]
 
   @@index([isActive])
   @@map("vendors")
@@ -2670,4 +2672,107 @@ model IpAddress {
   @@index([companyId, addressNum])
   @@index([deviceId])
   @@map("ip_addresses")
+}
+
+enum BudgetKind {
+  OPEX
+  CAPEX
+}
+
+enum BudgetStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+}
+
+enum CapexPriority {
+  FIRST
+  MEDIUM
+  WISH_LIST
+}
+
+enum CapexType {
+  REVENUE_GENERATING
+  COST_SAVING
+  REGULAR_REPLACEMENT
+  NEW_OPERATION
+  OTHER
+}
+
+/// One year's OPEX or CAPEX budget, in USD (SDS Doc 25). Organisation-wide:
+/// each line says how it is split between companies.
+model Budget {
+  id            String       @id @default(uuid()) @db.Uuid
+  kind          BudgetKind   @map("kind")
+  year          Int          @map("year")
+  status        BudgetStatus @default(DRAFT) @map("status")
+  notes         String?      @map("notes")
+  submittedAt   DateTime?    @map("submitted_at")
+  submittedById String?      @map("submitted_by") @db.Uuid
+  approvedAt    DateTime?    @map("approved_at")
+  approvedById  String?      @map("approved_by") @db.Uuid
+  createdAt     DateTime     @default(now()) @map("created_at")
+  createdById   String?      @map("created_by") @db.Uuid
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  updatedById   String?      @map("updated_by") @db.Uuid
+
+  lines BudgetLine[]
+
+  @@unique([kind, year])
+  @@map("budgets")
+}
+
+/// One item of a budget. For CAPEX the amount is quantity x unit price plus
+/// the associated cost, kept here so totals are one sum.
+model BudgetLine {
+  id             String         @id @default(uuid()) @db.Uuid
+  budgetId       String         @map("budget_id") @db.Uuid
+  sortOrder      Int            @default(0) @map("sort_order")
+  /// The sheet's reference, e.g. IT-04.
+  reference      String?        @map("reference")
+  department     String?        @map("department")
+  description    String         @map("description")
+  vendorId       String?        @map("vendor_id") @db.Uuid
+  /// OPEX: what kind of cost; CAPEX: asset category or group (Hardware, Software...).
+  category       String?        @map("category")
+  amount         Decimal        @default(0) @map("amount") @db.Decimal(14, 2)
+  /// OPEX: twelve amounts, January first, when not spread evenly.
+  months         Json?          @map("months")
+  quantity       Int?           @map("quantity")
+  unitPrice      Decimal?       @map("unit_price") @db.Decimal(14, 2)
+  associatedCost Decimal?       @map("associated_cost") @db.Decimal(14, 2)
+  priority       CapexPriority? @map("priority")
+  capexType      CapexType?     @map("capex_type")
+  /// Quarter it is needed in: Q1-Q4.
+  period         String?        @map("period")
+  locationCode   String?        @map("location_code")
+  justification  String?        @map("justification")
+  notes          String?        @map("notes")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  createdById    String?        @map("created_by") @db.Uuid
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  updatedById    String?        @map("updated_by") @db.Uuid
+
+  budget      Budget             @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  vendor      Vendor?            @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  allocations BudgetAllocation[]
+
+  @@index([budgetId, sortOrder])
+  @@index([vendorId])
+  @@map("budget_lines")
+}
+
+/// A company's share of a budget line, in percent. A line's shares add up to 100.
+model BudgetAllocation {
+  id        String  @id @default(uuid()) @db.Uuid
+  lineId    String  @map("line_id") @db.Uuid
+  companyId String  @map("company_id") @db.Uuid
+  percent   Decimal @map("percent") @db.Decimal(5, 2)
+
+  line    BudgetLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  company Company    @relation(fields: [companyId], references: [id])
+
+  @@unique([lineId, companyId])
+  @@index([companyId])
+  @@map("budget_allocations")
 }
