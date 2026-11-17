@@ -10,6 +10,7 @@ import { useToast } from "@/shared/ui/toast";
 import { Button, buttonVariants } from "@/shared/ui/button";
 import { Label, FieldError, HelperText } from "@/shared/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/shared/ui/card";
+import { SampleLink } from "@/shared/ui/sample-link";
 
 /** VLAN plan and address list import (SDS Doc 24). */
 export function IpamImport() {
@@ -116,7 +117,11 @@ export function IpamImport() {
               Company, Status. For addresses: IP, DNS name, MAC, Vendor, Switch, Port.
             </HelperText>
           </div>
-          <Button onClick={() => send(false)} loading={busy}><Upload className="h-4 w-4" /> Read file</Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={() => send(false)} loading={busy}><Upload className="h-4 w-4" /> Read file</Button>
+            <SampleLink kind="vlans" label="VLAN plan sample" />
+            <SampleLink kind="ip-addresses" label="Address list sample" />
+          </div>
         </CardContent>
       </Card>
     );

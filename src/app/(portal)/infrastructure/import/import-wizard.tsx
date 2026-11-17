@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { SampleLink } from "@/shared/ui/sample-link";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FileSpreadsheet, Upload, ArrowLeft, CheckCircle2 } from "lucide-react";
@@ -236,7 +237,10 @@ export function ImportWizard({ companies, types, canImportLogins }: Props) {
               Firmware or Version, Domain, Location, Remark, Username and Password.
             </HelperText>
           </div>
-          <Button onClick={readFile} loading={busy}><Upload className="h-4 w-4" /> Read file</Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={readFile} loading={busy}><Upload className="h-4 w-4" /> Read file</Button>
+            <SampleLink kind={kind === "NETWORK" ? "network-devices" : "servers"} label={kind === "NETWORK" ? "Download a sample" : "Download a servers sample"} />
+          </div>
         </CardContent>
       </Card>
     );

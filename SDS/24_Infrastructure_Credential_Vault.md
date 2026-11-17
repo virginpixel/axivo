@@ -187,6 +187,12 @@ A connection is one cable: a port on one device to a port on another.
 - Deleting a VLAN keeps its subnets; deleting a subnet keeps the
   addresses recorded in it. Every change, and each import, is audited.
 
+## Sample files
+Every import (network devices, servers, connections, VLAN plan, address
+list) offers a sample file: the headings that import reads, two example
+rows with the company names in Axivo, and a "How to fill" tab saying what
+each column takes. The import ignores that tab.
+
 ## Permissions
 | Permission | Default roles |
 |---|---|

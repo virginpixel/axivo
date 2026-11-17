@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/sha
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
 import { Badge } from "@/shared/ui/badge";
 import { cn } from "@/shared/utils";
+import { SampleLink } from "@/shared/ui/sample-link";
 
 type Filter = "all" | "new" | "changed" | "known";
 
@@ -160,7 +161,10 @@ export function ConnectionImport() {
               optionally Switch IP, Neighbour IP and Neighbour type. Names are matched first, then IP addresses.
             </HelperText>
           </div>
-          <Button onClick={readFile} loading={busy}><Upload className="h-4 w-4" /> Read file</Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={readFile} loading={busy}><Upload className="h-4 w-4" /> Read file</Button>
+            <SampleLink kind="connections" />
+          </div>
         </CardContent>
       </Card>
     );

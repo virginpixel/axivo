@@ -6,6 +6,9 @@ import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
 import { Badge } from "@/shared/ui/badge";
 import { CompanyPill } from "@/shared/ui/filter-pill";
 import { DeleteButton } from "@/shared/ui/delete-button";
+import { LiveSearch } from "@/shared/ui/live-search";
+import { NoteHint } from "@/shared/ui/note-hint";
+import { Download } from "lucide-react";
 import { NotFoundError } from "@/shared/errors";
 import { cn, formatDateTime } from "@/shared/utils";
 import { loadBudget } from "@/modules/budgets/service";
@@ -30,7 +33,7 @@ export default async function BudgetPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ company?: string; view?: string }>;
+  searchParams: Promise<{ company?: string; view?: string; q?: string }>;
 }) {
   const { user } = await requirePermission("budgets.view");
   const { id } = await params;
@@ -40,12 +43,12 @@ export default async function BudgetPage({
 
   let data: Awaited<ReturnType<typeof loadBudget>>;
   try {
-    data = await loadBudget(id, query.company || undefined);
+    data = await loadBudget(id, query.company || undefined, query.q || undefined);
   } catch (error) {
     if (error instanceof NotFoundError) notFound();
     throw error;
   }
-  const { budget, lines, total, byCompany, byDepartment, byMonth } = data;
+  const { budget, lines, total, byCompany, byMonth } = data;
   const capex = budget.kind === "CAPEX";
   const draft = budget.status === "DRAFT";
   const editable = draft && canManage;
@@ -75,11 +78,16 @@ export default async function BudgetPage({
     const s = new URLSearchParams();
     const company = next.company ?? query.company;
     const view = next.view ?? query.view;
+    if (query.q) s.set("q", query.q);
     if (company) s.set("company", company);
     if (view) s.set("view", view);
     const q = s.toString();
     return `/budgets/${budget.id}${q ? `?${q}` : ""}`;
   };
+  const exportQuery = new URLSearchParams();
+  if (query.company) exportQuery.set("company", query.company);
+  if (query.q) exportQuery.set("q", query.q);
+  const exportHref = `/api/budgets/${budget.id}/export${exportQuery.size ? `?${exportQuery}` : ""}`;
   const record = (l: (typeof lines)[number]) => ({
     ...l,
     vendorId: l.vendor?.id ?? null,
@@ -124,41 +132,22 @@ export default async function BudgetPage({
         </p>
       ) : null}
 
-      <div className="mb-5 grid gap-4 lg:grid-cols-[1.2fr_2fr]">
-        <div className="rounded-2xl border bg-card px-5 py-4">
-          <p className="label-caps text-muted-foreground">{companyName ? `${companyName}'s share` : "Total"}</p>
+      <div className="mb-5 flex flex-wrap items-end gap-x-10 gap-y-4 rounded-2xl border bg-card px-5 py-4">
+        <div>
+          <p className="label-caps text-muted-foreground">{companyName ? `${companyName}'s share` : "Total"}{query.q ? ", lines found" : ""}</p>
           <p className="mt-2 font-display text-5xl tabular-nums leading-none">{usd(total)}</p>
           <p className="mt-1.5 text-xs text-muted-foreground">{lines.length} lines</p>
-          {byCompany.length > 0 ? (
-            <dl className="mt-4 space-y-1.5 border-t pt-3 text-sm">
-              {byCompany.map((c) => (
-                <div key={c.id} className="flex justify-between gap-3">
-                  <dt className={cn("text-muted-foreground", query.company === c.id && "font-medium text-foreground")}>{c.name}</dt>
-                  <dd className="tabular-nums">{usd(c.amount)}</dd>
-                </div>
-              ))}
-            </dl>
-          ) : null}
         </div>
-        <div className="rounded-2xl border bg-card px-5 py-4">
-          <p className="label-caps text-muted-foreground">By department</p>
-          {byDepartment.length === 0 ? (
-            <p className="mt-3 text-sm text-muted-foreground">No lines yet.</p>
-          ) : (
-            <ul className="mt-3 space-y-2">
-              {byDepartment.slice(0, 8).map((d) => (
-                <li key={d.name} className="grid grid-cols-[8rem_1fr_6rem] items-center gap-3 text-sm">
-                  <span className="truncate">{d.name}</span>
-                  <span className="h-1.5 overflow-hidden rounded-full bg-muted">
-                    <span className="block h-full rounded-full bg-primary" style={{ width: `${total > 0 ? (d.amount / total) * 100 : 0}%` }} />
-                  </span>
-                  <span className="text-right tabular-nums">{usd(d.amount)}</span>
-                </li>
-              ))}
-              {byDepartment.length > 8 ? <li className="text-xs text-muted-foreground">and {byDepartment.length - 8} more</li> : null}
-            </ul>
-          )}
-        </div>
+        {byCompany.length > 0 ? (
+          <dl className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
+            {byCompany.map((c) => (
+              <div key={c.id}>
+                <dt className={cn("text-xs text-muted-foreground", query.company === c.id && "font-medium text-foreground")}>{c.name}</dt>
+                <dd className="tabular-nums">{usd(c.amount)}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : null}
       </div>
 
       {!capex && lines.length > 0 ? (
@@ -182,22 +171,39 @@ export default async function BudgetPage({
       ) : null}
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
+        <LiveSearch placeholder={capex ? "Search item, ref, department" : "Search product, vendor, department"} className="w-full sm:w-72" />
         <CompanyPill href={href({ company: "" })} label="All companies" active={!query.company} />
         {byCompany.map((c) => (
           <CompanyPill key={c.id} href={href({ company: c.id })} label={c.name} active={query.company === c.id} />
         ))}
-        {!capex ? (
-          <span className="ml-auto flex gap-2">
-            <CompanyPill href={href({ view: "" })} label="Year" active={!monthsView} />
-            <CompanyPill href={href({ view: "months" })} label="Months" active={monthsView} />
-          </span>
-        ) : null}
+        <span className="ml-auto flex flex-wrap gap-2">
+          {!capex ? (
+            <>
+              <CompanyPill href={href({ view: "" })} label="Year" active={!monthsView} />
+              <CompanyPill href={href({ view: "months" })} label="Months" active={monthsView} />
+            </>
+          ) : null}
+          <a
+            href={exportHref}
+            className="inline-flex items-center gap-1.5 rounded-full border border-input bg-card px-4 py-1.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent"
+          >
+            <Download className="h-4 w-4" /> Export
+          </a>
+        </span>
       </div>
 
       {lines.length === 0 ? (
         <EmptyState
-          title="No lines"
-          description={editable ? "Add lines one by one, or import them from your spreadsheet." : companyName ? `No line is paid by ${companyName}.` : "Nothing has been added yet."}
+          title={query.q ? "Nothing matches" : "No lines"}
+          description={
+            query.q
+              ? `No line matches "${query.q}".`
+              : editable
+                ? "Add lines one by one, or import them from your spreadsheet."
+                : companyName
+                  ? `No line is paid by ${companyName}.`
+                  : "Nothing has been added yet."
+          }
         />
       ) : monthsView ? (
         <Table>
@@ -237,7 +243,7 @@ export default async function BudgetPage({
               {capex ? <TH className="text-right">Qty × price</TH> : null}
               <TH className="text-right">{companyName ? "Share" : "Amount"}</TH>
               <TH>Paid by</TH>
-              {editable ? <TH className="text-right">Actions</TH> : null}
+              <TH className="text-right">Actions</TH>
             </TR>
           </THead>
           <TBody>
@@ -252,7 +258,6 @@ export default async function BudgetPage({
                       capex && l.capexType ? CAPEX_TYPE_LABELS[l.capexType] : null,
                       capex && l.period ? `Needed ${l.period}` : null,
                       !capex && !l.evenlySpread ? "Amounts per month" : null,
-                      l.notes,
                     ].filter(Boolean).join(" · ")}
                   </p>
                   {capex && l.justification ? <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground" title={l.justification}>{l.justification}</p> : null}
@@ -278,14 +283,17 @@ export default async function BudgetPage({
                     <p key={a.companyId} className="whitespace-nowrap">{a.companyName}{l.allocations.length > 1 || a.percent !== 100 ? ` ${a.percent}%` : ""}</p>
                   ))}
                 </TD>
-                {editable ? (
-                  <TD className="text-right">
-                    <div className="flex justify-end">
-                      <LineDialog budgetId={budget.id} kind={budget.kind} catalogs={catalogs} line={record(l)} defaultShares={lastShares} />
-                      <DeleteButton action={deleteLineAction} id={l.id} entityLabel={l.description} message={`Remove "${l.description}" from the budget?`} successMessage="Line removed." />
-                    </div>
-                  </TD>
-                ) : null}
+                <TD className="text-right">
+                  <div className="flex justify-end">
+                    <NoteHint note={l.notes} label={l.description} />
+                    {editable ? (
+                      <>
+                        <LineDialog budgetId={budget.id} kind={budget.kind} catalogs={catalogs} line={record(l)} defaultShares={lastShares} />
+                        <DeleteButton action={deleteLineAction} id={l.id} entityLabel={l.description} message={`Remove "${l.description}" from the budget?`} successMessage="Line removed." />
+                      </>
+                    ) : null}
+                  </div>
+                </TD>
               </TR>
             ))}
           </TBody>

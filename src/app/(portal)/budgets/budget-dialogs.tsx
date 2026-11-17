@@ -18,6 +18,7 @@ import { Input, Select, Textarea, Label, FieldError, HelperText } from "@/shared
 import { Combobox } from "@/shared/ui/combobox";
 import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
 import { cn } from "@/shared/utils";
+import { SampleLink } from "@/shared/ui/sample-link";
 
 type Kind = "OPEX" | "CAPEX";
 type Share = { companyId: string; percent: string };
@@ -617,7 +618,10 @@ export function BudgetImportDialog({ budgetId, kind, companies }: { budgetId: st
             </label>
             <input id="budget-file" type="file" accept=".xlsx,.xlsm,.csv" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             <FieldError message={fileError} />
-            <Button onClick={() => read("")} loading={busy}><Upload className="h-4 w-4" /> Read file</Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={() => read("")} loading={busy}><Upload className="h-4 w-4" /> Read file</Button>
+              <SampleLink kind={kind === "OPEX" ? "opex" : "capex"} />
+            </div>
           </div>
         ) : (
           <div className="space-y-4">

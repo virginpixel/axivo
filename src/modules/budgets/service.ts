@@ -294,8 +294,8 @@ export async function listBudgets() {
   });
 }
 
-/** One budget with its lines and the totals by company, department and month. */
-export async function loadBudget(id: string, companyId?: string) {
+/** One budget with its lines (optionally one company's, matching a search), each company's share and the months. */
+export async function loadBudget(id: string, companyId?: string, search?: string) {
   const budget = await db.budget.findUnique({
     where: { id },
     include: {
@@ -335,7 +335,12 @@ export async function loadBudget(id: string, companyId?: string) {
       monthsInView: months.map((m) => share(m, mine)),
     };
   });
-  const visible = companyId ? lines.filter((l) => l.allocations.some((a) => a.companyId === companyId)) : lines;
+  const q = search?.trim().toLowerCase() ?? "";
+  const matches = (l: (typeof lines)[number]) =>
+    !q ||
+    [l.description, l.reference, l.department, l.vendor?.name, l.category, l.notes, l.justification, l.locationCode]
+      .some((field) => field?.toLowerCase().includes(q));
+  const visible = lines.filter((l) => (!companyId || l.allocations.some((a) => a.companyId === companyId)) && matches(l));
 
   const byCompany = new Map<string, { name: string; amount: number }>();
   for (const line of lines) {
@@ -345,14 +350,6 @@ export async function loadBudget(id: string, companyId?: string) {
       byCompany.set(a.companyId, entry);
     }
   }
-  // "Marketing" and "marketing" are one department; the first spelling names it.
-  const byDepartment = new Map<string, { name: string; amount: number }>();
-  for (const line of visible) {
-    const name = line.department ?? "No department";
-    const entry = byDepartment.get(name.toLowerCase()) ?? { name, amount: 0 };
-    entry.amount += line.inView;
-    byDepartment.set(name.toLowerCase(), entry);
-  }
   const byMonth = Array.from({ length: 12 }, (_, m) => visible.reduce((s, l) => s + l.monthsInView[m]!, 0));
 
   return {
@@ -360,7 +357,6 @@ export async function loadBudget(id: string, companyId?: string) {
     lines: visible,
     total: visible.reduce((s, l) => s + l.inView, 0),
     byCompany: [...byCompany].map(([id, v]) => ({ id, ...v })).sort((a, b) => b.amount - a.amount),
-    byDepartment: [...byDepartment.values()].sort((a, b) => b.amount - a.amount),
     byMonth,
   };
 }
@@ -516,3 +512,73 @@ export async function commitBudgetImport(audit: AuditContext, budgetId: string, 
   );
   return { added };
 }
+
+// ---------------------------------------------------------------------------
+// Export
+// ---------------------------------------------------------------------------
+
+/**
+ * The budget's lines as a workbook: OPEX month by month, CAPEX with
+ * quantities and prices. What is on screen: the chosen company's share and
+ * the search, if any. Audited.
+ */
+export async function exportBudget(audit: AuditContext, id: string, companyId?: string, search?: string) {
+  const ExcelJS = (await import("exceljs")).default;
+  const { budget, lines, total, byMonth, byCompany } = await loadBudget(id, companyId, search);
+  const company = companyId ? byCompany.find((c) => c.id === companyId)?.name : null;
+  const book = new ExcelJS.Workbook();
+  const sheet = book.addWorksheet(`${budget.year} ${budget.kind}`);
+  const money = "#,##0.00";
+  const split = (l: (typeof lines)[number]) => l.allocations.map((a) => `${a.companyName} ${a.percent}%`).join(", ");
+  sheet.addRow([`${budget.year} ${budget.kind} budget (USD)${company ? `, ${company}'s share` : ""}${search ? `, lines matching "${search}"` : ""}`]).font = { bold: true, size: 13 };
+  sheet.addRow([]);
+  if (budget.kind === "OPEX") {
+    const header = sheet.addRow(["Department", "Product or service", "Vendor", "Kind of cost", ...MONTH_NAMES, "Year", "Paid by", "Notes"]);
+    header.font = { bold: true };
+    for (const l of lines) {
+      sheet.addRow([l.department, l.description, l.vendor?.name ?? null, l.category, ...l.monthsInView, l.inView, split(l), l.notes]);
+    }
+    const totals = sheet.addRow(["", "Total", "", "", ...byMonth, total]);
+    totals.font = { bold: true };
+    for (let c = 5; c <= 17; c += 1) sheet.getColumn(c).numFmt = money;
+    sheet.columns.forEach((col, i) => (col.width = i === 1 ? 40 : i >= 4 && i <= 16 ? 12 : i === 17 ? 34 : 18));
+  } else {
+    const header = sheet.addRow([
+      "Ref", "Department", "Item", "Category", "Priority", "CAPEX type", "Needed in", "Quantity", "Unit price", "Associated cost",
+      company ? "Share" : "Total", "Paid by", "Location code", "Reason / justification", "Notes",
+    ]);
+    header.font = { bold: true };
+    for (const l of lines) {
+      sheet.addRow([
+        l.reference, l.department, l.description, l.category, l.priority ? PRIORITY_NAMES[l.priority] : null,
+        l.capexType ? CAPEX_TYPE_NAMES[l.capexType] : null, l.period, l.quantity, l.unitPrice, l.associatedCost, l.inView,
+        split(l), l.locationCode, l.justification, l.notes,
+      ]);
+    }
+    const totals = sheet.addRow(["", "", "Total", "", "", "", "", "", "", "", total]);
+    totals.font = { bold: true };
+    for (const c of [9, 10, 11]) sheet.getColumn(c).numFmt = money;
+    sheet.columns.forEach((col, i) => (col.width = i === 2 ? 40 : i === 13 ? 60 : 16));
+  }
+  sheet.views = [{ state: "frozen", ySplit: 3 }];
+  await recordAudit(audit, {
+    module: MODULE,
+    eventType: "budget.exported",
+    action: `Exported the ${label(budget)} budget (${lines.length} lines${company ? `, ${company}'s share` : ""}${search ? `, matching "${search}"` : ""})`,
+    targetType: "budget",
+    targetId: budget.id,
+    targetLabel: label(budget),
+  });
+  const name = `${budget.year} ${budget.kind}${company ? ` ${company}` : ""}.xlsx`.replace(/[^\w .-]+/g, "");
+  return { name, buffer: Buffer.from(await book.xlsx.writeBuffer()) };
+}
+
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const PRIORITY_NAMES = { FIRST: "First priority", MEDIUM: "Medium priority", WISH_LIST: "Wish list" } as const;
+const CAPEX_TYPE_NAMES = {
+  REVENUE_GENERATING: "Revenue generating",
+  COST_SAVING: "Cost saving",
+  REGULAR_REPLACEMENT: "Regular replacement",
+  NEW_OPERATION: "New operation enhancement",
+  OTHER: "Other",
+} as const;

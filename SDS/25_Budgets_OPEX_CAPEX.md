@@ -46,9 +46,18 @@ split) or removed, and every step with its reason.
 ## Screens
 - Budgets: each year's OPEX and CAPEX with the total, the status and
   each company's share.
-- A budget: the total and each company's share, totals by department,
-  OPEX totals by month, and the lines, by year or month by month.
+- A budget: the total and each company's share, OPEX totals by month,
+  and the lines, by year or month by month. The department on a line
+  only says whose application or service it is; it is not totalled.
+  A search box (filtering as you type) finds lines by item, reference,
+  department, vendor, category, location code, justification or note.
   Choosing a company shows only the lines it pays for, at its share.
+- Each line has a note icon: pointing at it shows the note, or "No notes
+  added".
+- Export downloads what is on screen (the chosen company's share and the
+  search) as a workbook: OPEX month by month with the year, CAPEX with
+  quantities, prices, priority, type and justification. Each export is
+  audited.
 
 ## Import
 - Import lines (draft only) reads the IT OPEX sheet as it is: a
@@ -67,6 +76,8 @@ split) or removed, and every step with its reason.
   total is kept.
 - Every imported line gets the split chosen on import; single lines are
   changed afterwards.
+- Each import offers a sample file with the headings it reads and two
+  example rows, and a "How to fill" tab that the import ignores.
 - No export in the corporate template layout.
 
 ## Permissions

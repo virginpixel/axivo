@@ -111,3 +111,68 @@ describe("budgets", () => {
     expect(loaded.lines[1]).toMatchObject({ reference: "IT-02", priority: "FIRST", capexType: "NEW_OPERATION", locationCode: "HR" });
   });
 });
+
+describe("export, search and sample files", () => {
+  it("finds lines as typed and exports what is on screen, month by month", async () => {
+    const opex = await db.budget.findFirstOrThrow({ where: { kind: "OPEX", year: 2028 } });
+    const found = await budgets.loadBudget(opex.id, undefined, "intern");
+    expect(found.lines.map((l) => l.description)).toEqual(["Internet"]);
+    expect(found.total).toBe(185000);
+
+    const ExcelJS = (await import("exceljs")).default;
+    const { name, buffer } = await budgets.exportBudget(audit, opex.id, hrh.id);
+    expect(name).toBe("2028 OPEX Hard Rock Hotel.xlsx");
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(buffer as unknown as ArrayBuffer);
+    const rows = book.worksheets[0]!.getSheetValues().filter(Boolean) as unknown[][];
+    const header = rows[1]!.slice(1);
+    expect(header.slice(0, 6)).toEqual(["Department", "Product or service", "Vendor", "Kind of cost", "Jan", "Feb"]);
+    // Hard Rock pays 40% of Microsoft 365 (12,000): 400 a month.
+    const m365 = rows.find((r) => r[2] === "Microsoft 365")!.slice(1);
+    expect(m365[4]).toBe(400);
+    expect(m365[16]).toBe(4800);
+    expect(await db.auditEvent.count({ where: { targetId: opex.id, eventType: "budget.exported" } })).toBe(1);
+  });
+
+  it("gives a sample for every import that its importer reads back", async () => {
+    const { buildSample } = await import("@/modules/samples/samples");
+    const { readSheets } = await import("@/modules/infrastructure/import");
+    const { pickSheet } = await import("@/modules/infrastructure/import-parse");
+    const { pickLinkSheet } = await import("@/modules/infrastructure/topology-parse");
+    const ipamParse = await import("@/modules/infrastructure/ipam-parse");
+    const parse = await import("@/modules/budgets/budget-import-parse");
+    const read = async (kind: Parameters<typeof buildSample>[0]) => {
+      const { file, buffer } = await buildSample(kind);
+      return readSheets(new File([new Uint8Array(buffer)], file));
+    };
+
+    const network = pickSheet(await read("network-devices"))!;
+    expect(network.sheetName).toBe("Network devices");
+    expect(Object.keys(network.columns.fields)).toEqual(expect.arrayContaining(["company", "name", "type", "ipAddress", "serialNumber", "status", "username", "password"]));
+    expect(network.rows).toHaveLength(2);
+    expect(pickSheet(await read("servers"))!.columns.fields.domain).toBeDefined();
+
+    const links = pickLinkSheet(await read("connections"))!;
+    expect(links.rows).toHaveLength(2);
+
+    const vlanSheet = ipamParse.pickPlanSheet(await read("vlans"))!;
+    expect(vlanSheet.rows.map((r) => ipamParse.parsePlanRow(vlanSheet, r))).toMatchObject([
+      { ok: true, row: { number: 10, companyText: "Crossroads", cidr: { prefix: 23 } } },
+      { ok: true, row: { number: 42, status: "RESERVED" } },
+    ]);
+    const addressSheet = ipamParse.pickAddressSheet(await read("ip-addresses"))!;
+    expect(addressSheet.rows.map((r) => ipamParse.parseAddressRow(addressSheet, r)!.reserved)).toEqual([false, true]);
+
+    const opex = parse.parseOpex(await read("opex"))!;
+    expect(opex.lines).toMatchObject([
+      { department: "IT", description: "Microsoft 365", vendor: "Pacific Technologies", amount: 11000, months: null },
+      { description: "Internet", amount: 185000 },
+    ]);
+    const capex = parse.parseCapexSheets(await read("capex"))[0]!;
+    expect(capex.lines).toMatchObject([
+      { reference: "IT-01", department: "IT", category: "Hardware", amount: 2000, priority: "FIRST", period: "Q1" },
+      { reference: "IT-02", amount: 7400, priority: "MEDIUM", capexType: "REGULAR_REPLACEMENT" },
+    ]);
+  });
+});
+
