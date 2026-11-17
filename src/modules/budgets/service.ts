@@ -145,7 +145,6 @@ export async function moveBudget(audit: AuditContext, id: string, move: Move, re
 function lineData(kind: BudgetKind, input: LineInput) {
   const common = {
     reference: input.reference,
-    department: input.department,
     description: input.description,
     vendorId: input.vendorId,
     category: input.category,
@@ -186,7 +185,7 @@ async function checkVendor(vendorId: string | null) {
   }
 }
 
-const READABLE = ["reference", "department", "description", "vendorId", "category", "amount", "quantity", "unitPrice", "associatedCost", "priority", "capexType", "period", "locationCode", "justification", "notes", "split"];
+const READABLE = ["reference", "description", "vendorId", "category", "amount", "quantity", "unitPrice", "associatedCost", "priority", "capexType", "period", "locationCode", "justification", "notes", "split"];
 
 const splitText = (allocations: { companyId: string; percent: unknown }[], names: Map<string, string>) =>
   allocations
@@ -313,7 +312,6 @@ export async function loadBudget(id: string, companyId?: string, search?: string
     return {
       id: line.id,
       reference: line.reference,
-      department: line.department,
       description: line.description,
       vendor: line.vendor,
       category: line.category,
@@ -338,7 +336,7 @@ export async function loadBudget(id: string, companyId?: string, search?: string
   const q = search?.trim().toLowerCase() ?? "";
   const matches = (l: (typeof lines)[number]) =>
     !q ||
-    [l.description, l.reference, l.department, l.vendor?.name, l.category, l.notes, l.justification, l.locationCode]
+    [l.description, l.reference, l.vendor?.name, l.category, l.notes, l.justification, l.locationCode]
       .some((field) => field?.toLowerCase().includes(q));
   const visible = lines.filter((l) => (!companyId || l.allocations.some((a) => a.companyId === companyId)) && matches(l));
 
@@ -370,7 +368,7 @@ export interface BudgetImportPreview {
   /** CAPEX: every list found, so another can be chosen. */
   sheets: { name: string; lines: number }[];
   lines: {
-    row: number; reference: string | null; department: string | null; description: string; vendor: string | null;
+    row: number; reference: string | null; usedBy: string | null; description: string; vendor: string | null;
     category: string | null; amount: number; detail: string;
   }[];
   total: number;
@@ -412,11 +410,11 @@ export async function previewBudgetImport(budgetId: string, file: File, sheetNam
   const lines: BudgetImportPreview["lines"] =
     a.budget.kind === "OPEX"
       ? a.opex.map((l) => ({
-          row: l.row, reference: l.reference, department: l.department, description: l.description, vendor: l.vendor, category: null,
+          row: l.row, reference: l.reference, usedBy: l.locationCode ?? l.department, description: l.description, vendor: l.vendor, category: null,
           amount: l.amount, detail: l.months ? "Amounts per month" : "Spread evenly",
         }))
       : a.capex.map((l) => ({
-          row: l.row, reference: l.reference, department: l.department, description: l.description, vendor: null, category: l.category,
+          row: l.row, reference: l.reference, usedBy: l.locationCode ?? l.department, description: l.description, vendor: null, category: l.category,
           amount: l.amount, detail: `${l.quantity ?? 1} × ${l.unitPrice?.toFixed(2) ?? "?"}${l.associatedCost ? ` + ${l.associatedCost.toFixed(2)}` : ""}`,
         }));
   return {
@@ -446,20 +444,23 @@ export async function commitBudgetImport(audit: AuditContext, budgetId: string, 
       }
       const last = await tx.budgetLine.aggregate({ where: { budgetId }, _max: { sortOrder: true } });
       let order = last._max.sortOrder ?? 0;
-      // One spelling per department: the budget's own first, then the file's first.
+      // Used by: the sheet's Used by (or Location Code), else its department.
+      // One spelling per name: the budget's own first, then the file's first,
+      // so "Marketing" and "marketing" stay one.
       const spelling = new Map<string, string>();
-      for (const l of await tx.budgetLine.findMany({ where: { budgetId, department: { not: null } }, select: { department: true }, orderBy: { sortOrder: "asc" } })) {
-        if (!spelling.has(l.department!.toLowerCase())) spelling.set(l.department!.toLowerCase(), l.department!);
+      for (const l of await tx.budgetLine.findMany({ where: { budgetId, locationCode: { not: null } }, select: { locationCode: true }, orderBy: { sortOrder: "asc" } })) {
+        if (!spelling.has(l.locationCode!.toLowerCase())) spelling.set(l.locationCode!.toLowerCase(), l.locationCode!);
       }
-      const department = (name: string | null) => {
+      const usedBy = (l: { locationCode: string | null; department: string | null }) => {
+        const name = l.locationCode ?? l.department;
         if (!name) return null;
         if (!spelling.has(name.toLowerCase())) spelling.set(name.toLowerCase(), name);
         return spelling.get(name.toLowerCase())!;
       };
-      const common = (l: { reference: string | null; department: string | null; description: string }) => ({
+      const common = (l: { reference: string | null; department: string | null; locationCode: string | null; description: string }) => ({
         budgetId,
         reference: l.reference,
-        department: department(l.department),
+        locationCode: usedBy(l),
         description: l.description,
         sortOrder: ++order,
         createdById: audit.actorUserId ?? null,
@@ -473,7 +474,6 @@ export async function commitBudgetImport(audit: AuditContext, budgetId: string, 
             amount: l.amount,
             months: l.months ?? Prisma.JsonNull,
             notes: l.notes,
-            locationCode: l.locationCode,
           },
         });
         added += 1;
@@ -490,7 +490,6 @@ export async function commitBudgetImport(audit: AuditContext, budgetId: string, 
             priority: l.priority,
             capexType: l.capexType,
             period: l.period,
-            locationCode: l.locationCode,
             justification: l.justification,
           },
         });
@@ -534,32 +533,32 @@ export async function exportBudget(audit: AuditContext, id: string, companyId?: 
   sheet.addRow([`${budget.year} ${budget.kind} budget (USD)${company ? `, ${company}'s share` : ""}${search ? `, lines matching "${search}"` : ""}`]).font = { bold: true, size: 13 };
   sheet.addRow([]);
   if (budget.kind === "OPEX") {
-    const header = sheet.addRow(["Department", "Product or service", "Vendor", "Kind of cost", ...MONTH_NAMES, "Year", "Paid by", "Used by", "Notes"]);
+    const header = sheet.addRow(["Product or service", "Used by", "Vendor", "Kind of cost", ...MONTH_NAMES, "Year", "Paid by", "Notes"]);
     header.font = { bold: true };
     for (const l of lines) {
-      sheet.addRow([l.department, l.description, l.vendor?.name ?? null, l.category, ...l.monthsInView, l.inView, split(l), l.locationCode, l.notes]);
+      sheet.addRow([l.description, l.locationCode, l.vendor?.name ?? null, l.category, ...l.monthsInView, l.inView, split(l), l.notes]);
     }
     const totals = sheet.addRow(["", "Total", "", "", ...byMonth, total]);
     totals.font = { bold: true };
     for (let c = 5; c <= 17; c += 1) sheet.getColumn(c).numFmt = money;
-    sheet.columns.forEach((col, i) => (col.width = i === 1 ? 40 : i >= 4 && i <= 16 ? 12 : i === 17 ? 34 : 18));
+    sheet.columns.forEach((col, i) => (col.width = i === 0 ? 40 : i >= 4 && i <= 16 ? 12 : i === 17 ? 34 : 18));
   } else {
     const header = sheet.addRow([
-      "Ref", "Department", "Item", "Category", "Priority", "CAPEX type", "Needed in", "Quantity", "Unit price", "Associated cost",
-      company ? "Share" : "Total", "Paid by", "Used by", "Reason / justification", "Notes",
+      "Ref", "Item", "Used by", "Category", "Priority", "CAPEX type", "Needed in", "Quantity", "Unit price", "Associated cost",
+      company ? "Share" : "Total", "Paid by", "Reason / justification", "Notes",
     ]);
     header.font = { bold: true };
     for (const l of lines) {
       sheet.addRow([
-        l.reference, l.department, l.description, l.category, l.priority ? PRIORITY_NAMES[l.priority] : null,
+        l.reference, l.description, l.locationCode, l.category, l.priority ? PRIORITY_NAMES[l.priority] : null,
         l.capexType ? CAPEX_TYPE_NAMES[l.capexType] : null, l.period, l.quantity, l.unitPrice, l.associatedCost, l.inView,
-        split(l), l.locationCode, l.justification, l.notes,
+        split(l), l.justification, l.notes,
       ]);
     }
     const totals = sheet.addRow(["", "", "Total", "", "", "", "", "", "", "", total]);
     totals.font = { bold: true };
     for (const c of [9, 10, 11]) sheet.getColumn(c).numFmt = money;
-    sheet.columns.forEach((col, i) => (col.width = i === 2 ? 40 : i === 13 ? 60 : 16));
+    sheet.columns.forEach((col, i) => (col.width = i === 1 ? 40 : i === 12 ? 60 : 16));
   }
   sheet.views = [{ state: "frozen", ySplit: 3 }];
   await recordAudit(audit, {

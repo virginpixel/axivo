@@ -27,7 +27,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: budget ? `${budget.year} ${budget.kind}` : "Budget" };
 }
 
-/** One budget: its lines, each company's share, the months and departments (SDS Doc 25). */
+/** One budget: its lines, each company's share and the months (SDS Doc 25). */
 export default async function BudgetPage({
   params,
   searchParams,
@@ -68,7 +68,7 @@ export default async function BudgetPage({
   const catalogs: BudgetCatalogs = {
     companies,
     vendors,
-    departments: [...new Map(lines.filter((l) => l.department).map((l) => [l.department!.toLowerCase(), l.department!])).values()].sort(),
+    usedBy: [...new Map(lines.filter((l) => l.locationCode).map((l) => [l.locationCode!.toLowerCase(), l.locationCode!])).values()].sort(),
     canCreateVendors: user.permissions.has("settings.manage"),
   };
   const lastShares = lines.length > 0
@@ -171,7 +171,7 @@ export default async function BudgetPage({
       ) : null}
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <LiveSearch placeholder={capex ? "Search item, ref, department" : "Search product, vendor, department"} className="w-full sm:w-72" />
+        <LiveSearch placeholder={capex ? "Search item or ref" : "Search product or vendor"} className="w-full sm:w-72" />
         <CompanyPill href={href({ company: "" })} label="All companies" active={!query.company} />
         {byCompany.map((c) => (
           <CompanyPill key={c.id} href={href({ company: c.id })} label={c.name} active={query.company === c.id} />
@@ -238,7 +238,6 @@ export default async function BudgetPage({
             <TR>
               {capex ? <TH>Ref</TH> : null}
               <TH>Item</TH>
-              <TH>Department</TH>
               {capex ? <TH>Priority</TH> : <TH>Vendor</TH>}
               {capex ? <TH className="text-right">Qty × price</TH> : null}
               <TH className="text-right">{companyName ? "Share" : "Amount"}</TH>
@@ -254,7 +253,7 @@ export default async function BudgetPage({
                   <span className="text-sm font-medium">{l.description}</span>
                   <p className="text-xs text-muted-foreground">
                     {[
-                      l.locationCode ? `Used by ${l.locationCode}` : null,
+                      l.locationCode,
                       l.category,
                       capex && l.capexType ? CAPEX_TYPE_LABELS[l.capexType] : null,
                       capex && l.period ? `Needed ${l.period}` : null,
@@ -263,7 +262,6 @@ export default async function BudgetPage({
                   </p>
                   {capex && l.justification ? <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground" title={l.justification}>{l.justification}</p> : null}
                 </TD>
-                <TD className="text-xs">{l.department ?? ""}</TD>
                 {capex ? (
                   <TD>{l.priority ? <Badge variant={PRIORITY_BADGE[l.priority]}>{PRIORITY_LABELS[l.priority]}</Badge> : null}</TD>
                 ) : (

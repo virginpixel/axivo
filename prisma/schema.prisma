@@ -2743,7 +2743,6 @@ model BudgetLine {
   sortOrder      Int            @default(0) @map("sort_order")
   /// The sheet's reference, e.g. IT-04.
   reference      String?        @map("reference")
-  department     String?        @map("department")
   description    String         @map("description")
   vendorId       String?        @map("vendor_id") @db.Uuid
   /// OPEX: what kind of cost; CAPEX: asset category or group (Hardware, Software...).

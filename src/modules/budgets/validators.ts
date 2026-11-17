@@ -34,7 +34,6 @@ export const allocationSchema = z.object({
 export const lineSchema = z
   .object({
     reference: optionalText(50),
-    department: optionalText(100),
     description: requiredText("Description", 300),
     vendorId: nullableUuid(),
     category: optionalText(100),

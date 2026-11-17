@@ -26,7 +26,7 @@ let cxr: { id: string };
 let hrh: { id: string };
 
 const line = (overrides: Record<string, unknown>) => ({
-  reference: null, department: "IT", description: "Item", vendorId: null, category: null, amount: null, phasing: "EVEN" as const,
+  reference: null, description: "Item", vendorId: null, category: null, amount: null, phasing: "EVEN" as const,
   months: null, quantity: null, unitPrice: null, associatedCost: null, priority: null, capexType: null, period: null,
   locationCode: null, justification: null, notes: null, allocations: [{ companyId: cxr.id, percent: 100 }],
   ...overrides,
@@ -126,9 +126,9 @@ describe("export, search and sample files", () => {
     await book.xlsx.load(buffer as unknown as ArrayBuffer);
     const rows = book.worksheets[0]!.getSheetValues().filter(Boolean) as unknown[][];
     const header = rows[1]!.slice(1);
-    expect(header.slice(0, 6)).toEqual(["Department", "Product or service", "Vendor", "Kind of cost", "Jan", "Feb"]);
+    expect(header.slice(0, 6)).toEqual(["Product or service", "Used by", "Vendor", "Kind of cost", "Jan", "Feb"]);
     // Hard Rock pays 40% of Microsoft 365 (12,000): 400 a month.
-    const m365 = rows.find((r) => r[2] === "Microsoft 365")!.slice(1);
+    const m365 = rows.find((r) => r[1] === "Microsoft 365")!.slice(1);
     expect(m365[4]).toBe(400);
     expect(m365[16]).toBe(4800);
     expect(await db.auditEvent.count({ where: { targetId: opex.id, eventType: "budget.exported" } })).toBe(1);
@@ -165,7 +165,7 @@ describe("export, search and sample files", () => {
 
     const opex = parse.parseOpex(await read("opex"))!;
     expect(opex.lines).toMatchObject([
-      { department: "IT", description: "Microsoft 365", vendor: "Pacific Technologies", locationCode: "All offices", amount: 11000, months: null },
+      { description: "Microsoft 365", vendor: "Pacific Technologies", locationCode: "IT", amount: 11000, months: null },
       { description: "Internet", amount: 185000 },
     ]);
     const capex = parse.parseCapexSheets(await read("capex"))[0]!;

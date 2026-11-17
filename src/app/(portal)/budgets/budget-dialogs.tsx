@@ -25,7 +25,8 @@ type Share = { companyId: string; percent: string };
 export interface BudgetCatalogs {
   companies: { id: string; name: string }[];
   vendors: { id: string; name: string }[];
-  departments: string[];
+  /** Names already used in this budget, offered as you type. */
+  usedBy: string[];
   canCreateVendors: boolean;
 }
 
@@ -204,7 +205,6 @@ function SplitEditor({
 export interface LineRecord {
   id: string;
   reference: string | null;
-  department: string | null;
   description: string;
   vendorId: string | null;
   category: string | null;
@@ -239,7 +239,6 @@ export function LineDialog({
   const [vendors, setVendors] = useState(catalogs.vendors);
   const blank = () => ({
     reference: line?.reference ?? "",
-    department: line?.department ?? "",
     description: line?.description ?? "",
     vendorId: line?.vendorId ?? "",
     category: line?.category ?? "",
@@ -280,7 +279,6 @@ export function LineDialog({
   function submit() {
     const payload = {
       reference: form.reference,
-      department: form.department,
       description: form.description,
       vendorId: form.vendorId || null,
       category: form.category,
@@ -314,7 +312,7 @@ export function LineDialog({
         )}
       </DialogTrigger>
       <DialogContent title={line ? "Edit line" : `Add ${kind} line`} wide>
-        <datalist id="budget-departments">{catalogs.departments.map((d) => <option key={d} value={d} />)}</datalist>
+        <datalist id="budget-used-by">{catalogs.usedBy.map((d) => <option key={d} value={d} />)}</datalist>
         <div className="grid gap-3 sm:grid-cols-6">
           <div className="sm:col-span-4">
             <Label htmlFor="line-description" required>{capex ? "Item" : "Product or service"}</Label>
@@ -326,8 +324,8 @@ export function LineDialog({
             <Input id="line-ref" placeholder={capex ? "IT-01" : ""} value={form.reference} onChange={(e) => set("reference", e.target.value)} />
           </div>
           <div className="sm:col-span-2">
-            <Label htmlFor="line-dept">Department</Label>
-            <Input id="line-dept" list="budget-departments" value={form.department} onChange={(e) => set("department", e.target.value)} />
+            <Label htmlFor="line-location">Used by</Label>
+            <Input id="line-location" list="budget-used-by" placeholder="e.g. IT, HR, Front Office" value={form.locationCode} onChange={(e) => set("locationCode", e.target.value)} />
           </div>
           <div className="sm:col-span-2">
             <Label htmlFor="line-vendor">Vendor</Label>
@@ -452,10 +450,6 @@ export function LineDialog({
             <SplitEditor companies={catalogs.companies} value={form.shares} onChange={(v) => set("shares", v)} error={fieldErrors.allocations} />
           </div>
           <div className="space-y-3 sm:col-span-3">
-            <div>
-              <Label htmlFor="line-location">Used by</Label>
-              <Input id="line-location" placeholder="e.g. HR, Front Office, Warehouse" value={form.locationCode} onChange={(e) => set("locationCode", e.target.value)} />
-            </div>
             <div>
               <Label htmlFor="line-notes">Notes</Label>
               <Textarea id="line-notes" rows={2} value={form.notes} onChange={(e) => set("notes", e.target.value)} />
@@ -599,8 +593,8 @@ export function BudgetImportDialog({ budgetId, kind, companies }: { budgetId: st
         title={`Import ${kind} lines`}
         description={
           kind === "OPEX"
-            ? "The IT OPEX sheet as it is: one row per item, with department, vendor and the twelve months."
-            : "The CAPEX wish list as it is: department sections with Ref#, Description, Priority, Q'ty and Unit Price."
+            ? "The IT OPEX sheet as it is: one row per item, with who uses it, the vendor and the twelve months."
+            : "The CAPEX wish list as it is: sections with Ref#, Description, Priority, Q'ty and Unit Price."
         }
         wide
       >
@@ -644,7 +638,7 @@ export function BudgetImportDialog({ budgetId, kind, companies }: { budgetId: st
                 <thead className="sticky top-0 bg-card text-left text-xs text-muted-foreground">
                   <tr className="border-b">
                     <th className="px-3 py-2 font-medium">Item</th>
-                    <th className="px-3 py-2 font-medium">Department</th>
+                    <th className="px-3 py-2 font-medium">Used by</th>
                     <th className="px-3 py-2 font-medium">{kind === "OPEX" ? "Vendor" : "Category"}</th>
                     <th className="px-3 py-2 text-right font-medium">Amount</th>
                   </tr>
@@ -656,7 +650,7 @@ export function BudgetImportDialog({ budgetId, kind, companies }: { budgetId: st
                         {l.reference && kind === "CAPEX" ? <span className="mr-1.5 font-mono text-xs text-muted-foreground">{l.reference}</span> : null}
                         {l.description}
                       </td>
-                      <td className="px-3 py-1.5 text-xs">{l.department ?? ""}</td>
+                      <td className="px-3 py-1.5 text-xs">{l.usedBy ?? ""}</td>
                       <td className="px-3 py-1.5 text-xs">{(kind === "OPEX" ? l.vendor : l.category) ?? ""}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums">
                         {usd(l.amount, 2)}

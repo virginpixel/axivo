@@ -19,8 +19,7 @@ purchasing or spend tracking; budgets are the plan, not the books.
 
 ## Lines
 - Every line has a description, and may have a reference (IT-04), a
-  department (free text, suggested from the budget's other lines), a
-  vendor (from Settings → Vendors), a category, who uses it (Used by) and
+  vendor (from Settings → Vendors), a category, who uses it (Used by: IT, HR, Front Office; suggested from the budget's other lines) and
   notes.
 - OPEX: the amount for the year, spread evenly over the twelve months
   (in cents, the remainder on the last months so the year adds up), or
@@ -47,10 +46,10 @@ split) or removed, and every step with its reason.
 - Budgets: each year's OPEX and CAPEX with the total, the status and
   each company's share.
 - A budget: the total and each company's share, OPEX totals by month,
-  and the lines, by year or month by month. The department on a line
-  only says whose application or service it is; it is not totalled.
+  and the lines, by year or month by month. Used by only says whose
+  application or service it is; it is not totalled.
   A search box (filtering as you type) finds lines by item, reference,
-  department, vendor, category, used by, justification or note.
+  vendor, category, used by, justification or note.
   Choosing a company shows only the lines it pays for, at its share.
 - Each line has a note icon: pointing at it shows the note, or "No notes
   added".
@@ -61,16 +60,19 @@ split) or removed, and every step with its reason.
 
 ## Import
 - Import lines (draft only) reads the IT OPEX sheet as it is: a
-  description column with twelve month columns, the department in the
-  unnamed column before the description, the vendor in the one after,
-  the yearly total and a remark. Equal months become an even spread;
+  description column with twelve month columns, who uses it (a Used by
+  column, or the department in the unnamed column before the
+  description), the vendor in the column after the description, the
+  yearly total and a remark (kept as the line's note). Equal months
+  become an even spread;
   rows without an amount are listed and left out. Vendors not yet known
   are added to Settings.
-- For CAPEX it reads the wish list as it is: department sections, each
-  with its own heading row (Ref#, Description, Priority Order, Location
-  Code, Asset Category, CAPEX types, Q'ty, Unit Price, Associated Cost,
+- For CAPEX it reads the wish list as it is: sections (such as IT
+  DEPARTMENT), each with its own heading row (Ref#, Description, Priority
+  Order, Location Code or Used by, Asset Category, CAPEX types, Q'ty, Unit Price, Associated Cost,
   Total Amount, Reasons/Justification), and groups such as HARDWARE,
-  which become the category. Totals rows are skipped. When a workbook
+  which become the category. Used by is the Location Code, or the
+  section when the item gives none. Totals rows are skipped. When a workbook
   holds several lists, the newest year is read first and another can be
   chosen. Where a unit price was worked out by division, the sheet's
   total is kept.
