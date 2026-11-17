@@ -156,3 +156,68 @@ export const backupSettingsSchema = z
     hour: z.coerce.number().int().min(0).max(23),
   })
   .strict();
+
+// ---------------------------------------------------------------------------
+// IP & VLAN plan
+// ---------------------------------------------------------------------------
+
+export const IP_PLAN_STATUSES = ["ACTIVE", "RESERVED", "UNUSED"] as const;
+export const IP_PLAN_STATUS_LABELS: Record<(typeof IP_PLAN_STATUSES)[number], string> = {
+  ACTIVE: "Active",
+  RESERVED: "Reserved",
+  UNUSED: "Not in use",
+};
+export const IP_ADDRESS_STATUSES = ["USED", "RESERVED"] as const;
+
+/** An optional IPv4 address that clears the column when emptied. */
+const nullableIpv4 = () =>
+  z
+    .string()
+    .nullish()
+    .transform((value) => {
+      const trimmed = value?.trim();
+      return trimmed ? trimmed : null;
+    })
+    .refine((value) => value === null || IPV4.test(value), { message: "Enter an IPv4 address, e.g. 10.100.100.254." });
+
+export const vlanSchema = z
+  .object({
+    companyId: uuidSchema,
+    number: z.coerce.number({ invalid_type_error: "Enter the VLAN number." }).int().min(1, "VLANs run from 1 to 4094.").max(4094, "VLANs run from 1 to 4094."),
+    name: requiredText("Name", 100),
+    purpose: optionalText(300),
+    status: z.enum(IP_PLAN_STATUSES).default("ACTIVE"),
+    notes: optionalText(),
+  })
+  .strict();
+
+export const subnetSchema = z
+  .object({
+    companyId: uuidSchema,
+    /** "10.100.100.0/24" or "10.100.100.0 255.255.255.0". */
+    cidr: requiredText("Subnet", 50),
+    vlanId: nullableUuid(),
+    gateway: nullableIpv4(),
+    dhcpRelay: optionalText(200),
+    locationId: nullableUuid(),
+    purpose: optionalText(300),
+    status: z.enum(IP_PLAN_STATUSES).default("ACTIVE"),
+    notes: optionalText(),
+  })
+  .strict();
+
+export const ipAddressSchema = z
+  .object({
+    companyId: uuidSchema,
+    address: z.string().trim().refine((value) => IPV4.test(value), { message: "Enter an IPv4 address, e.g. 10.100.100.25." }),
+    status: z.enum(IP_ADDRESS_STATUSES).default("USED"),
+    hostname: optionalText(255),
+    macAddress: optionalText(50),
+    deviceId: nullableUuid(),
+    description: optionalText(500),
+  })
+  .strict();
+
+export type VlanInput = z.infer<typeof vlanSchema>;
+export type SubnetInput = z.infer<typeof subnetSchema>;
+export type IpAddressInput = z.infer<typeof ipAddressSchema>;

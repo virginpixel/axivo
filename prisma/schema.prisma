@@ -365,6 +365,9 @@ model Company {
   notifications           Notification[]
   infraDevices            InfraDevice[]
   credentialSets          CredentialSet[]
+  vlans                   Vlan[]
+  subnets                 Subnet[]
+  ipAddresses             IpAddress[]
 
   @@index([isActive])
   @@map("companies")
@@ -418,6 +421,7 @@ model Location {
   assets                 Asset[]
   departmentsWithDefault Department[]  @relation("department_default_location")
   infraDevices           InfraDevice[]
+  subnets                Subnet[]
 
   @@unique([companyId, name])
   @@index([companyId, isActive])
@@ -2419,6 +2423,7 @@ model InfraDevice {
   host         InfraDevice?             @relation("infra_device_host", fields: [hostDeviceId], references: [id])
   asset        Asset?                   @relation(fields: [assetId], references: [id], onDelete: SetNull)
   configs      InfraConfigBackup[]
+  ipAddresses  IpAddress[]
   guests       InfraDevice[]            @relation("infra_device_host")
   applications InfraDeviceApplication[]
   credentials  InfraDeviceCredential[]
@@ -2560,4 +2565,109 @@ model InfraBackupRun {
 
   @@index([startedAt])
   @@map("infra_backup_runs")
+}
+
+enum IpPlanStatus {
+  ACTIVE
+  RESERVED
+  /// Kept on record but not carried or used.
+  UNUSED
+}
+
+enum IpAddressStatus {
+  USED
+  RESERVED
+}
+
+enum IpRecordSource {
+  MANUAL
+  DISCOVERY
+}
+
+/// One VLAN of a company's network (SDS Doc 24, IP & VLAN plan).
+model Vlan {
+  id          String       @id @default(uuid()) @db.Uuid
+  companyId   String       @map("company_id") @db.Uuid
+  number      Int          @map("number")
+  name        String       @map("name")
+  purpose     String?      @map("purpose")
+  status      IpPlanStatus @default(ACTIVE) @map("status")
+  notes       String?      @map("notes")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  createdById String?      @map("created_by") @db.Uuid
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  updatedById String?      @map("updated_by") @db.Uuid
+
+  company Company  @relation(fields: [companyId], references: [id])
+  subnets Subnet[]
+
+  @@unique([companyId, number])
+  @@map("vlans")
+}
+
+/// An IPv4 subnet. The range is kept as numbers so the addresses inside it
+/// and the subnets it overlaps can be found with a range query.
+model Subnet {
+  id          String         @id @default(uuid()) @db.Uuid
+  companyId   String         @map("company_id") @db.Uuid
+  vlanId      String?        @map("vlan_id") @db.Uuid
+  /// Network address, e.g. 10.100.100.0.
+  network     String         @map("network")
+  prefix      Int            @map("prefix")
+  /// First and last address of the range (network and broadcast), as numbers.
+  rangeStart  BigInt         @map("range_start")
+  rangeEnd    BigInt         @map("range_end")
+  gateway     String?        @map("gateway")
+  dhcpRelay   String?        @map("dhcp_relay")
+  locationId  String?        @map("location_id") @db.Uuid
+  purpose     String?        @map("purpose")
+  status      IpPlanStatus   @default(ACTIVE) @map("status")
+  source      IpRecordSource @default(MANUAL) @map("source")
+  notes       String?        @map("notes")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  createdById String?        @map("created_by") @db.Uuid
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  updatedById String?        @map("updated_by") @db.Uuid
+
+  company  Company   @relation(fields: [companyId], references: [id])
+  vlan     Vlan?     @relation(fields: [vlanId], references: [id], onDelete: SetNull)
+  location Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, network, prefix])
+  @@index([companyId, rangeStart, rangeEnd])
+  @@index([vlanId])
+  @@map("subnets")
+}
+
+/// One IPv4 address in use or held back, per company.
+model IpAddress {
+  id          String          @id @default(uuid()) @db.Uuid
+  companyId   String          @map("company_id") @db.Uuid
+  address     String          @map("address")
+  /// The address as a number, for range queries against subnets.
+  addressNum  BigInt          @map("address_num")
+  status      IpAddressStatus @default(USED) @map("status")
+  /// DNS name or the name it is known by.
+  hostname    String?         @map("hostname")
+  macAddress  String?         @map("mac_address")
+  macVendor   String?         @map("mac_vendor")
+  deviceId    String?         @map("device_id") @db.Uuid
+  /// Where discovery last saw it: switch name and port.
+  switchName  String?         @map("switch_name")
+  switchPort  String?         @map("switch_port")
+  description String?         @map("description")
+  source      IpRecordSource  @default(MANUAL) @map("source")
+  lastSeenAt  DateTime?       @map("last_seen_at")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  createdById String?         @map("created_by") @db.Uuid
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  updatedById String?         @map("updated_by") @db.Uuid
+
+  company Company      @relation(fields: [companyId], references: [id])
+  device  InfraDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, address])
+  @@index([companyId, addressNum])
+  @@index([deviceId])
+  @@map("ip_addresses")
 }

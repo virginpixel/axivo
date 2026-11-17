@@ -260,10 +260,21 @@ the assets issued to people:
     the register can be linked in bulk (same serial number first,
     then same name, else a new asset).
 
-Planned later phases, each in its own release: an IP & VLAN plan
-(sites, VLANs, subnets, address usage), then OPEX and CAPEX budgets in
-USD with company splits. Their scope will be recorded here before they
-are built.
+-   IP & VLAN plan (added 18 November 2026): each company's VLANs
+    (ID 1-4094, name, purpose, status Active / Reserved / Not in use)
+    and IPv4 subnets (network and prefix, gateway, DHCP relay, VLAN,
+    location). Sizes and usable ranges are calculated, never typed.
+    IP addresses are recorded per company as Used or Reserved, with
+    DNS name, MAC address and vendor, the switch and port they were
+    seen on, and the device they belong to. A subnet's page shows a
+    map of its addresses, its usage, any subnet it overlaps and the
+    next free address; any IP can be looked up to find its subnet and
+    VLAN. The discovery workbooks ("VLAN plan" and "Live devices"
+    sheets) import as they are. IPv6 is out of scope for now.
+
+Planned later phases, each in its own release: OPEX and CAPEX budgets
+in USD with company splits. Their scope will be recorded here before
+they are built.
 
 Built-in network discovery remains a future module (Document 01).
 

@@ -15,6 +15,7 @@ import { DeviceDialog, DeviceStatusControl } from "../../device-dialogs";
 import { LinkCredentialDialog, RevealPassword, UnlinkCredentialButton, NoPasswordNote } from "../../credential-dialogs";
 import { LinkDialog, RemoveLinkButton } from "../../link-dialogs";
 import { BackupNowButton, BackupIncludedToggle } from "../../backup-controls";
+import { subnetForAddress } from "@/modules/infrastructure/ipam";
 
 export const dynamic = "force-dynamic";
 
@@ -114,6 +115,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
   const linkOptions = linkTargets.map((d) => ({ id: d.id, name: d.name, hint: [d.type.name, d.ipAddress].filter(Boolean).join(" · ") }));
 
   const isServer = device.kind === "SERVER";
+  const subnet = await subnetForAddress(device.companyId, device.ipAddress);
   const asset = device.asset && !device.asset.deletedAt ? device.asset : null;
   const linkedIds = new Set(device.credentials.map((link) => link.credentialSetId));
   const logins = device.credentials.filter((link) => !link.credentialSet.deletedAt);
@@ -181,6 +183,17 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
               <Row label="Company" value={device.company.name} />
               {device.hostname ? <Row label="Hostname" value={device.hostname} /> : null}
               <Row label="IP address" value={device.ipAddress ? <span className="font-mono">{device.ipAddress}</span> : "None"} />
+              {subnet ? (
+                <Row
+                  label="Subnet"
+                  value={
+                    <Link href={`/infrastructure/ip/subnets/${subnet.id}`} className="hover:underline">
+                      <span className="font-mono">{subnet.network}/{subnet.prefix}</span>
+                      {subnet.vlan ? <span className="block text-xs text-muted-foreground">VLAN {subnet.vlan.number} {subnet.vlan.name}</span> : null}
+                    </Link>
+                  }
+                />
+              ) : null}
               <Row label="Location" value={device.locationId ? locationPath(device.locationId, locations) : "None"} />
               <Row label="Manufacturer" value={device.manufacturer?.name ?? "None"} />
               <Row label="Model" value={device.model ?? "None"} />

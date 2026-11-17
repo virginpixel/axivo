@@ -5,6 +5,7 @@ import { PageHeader } from "@/shared/ui/page";
 import { cn } from "@/shared/utils";
 import { ImportWizard } from "./import-wizard";
 import { ConnectionImport } from "./connection-import";
+import { IpamImport } from "./ipam-import";
 
 export const metadata = { title: "Import" };
 export const dynamic = "force-dynamic";
@@ -14,8 +15,9 @@ export default async function ImportPage({ searchParams }: { searchParams: Promi
   const { user } = await requirePermission("infrastructure.manage");
   const { what } = await searchParams;
   const connections = what === "connections";
+  const ip = what === "ip";
   const isGlobalAdmin = user.systemRoleKey === "SYSTEM_ADMINISTRATOR";
-  const [companies, types] = connections
+  const [companies, types] = connections || ip
     ? [[], []]
     : await Promise.all([
         db.company.findMany({
@@ -32,17 +34,23 @@ export default async function ImportPage({ searchParams }: { searchParams: Promi
   return (
     <div>
       <PageHeader
-        title={connections ? "Import connections" : "Import devices"}
+        title={connections ? "Import connections" : ip ? "Import VLANs and IP addresses" : "Import devices"}
         description={
           connections
             ? "Bring in a neighbour table to draw the topology. You check every cable before anything is saved."
-            : "Bring in a network or server spreadsheet. You check how every row will land before anything is saved."
+            : ip
+              ? "Bring in a VLAN plan and the addresses found on the network. You see what changes before anything is saved."
+              : "Bring in a network or server spreadsheet. You check how every row will land before anything is saved."
         }
       />
       <div className="mb-5 flex w-fit rounded-full border bg-card p-0.5" role="group" aria-label="What to import">
-        {([["devices", "Devices", "/infrastructure/import"], ["connections", "Connections", "/infrastructure/import?what=connections"]] as const).map(
+        {([
+          ["devices", "Devices", "/infrastructure/import"],
+          ["connections", "Connections", "/infrastructure/import?what=connections"],
+          ["ip", "VLANs & IPs", "/infrastructure/import?what=ip"],
+        ] as const).map(
           ([value, label, href]) => {
-            const active = (value === "connections") === connections;
+            const active = value === (connections ? "connections" : ip ? "ip" : "devices");
             return (
               <Link
                 key={value}
@@ -61,6 +69,8 @@ export default async function ImportPage({ searchParams }: { searchParams: Promi
       </div>
       {connections ? (
         <ConnectionImport />
+      ) : ip ? (
+        <IpamImport />
       ) : (
         <ImportWizard
           companies={companies}

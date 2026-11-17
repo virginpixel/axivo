@@ -13,10 +13,12 @@ import { previewImport, commitImport, type ImportPreview, type ImportResult } fr
 import * as topology from "./topology";
 import type { LinkImportPreview, LinkImportResult } from "./topology";
 import * as backups from "./config-backup";
+import * as ipam from "./ipam";
+import type { IpamImportPreview, IpamImportResult } from "./ipam";
 import { planAssetLinks, commitAssetLinks, type AssetLinkRow } from "./asset-link";
 import {
   deviceSchema, deviceTypeSchema, credentialSetSchema, credentialLinkSchema, linkSchema, assetLinkRunSchema,
-  backupSettingsSchema, DEVICE_STATUSES, DEVICE_KINDS, type DeviceInput,
+  backupSettingsSchema, vlanSchema, subnetSchema, ipAddressSchema, DEVICE_STATUSES, DEVICE_KINDS, type DeviceInput,
 } from "./validators";
 
 /** Infrastructure register and credential vault server actions (SDS Doc 24). */
@@ -438,6 +440,102 @@ export async function saveBackupSettingsAction(raw: unknown): Promise<ActionResu
     await backups.saveBackupSettings(scopeOf(context), parse(backupSettingsSchema, raw));
     revalidateInfrastructure();
     return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// IP & VLAN plan
+// ---------------------------------------------------------------------------
+
+function revalidateIpam() {
+  revalidatePath("/infrastructure", "layout");
+}
+
+export async function saveVlanAction(id: string | null, raw: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    const input = parse(vlanSchema, raw);
+    const vlan = id ? await ipam.updateVlan(scopeOf(context), parse(uuidSchema, id), input) : await ipam.createVlan(scopeOf(context), input);
+    revalidateIpam();
+    return ok({ id: vlan.id });
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function deleteVlanAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    await ipam.deleteVlan(scopeOf(context), parse(uuidSchema, id));
+    revalidateIpam();
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function saveSubnetAction(id: string | null, raw: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    const input = parse(subnetSchema, raw);
+    const subnet = id ? await ipam.updateSubnet(scopeOf(context), parse(uuidSchema, id), input) : await ipam.createSubnet(scopeOf(context), input);
+    revalidateIpam();
+    return ok({ id: subnet.id });
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function deleteSubnetAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    await ipam.deleteSubnet(scopeOf(context), parse(uuidSchema, id));
+    revalidateIpam();
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function saveIpAddressAction(id: string | null, raw: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    const record = await ipam.saveIpAddress(scopeOf(context), parse(ipAddressSchema, raw), id ? parse(uuidSchema, id) : undefined);
+    revalidateIpam();
+    return ok({ id: record.id });
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function deleteIpAddressAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    await ipam.deleteIpAddress(scopeOf(context), parse(uuidSchema, id));
+    revalidateIpam();
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function previewIpamImportAction(formData: FormData): Promise<ActionResult<IpamImportPreview>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    return ok(await ipam.previewIpamImport(scopeOf(context), fileFrom(formData)));
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function commitIpamImportAction(formData: FormData): Promise<ActionResult<IpamImportResult>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    const result = await ipam.commitIpamImport(scopeOf(context), fileFrom(formData));
+    revalidateIpam();
+    return ok(result);
   } catch (error) {
     return toActionError(error);
   }
