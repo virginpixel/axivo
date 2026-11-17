@@ -85,9 +85,13 @@ A connection is one cable: a port on one device to a port on another.
   it. Imported cables that a later table no longer shows can be removed,
   on request; cables added by hand are never removed by an import.
 - The Topology page grows a tree from the best-connected switch of each
-  group (the core): its branches go out on both sides of it, and every
-  switch's own branches sit in the column right next to it, so a line
-  never crosses another switch's branch. Each line is labelled with its
+  group (the core): its branches go out on both sides of it, each side a
+  run of names cut so a family (BOH-BLK-C-SW01, SW02, ...) stays on one
+  side. Every switch's children sit in one column right next to it, in
+  name order, so a line never crosses another switch's branch. A switch's
+  cables share one trunk and turn into each child at a right angle, the
+  port label on that last run; a second uplink or a ring is drawn as a
+  curve. Each line is labelled with its
   ports, and every cable is also listed in a table view. Clicking a
   device lists its ports. Another company's device at the far end of a
   visible cable shows only its name.

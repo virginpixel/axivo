@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizePort, portKey, deviceKey, linkKey, pickLinkSheet, mapLinkColumns } from "@/modules/infrastructure/topology-parse";
-import { layoutTopology } from "@/app/(portal)/infrastructure/topology/topology-layout";
+import { layoutTopology, LINK_GAP_LR } from "@/app/(portal)/infrastructure/topology/topology-layout";
 
 describe("topology: ports and names", () => {
   it("spells every port one way", () => {
@@ -96,7 +96,8 @@ describe("topology: layout", () => {
     for (const edge of result.edges) {
       const from = result.positions.get(edge.source)!;
       const to = result.positions.get(edge.target)!;
-      expect(Math.abs(to.x - from.x)).toBe(224 + 150);
+      expect(Math.abs(to.x - from.x)).toBe(224 + LINK_GAP_LR);
+      expect(edge.tree).toBe(true);
     }
     // No two switches overlap.
     const spots = [...result.positions.values()];
@@ -106,5 +107,29 @@ describe("topology: layout", () => {
         expect(apart).toBe(true);
       }
     }
+  });
+
+  it("lists a switch's children in name order and keeps a family on one side of the core", () => {
+    const ids = ["CORE", "NOC-SW03", "NOC-SW01", "NOC-SW02", "ACC-SW01", "BLK-C-SW01", "BLK-C-SW03", "ZED-SW01", "NOC-SW01-A"];
+    const all = ids.map((id) => ({ id, name: id }));
+    const cables = [
+      ...["NOC-SW03", "NOC-SW01", "NOC-SW02", "ACC-SW01", "BLK-C-SW01", "BLK-C-SW03", "ZED-SW01"].map((id, i) => link(String(i), "CORE", id)),
+      // NOC-SW01 feeds another switch; it must not be pulled out of the NOC run.
+      link("x", "NOC-SW01", "NOC-SW01-A"),
+      // A second cable between two children is not part of the tree.
+      link("y", "ACC-SW01", "ZED-SW01"),
+    ];
+    const result = layoutTopology(all, cables, "LR");
+    const at = (id: string) => result.positions.get(id)!;
+    const core = at("CORE");
+    const side = (id: string) => Math.sign(at(id).x - core.x);
+    expect(side("BLK-C-SW01")).toBe(side("BLK-C-SW03"));
+    expect(new Set(["NOC-SW01", "NOC-SW02", "NOC-SW03"].map(side)).size).toBe(1);
+    // Top to bottom in name order within a side.
+    const right = ids.filter((id) => id !== "CORE" && id !== "NOC-SW01-A" && side(id) === 1).sort((a, b) => at(a).y - at(b).y);
+    expect(right).toEqual([...right].sort());
+    const left = ids.filter((id) => id !== "CORE" && id !== "NOC-SW01-A" && side(id) === -1).sort((a, b) => at(a).y - at(b).y);
+    expect(left).toEqual([...left].sort());
+    expect(result.edges.find((e) => e.id === ["ACC-SW01", "ZED-SW01"].sort().join("~"))!.tree).toBe(false);
   });
 });

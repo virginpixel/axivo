@@ -16,7 +16,7 @@ import { Combobox } from "@/shared/ui/combobox";
 import { Input } from "@/shared/ui/input";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
 import { cn } from "@/shared/utils";
-import { layoutTopology, NODE_HEIGHT, NODE_WIDTH, type Direction, type LaidOutEdge } from "./topology-layout";
+import { layoutTopology, NODE_HEIGHT, NODE_WIDTH, TRUNK_OFFSET, type Direction, type LaidOutEdge } from "./topology-layout";
 import { LinkDialog, RemoveLinkButton, type DeviceOption } from "../link-dialogs";
 
 export type MapLink = TopologyLink & { seenLabel: string | null };
@@ -41,6 +41,7 @@ type CableEdgeData = {
   cables: LaidOutEdge["cables"];
   highlight: boolean;
   reversed: boolean;
+  tree: boolean;
   dim: boolean;
   direction: Direction;
   title: string;
@@ -147,22 +148,62 @@ function pointAt(t: number, p0: number, p1: number, p2: number, p3: number) {
   return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3;
 }
 
+/**
+ * A tree cable: out of the parent to its trunk, along the trunk, and a right
+ * angle into the child, corners slightly rounded. Every child of one switch
+ * shares the trunk, so the switch's cabling reads as one tidy bundle.
+ * Written for left-to-right; "up and down" swaps the axes.
+ */
+function trunkRoute(sx: number, sy: number, tx: number, ty: number, way: number, horizontal: boolean) {
+  // Work in (main, cross): main is the direction of growth.
+  const [sm, sc, tm, tc] = horizontal ? [sx, sy, tx, ty] : [sy, sx, ty, tx];
+  const trunk = sm + way * TRUNK_OFFSET;
+  const drop = tc - sc;
+  const pt = (m: number, c: number) => (horizontal ? `${m},${c}` : `${c},${m}`);
+  let path: string;
+  if (Math.abs(drop) < 1) {
+    path = `M${pt(sm, sc)} L${pt(tm, tc)}`;
+  } else {
+    const dir = Math.sign(drop);
+    const r = Math.min(8, Math.abs(drop) / 2);
+    path = [
+      `M${pt(sm, sc)}`,
+      `L${pt(trunk - way * r, sc)}`,
+      `Q${pt(trunk, sc)} ${pt(trunk, sc + dir * r)}`,
+      `L${pt(trunk, tc - dir * r)}`,
+      `Q${pt(trunk, tc)} ${pt(trunk + way * r, tc)}`,
+      `L${pt(tm, tc)}`,
+    ].join(" ");
+  }
+  // The label sits on the short straight run into the child.
+  const labelMain = (trunk + tm) / 2;
+  const [labelX, labelY] = horizontal ? [labelMain, tc] : [tc, labelMain];
+  return { path, labelX, labelY };
+}
+
 function CableEdge({ id, sourceX, sourceY, targetX, targetY, data }: EdgeProps<CableEdgeType>) {
   const zoom = useStore((s) => s.transform[2]);
   if (!data) return null;
   const horizontal = data.direction === "LR";
-  const span = horizontal ? targetX - sourceX : targetY - sourceY;
   // Lines on the core's far side run the other way.
   const way = data.reversed ? -1 : 1;
-  const offset = Math.max(Math.abs(span) / 2, 48) * way;
-  const c1x = horizontal ? sourceX + offset : sourceX;
-  const c1y = horizontal ? sourceY : sourceY + offset;
-  const c2x = horizontal ? targetX - offset : targetX;
-  const c2y = horizontal ? targetY : targetY - offset;
-  const path = `M${sourceX},${sourceY} C${c1x},${c1y} ${c2x},${c2y} ${targetX},${targetY}`;
-  const t = 0.78;
-  const labelX = pointAt(t, sourceX, c1x, c2x, targetX);
-  const labelY = pointAt(t, sourceY, c1y, c2y, targetY);
+  let path: string;
+  let labelX: number;
+  let labelY: number;
+  if (data.tree) {
+    ({ path, labelX, labelY } = trunkRoute(sourceX, sourceY, targetX, targetY, way, horizontal));
+  } else {
+    // A second uplink or a ring: a curve, so it stands apart from the trunks.
+    const span = horizontal ? targetX - sourceX : targetY - sourceY;
+    const offset = Math.max(Math.abs(span) / 2, 48) * way;
+    const c1x = horizontal ? sourceX + offset : sourceX;
+    const c1y = horizontal ? sourceY : sourceY + offset;
+    const c2x = horizontal ? targetX - offset : targetX;
+    const c2y = horizontal ? targetY : targetY - offset;
+    path = `M${sourceX},${sourceY} C${c1x},${c1y} ${c2x},${c2y} ${targetX},${targetY}`;
+    labelX = pointAt(0.78, sourceX, c1x, c2x, targetX);
+    labelY = pointAt(0.78, sourceY, c1y, c2y, targetY);
+  }
   const manual = data.cables.every((c) => c.manual);
   const showLabel = !data.dim && (data.highlight || zoom >= 0.55);
 
@@ -173,7 +214,10 @@ function CableEdge({ id, sourceX, sourceY, targetX, targetY, data }: EdgeProps<C
         path={path}
         interactionWidth={14}
         style={{
-          stroke: data.highlight ? "hsl(var(--primary))" : "hsl(var(--muted-foreground) / 0.5)",
+          // Solid, not see-through: cables sharing a trunk would otherwise darken where they overlap.
+          stroke: data.highlight
+            ? "hsl(var(--primary))"
+            : "color-mix(in srgb, hsl(var(--muted-foreground)) 50%, hsl(var(--background)))",
           strokeWidth: (data.highlight ? 2.25 : 1.35) + (data.cables.length > 1 ? 1 : 0),
           strokeDasharray: manual ? "6 4" : undefined,
           opacity: data.dim ? 0.12 : 1,
@@ -293,6 +337,7 @@ function MapCanvas({
             dim: !!selectedId && !touches,
             direction,
             reversed: edge.reversed,
+            tree: edge.tree,
             title: edge.cables.map((c) => `${s} ${portText(c.sourcePort)} → ${t} ${portText(c.targetPort)}`).join("\n"),
           },
         };

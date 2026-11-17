@@ -2,20 +2,27 @@
  * Lays the switch map out as a tree grown from the best-connected switch of
  * each island (the core).
  *
- * The rule that keeps it readable: a switch's own branches always sit in the
- * column right next to it, so a line never has to cross somebody else's
- * branch to reach its switch. Branches that feed further switches are stacked
- * one under another; switches at the end of the line are packed into a small
- * grid beneath them. The core grows both ways (left and right, or up and
- * down) so the map stays roughly as wide as it is tall. Cables that are not
- * part of the tree (a second uplink, a ring) are drawn too; they just do not
- * shape it.
+ * The rules that keep it readable:
+ *  - a switch's children sit in the column right next to it, in name order
+ *    (SW01, SW02, SW03 top to bottom), each with its own branches beside it,
+ *    so a line never crosses somebody else's branch;
+ *  - the core grows both ways (left and right, or up and down), each side
+ *    taking a run of names, so the map stays about as wide as it is tall;
+ *  - each switch's cables share one trunk and turn into each child at a
+ *    right angle (drawn by the map; positions here leave room for it).
+ * Cables that are not part of the tree (a second uplink, a ring) are drawn
+ * too; they just do not shape it.
  */
 
 export type Direction = "LR" | "TB";
 
 export const NODE_WIDTH = 224;
 export const NODE_HEIGHT = 64;
+/** Space between a switch and its children's column, along the direction of growth. */
+export const LINK_GAP_LR = 190;
+export const LINK_GAP_TB = 110;
+/** Where the shared trunk runs: this far out from the parent. */
+export const TRUNK_OFFSET = 28;
 
 export interface LayoutLink {
   id: string;
@@ -33,6 +40,8 @@ export interface LaidOutEdge {
   target: string;
   /** The target lies left of (or above) the source: the core's second side. */
   reversed: boolean;
+  /** The cable that places the target in the tree: drawn along its parent's trunk. */
+  tree: boolean;
   /** Every cable between the pair, ports given from source to target. */
   cables: { id: string; sourcePort: string | null; targetPort: string | null; manual: boolean }[];
 }
@@ -76,6 +85,7 @@ export function layoutTopology(nodes: { id: string; name: string }[], links: Lay
   // Hops from the core of each island, and the tree that reaches every switch.
   const depth = new Map<string, number>();
   const treeChildren = new Map<string, string[]>();
+  const treeParent = new Map<string, string>();
   const roots: string[] = [];
   const byConnections = [...nodes].sort(
     (x, y) => (neighbours.get(y.id)?.size ?? 0) - (neighbours.get(x.id)?.size ?? 0) || byName(x.id, y.id),
@@ -91,6 +101,7 @@ export function layoutTopology(nodes: { id: string; name: string }[], links: Lay
         if (depth.has(next)) continue;
         depth.set(next, depth.get(current)! + 1);
         treeChildren.set(current, [...(treeChildren.get(current) ?? []), next]);
+        treeParent.set(next, current);
         queue.push(next);
       }
     }
@@ -100,10 +111,11 @@ export function layoutTopology(nodes: { id: string; name: string }[], links: Lay
   const horizontal = direction === "LR";
   const nodeMain = horizontal ? NODE_WIDTH : NODE_HEIGHT;
   const nodeCross = horizontal ? NODE_HEIGHT : NODE_WIDTH;
-  const linkGap = horizontal ? 150 : 96; // parent to its branches: room for the port labels
-  const columnGap = horizontal ? 40 : 40; // between columns of a grid of end switches
-  const crossGap = horizontal ? 16 : 24; // between neighbouring switches
-  const groupGap = horizontal ? 40 : 56; // between one switch's branches and the next's
+  // Parent to its column of children: the trunk, then a straight run into
+  // each child long enough to carry its port label.
+  const linkGap = horizontal ? LINK_GAP_LR : LINK_GAP_TB;
+  const crossGap = horizontal ? 16 : 24; // between neighbouring end switches
+  const groupGap = horizontal ? 36 : 56; // around a switch that feeds others
 
   /** Positions along the main axis, before the core's second side is flipped. */
   const placed = new Map<string, { main: number; cross: number }>();
@@ -113,39 +125,25 @@ export function layoutTopology(nodes: { id: string; name: string }[], links: Lay
     return { main: nodeMain, cross: nodeCross, place: (m, c) => placed.set(id, { main: m, cross: c }) };
   }
 
+  const feeds = (id: string) => (treeChildren.get(id)?.length ?? 0) > 0;
+
   /**
-   * One switch's children as a block: branches stacked, end switches in a
-   * grid below them. Every child starts at the block's near edge.
+   * One switch's children as a single column in name order, each with its
+   * own branches beside it, so SW01, SW02, SW03 always read top to bottom.
    */
   function block(kids: string[]): Box {
-    const branches = kids.filter((kid) => (treeChildren.get(kid)?.length ?? 0) > 0).map(build);
-    const ends = kids.filter((kid) => (treeChildren.get(kid)?.length ?? 0) === 0);
-    // Short lists stay one column; longer ones wrap into a roughly square grid.
-    const columns =
-      ends.length <= 6
-        ? 1
-        : Math.max(1, Math.round(Math.sqrt((ends.length * (nodeCross + crossGap)) / (nodeMain + columnGap))));
-    const rows = Math.ceil(ends.length / Math.max(columns, 1));
-    const gridMain = ends.length === 0 ? 0 : columns * nodeMain + (columns - 1) * columnGap;
-    const gridCross = ends.length === 0 ? 0 : rows * nodeCross + (rows - 1) * crossGap;
-
-    const branchCross =
-      branches.reduce((sum, b) => sum + b.cross, 0) + Math.max(0, branches.length - 1) * groupGap;
-    const between = branches.length > 0 && ends.length > 0 ? groupGap : 0;
+    const ordered = [...kids].sort(byName);
+    const boxes = ordered.map(build);
+    const gapAfter = (index: number) =>
+      index === boxes.length - 1 ? 0 : feeds(ordered[index]!) || feeds(ordered[index + 1]!) ? groupGap : crossGap;
     return {
-      main: Math.max(gridMain, ...branches.map((b) => b.main)),
-      cross: branchCross + between + gridCross,
+      main: Math.max(0, ...boxes.map((b) => b.main)),
+      cross: boxes.reduce((sum, b, index) => sum + b.cross + gapAfter(index), 0),
       place: (m, c) => {
         let offset = c;
-        for (const branch of branches) {
-          branch.place(m, offset);
-          offset += branch.cross + groupGap;
-        }
-        if (branches.length > 0) offset += between - groupGap;
-        ends.forEach((id, index) => {
-          const column = Math.floor(index / rows);
-          const row = index % rows;
-          placed.set(id, { main: m + column * (nodeMain + columnGap), cross: offset + row * (nodeCross + crossGap) });
+        boxes.forEach((box, index) => {
+          box.place(m, offset);
+          offset += box.cross + gapAfter(index);
         });
       },
     };
@@ -174,24 +172,33 @@ export function layoutTopology(nodes: { id: string; name: string }[], links: Lay
     return into;
   }
 
+  /** "BOH-BLK-C-SW03" → "BOH-BLK-C-SW": switches that belong together. */
+  const family = (id: string) => (names.get(id) ?? "").toLowerCase().replace(/[\d\s]+$/, "");
+
   /**
-   * An island: the core with its branches split over both sides, the bigger
-   * ones first so the two sides come out about the same size.
+   * An island: the core with its branches over both sides. Each side takes a
+   * run of names, so the order still reads A to Z (first side, then the
+   * second). The run is cut where the two sides come out about the same
+   * size, but never inside a family such as BOH-BLK-C-SW01, 02, 03.
    */
   function island(root: string): Box {
-    const kids = treeChildren.get(root) ?? [];
+    const kids = [...(treeChildren.get(root) ?? [])].sort(byName);
     if (kids.length < 3) return build(root);
-    const sizes = new Map(kids.map((kid) => [kid, build(kid).cross]));
-    const sides: [string[], string[]] = [[], []];
-    const totals: [number, number] = [0, 0];
-    for (const kid of [...kids].sort((p, q) => sizes.get(q)! - sizes.get(p)! || byName(p, q))) {
-      const side = totals[0] <= totals[1] ? 0 : 1;
-      sides[side].push(kid);
-      totals[side] += sizes.get(kid)! + crossGap;
+    const sizes = kids.map((kid) => build(kid).cross + groupGap);
+    const total = sizes.reduce((a, b) => a + b, 0);
+    let best = { cut: 1, cost: Infinity };
+    let running = 0;
+    for (let cut = 1; cut < kids.length; cut += 1) {
+      running += sizes[cut - 1]!;
+      const splitsFamily = family(kids[cut - 1]!) === family(kids[cut]!);
+      const cost = Math.abs(total - 2 * running) + (splitsFamily ? total : 0);
+      if (cost < best.cost) best = { cut, cost };
     }
-    const near = block(sides[0].sort(byName));
-    const far = block(sides[1].sort(byName));
-    const flipped = sides[1].flatMap((kid) => subtree(kid));
+    const nearKids = kids.slice(0, best.cut);
+    const farKids = kids.slice(best.cut);
+    const near = block(nearKids);
+    const far = block(farKids);
+    const flipped = farKids.flatMap((kid) => subtree(kid));
     const farMain = far.main + linkGap;
     const cross = Math.max(nodeCross, near.cross, far.cross);
     return {
@@ -249,6 +256,7 @@ export function layoutTopology(nodes: { id: string; name: string }[], links: Lay
       source,
       target,
       reversed: to < from,
+      tree: treeParent.get(target) === source,
       cables: group
         .map((link) => ({
           id: link.id,
