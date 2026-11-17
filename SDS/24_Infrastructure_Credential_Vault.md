@@ -169,6 +169,8 @@ A connection is one cable: a port on one device to a port on another.
   addresses outside every known subnet are left out. Re-importing
   renames VLANs and updates subnets to match the file; for an address
   it takes what discovery saw and keeps its status and description.
+  Notes, remarks and discovery's "Known as" column are not imported: they
+  describe the sheet, not the network.
 - Deleting a VLAN keeps its subnets; deleting a subnet keeps the
   addresses recorded in it. Every change, and each import, is audited.
 

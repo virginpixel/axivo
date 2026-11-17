@@ -23,6 +23,8 @@ const PLAN_ALIASES: Record<PlanField, string[]> = {
   dhcpRelay: ["dhcprelay", "helperaddress", "iphelper", "dhcp"],
   status: ["status", "suggested", "inuse"],
   purpose: ["purpose", "use", "usedfor"],
+  // Notes and remarks in a sheet are not imported: they describe the sheet,
+  // not the network. Kept as a field so such a column is recognised and skipped.
   notes: ["notes", "remark", "remarks", "comment", "comments"],
 };
 
@@ -34,9 +36,11 @@ const ADDRESS_ALIASES: Record<AddressField, string[]> = {
   vendor: ["macvendor", "vendor", "manufacturer"],
   switch: ["switch", "seenon", "switchname"],
   port: ["port", "switchport", "interface"],
-  knownAs: ["knownas"],
+  // Recognised so it is never mistaken for another column, but not imported:
+  // discovery's "Known as" and a sheet's notes are remarks about the sheet.
+  knownAs: ["knownas", "notes", "remark", "remarks"],
   status: ["status"],
-  description: ["description", "notes", "remark", "remarks"],
+  description: ["description"],
 };
 
 export interface Sheet<F extends string> {
@@ -168,7 +172,7 @@ export function parsePlanRow(sheet: Sheet<PlanField>, entry: { row: number; cell
       dhcpRelay: relay ? relay.match(/\d{1,3}(?:\.\d{1,3}){3}/g)?.join(", ") ?? null : null,
       status: planStatus(get("status")),
       purpose: get("purpose") || null,
-      notes: get("notes") || null,
+      notes: null,
     },
   };
 }
@@ -192,8 +196,7 @@ export function parseAddressRow(sheet: Sheet<AddressField>, entry: { row: number
   const address = get("ip");
   const addressNum = ipToNumber(address);
   if (addressNum === null) return null;
-  const knownAs = get("knownAs");
-  const description = [knownAs, get("description")].filter(Boolean).join(" · ");
+  const description = get("description");
   return {
     row: entry.row,
     companyText: get("company"),

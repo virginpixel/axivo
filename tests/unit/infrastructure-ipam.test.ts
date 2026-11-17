@@ -86,13 +86,13 @@ describe("VLAN plan and address sheets", () => {
         name: "Live devices",
         rows: [
           ["Site", "IP", "DNS name", "MAC", "MAC vendor", "VLAN", "VLAN name", "Subnet", "Seen by", "Switch", "Port", "Known as"],
-          ["Crossroads", "10.1.110.73", "", "a8:b4:56:f3:32:a8", "Cisco Systems", "90", "AP_BOH", "10.1.110.0/24", "ping + ARP", "MARI-DR12-SW01", "Gi1/0/21", ""],
+          ["Crossroads", "10.1.110.73", "", "a8:b4:56:f3:32:a8", "Cisco Systems", "90", "AP_BOH", "10.1.110.0/24", "ping + ARP", "MARI-DR12-SW01", "Gi1/0/21", "Server in your list: X"],
           ["", "not an ip", "", "", "", "", "", "", "", "", "", ""],
         ],
       },
     ])!;
     expect(sheet.name).toBe("Live devices");
-    expect(parseAddressRow(sheet, sheet.rows[0]!)).toMatchObject({ address: "10.1.110.73", mac: "a8:b4:56:f3:32:a8", vendor: "Cisco Systems", switchName: "MARI-DR12-SW01", switchPort: "Gi1/0/21" });
+    expect(parseAddressRow(sheet, sheet.rows[0]!)).toMatchObject({ address: "10.1.110.73", mac: "a8:b4:56:f3:32:a8", vendor: "Cisco Systems", switchName: "MARI-DR12-SW01", switchPort: "Gi1/0/21", description: null });
     expect(parseAddressRow(sheet, sheet.rows[1]!)).toBeNull();
     expect(firstIp("10.70.99.15 (HRH-FO-SW01)")).toBe("10.70.99.15");
   });
