@@ -66,6 +66,30 @@ Upload an .xlsx or .csv file, review a preview, then import.
 - The file is read again on import, so nothing sensitive is held between
   the two steps.
 
+## Connections and topology
+A connection is one cable: a port on one device to a port on another.
+
+- Ports are stored in one spelling (GigabitEthernet1/0/1 → Gi1/0/1) so a
+  cable typed by hand and the same cable read from CDP agree.
+- A port carries one cable. A cable may go from a device back to itself
+  on two different ports; this records a loop and is shown in red.
+- Connections are added and edited on a device's page or on the
+  Topology page, and need `infrastructure.manage`. A user outside the
+  System Administrator role only connects devices of their own company.
+- Import (Import → Connections) reads a neighbour table: device, local
+  port, neighbour, neighbour port, and optionally the IP addresses and
+  neighbour type. Names are matched first (ignoring the domain suffix),
+  then IP addresses. A cable reported by both switches is recorded once.
+  Rows naming a device that is not in the register are listed and left
+  out. A new cable on a port that already had a different one replaces
+  it. Imported cables that a later table no longer shows can be removed,
+  on request; cables added by hand are never removed by an import.
+- The Topology page draws the devices in tiers by hops from the
+  best-connected switch, labels each line with its ports, and lists every
+  cable in a table view. Clicking a device lists its ports. Another
+  company's device at the far end of a visible cable shows only its name.
+- Deleting a device removes its cables.
+
 ## Permissions
 | Permission | Default roles |
 |---|---|
@@ -77,4 +101,5 @@ Upload an .xlsx or .csv file, review a preview, then import.
 ## Audit
 Device create, update, status change, delete, application links,
 credential set create, update, password change, delete, link, unlink,
-reveal, and each import.
+reveal, connection add, change and remove (on both devices' pages), and
+each import.

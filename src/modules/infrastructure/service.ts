@@ -276,6 +276,8 @@ export async function deleteDevice(scope: Scope, id: string) {
   await db.$transaction(async (tx) => {
     await tx.infraDeviceCredential.deleteMany({ where: { deviceId: id } });
     await tx.infraDeviceApplication.deleteMany({ where: { deviceId: id } });
+    // A cable to a device that is gone would draw a line to nothing.
+    await tx.infraLink.deleteMany({ where: { OR: [{ deviceAId: id }, { deviceBId: id }] } });
     await tx.infraDevice.update({
       where: { id },
       data: { deletedAt: new Date(), deletedById: scope.audit.actorUserId ?? null },

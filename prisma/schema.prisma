@@ -2407,12 +2407,44 @@ model InfraDevice {
   guests       InfraDevice[]            @relation("infra_device_host")
   applications InfraDeviceApplication[]
   credentials  InfraDeviceCredential[]
+  linksA       InfraLink[]              @relation("infra_link_a")
+  linksB       InfraLink[]              @relation("infra_link_b")
 
   @@index([companyId, kind, status])
   @@index([ipAddress])
   @@index([serialNumber])
   @@index([hostDeviceId])
   @@map("infra_devices")
+}
+
+enum InfraLinkSource {
+  MANUAL
+  DISCOVERY
+}
+
+/// A cable between two devices: which port on one goes to which port on the
+/// other. Both ends may be the same device, which records a loop.
+model InfraLink {
+  id          String          @id @default(uuid()) @db.Uuid
+  deviceAId   String          @map("device_a_id") @db.Uuid
+  portA       String?         @map("port_a")
+  deviceBId   String          @map("device_b_id") @db.Uuid
+  portB       String?         @map("port_b")
+  source      InfraLinkSource @default(MANUAL) @map("source")
+  /// When an imported neighbour table last showed this link.
+  lastSeenAt  DateTime?       @map("last_seen_at")
+  notes       String?         @map("notes")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  createdById String?         @map("created_by") @db.Uuid
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  updatedById String?         @map("updated_by") @db.Uuid
+
+  deviceA InfraDevice @relation("infra_link_a", fields: [deviceAId], references: [id], onDelete: Cascade)
+  deviceB InfraDevice @relation("infra_link_b", fields: [deviceBId], references: [id], onDelete: Cascade)
+
+  @@index([deviceAId])
+  @@index([deviceBId])
+  @@map("infra_links")
 }
 
 model InfraDeviceApplication {

@@ -24,7 +24,7 @@ import {
 const MAX_BYTES = 5 * 1024 * 1024;
 const MAX_ROWS = 5000;
 
-async function readSheets(file: File): Promise<{ name: string; rows: string[][] }[]> {
+export async function readSheets(file: File): Promise<{ name: string; rows: string[][] }[]> {
   if (file.size === 0) throw new ValidationError(undefined, { file: "Choose a file to import." });
   if (file.size > MAX_BYTES) throw new ValidationError(undefined, { file: "The file is larger than 5 MB." });
   const buffer = Buffer.from(await file.arrayBuffer());

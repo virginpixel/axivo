@@ -10,8 +10,10 @@ import { parseInput as parse, uuidSchema, optionalText } from "@/shared/validati
 import * as service from "./service";
 import * as vault from "./vault";
 import { previewImport, commitImport, type ImportPreview, type ImportResult } from "./import";
+import * as topology from "./topology";
+import type { LinkImportPreview, LinkImportResult } from "./topology";
 import {
-  deviceSchema, deviceTypeSchema, credentialSetSchema, credentialLinkSchema,
+  deviceSchema, deviceTypeSchema, credentialSetSchema, credentialLinkSchema, linkSchema,
   DEVICE_STATUSES, DEVICE_KINDS,
 } from "./validators";
 
@@ -290,6 +292,64 @@ export async function commitImportAction(formData: FormData): Promise<ActionResu
       throw new BusinessRuleError("Importing logins needs the permission to manage credential sets. Untick it, or ask an administrator.");
     }
     const result = await commitImport(scopeOf(context), fileFrom(formData), options);
+    revalidateInfrastructure();
+    return ok(result);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Connections (topology)
+// ---------------------------------------------------------------------------
+
+export async function createLinkAction(raw: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    const link = await topology.createLink(scopeOf(context), parse(linkSchema, raw));
+    revalidateInfrastructure();
+    return ok({ id: link.id });
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function updateLinkAction(id: string, raw: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    const link = await topology.updateLink(scopeOf(context), parse(uuidSchema, id), parse(linkSchema, raw));
+    revalidateInfrastructure();
+    return ok({ id: link.id });
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function deleteLinkAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    await topology.deleteLink(scopeOf(context), parse(uuidSchema, id));
+    revalidateInfrastructure();
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function previewLinkImportAction(formData: FormData): Promise<ActionResult<LinkImportPreview>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    return ok(await topology.previewLinkImport(scopeOf(context), fileFrom(formData)));
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function commitLinkImportAction(formData: FormData): Promise<ActionResult<LinkImportResult>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    const removeStale = formData.get("removeStale") === "true";
+    const result = await topology.commitLinkImport(scopeOf(context), fileFrom(formData), { removeStale });
     revalidateInfrastructure();
     return ok(result);
   } catch (error) {

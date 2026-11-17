@@ -7,12 +7,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { StatusBadge } from "@/shared/ui/badge";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
 import { DeleteButton } from "@/shared/ui/delete-button";
-import { formatDateTime } from "@/shared/utils";
+import { formatDate, formatDateTime } from "@/shared/utils";
 import { deleteDeviceAction } from "@/modules/infrastructure/actions";
 import { KIND_PATHS } from "@/modules/infrastructure/validators";
 import { loadDeviceCatalogs, locationPath } from "../../catalogs";
 import { DeviceDialog, DeviceStatusControl } from "../../device-dialogs";
 import { LinkCredentialDialog, RevealPassword, UnlinkCredentialButton, NoPasswordNote } from "../../credential-dialogs";
+import { LinkDialog, RemoveLinkButton } from "../../link-dialogs";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
   });
   if (!device) notFound();
 
-  const [catalogs, locations, sameIp, linkableSets, activity] = await Promise.all([
+  const [catalogs, locations, sameIp, linkableSets, activity, cables, linkTargets] = await Promise.all([
     canManage ? loadDeviceCatalogs(user) : null,
     db.location.findMany({ where: { companyId: device.companyId, deletedAt: null }, select: { id: true, name: true, parentId: true } }),
     device.ipAddress
@@ -73,7 +74,35 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
       take: 10,
       select: { id: true, action: true, actorLabel: true, occurredAt: true },
     }),
+    db.infraLink.findMany({
+      where: { OR: [{ deviceAId: device.id }, { deviceBId: device.id }], deviceA: { deletedAt: null }, deviceB: { deletedAt: null } },
+      include: {
+        deviceA: { select: { id: true, name: true, companyId: true } },
+        deviceB: { select: { id: true, name: true, companyId: true } },
+      },
+    }),
+    canManage
+      ? db.infraDevice.findMany({
+          where: { deletedAt: null, ...(isGlobalAdmin ? {} : { companyId: user.companyId }) },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, ipAddress: true, type: { select: { name: true } } },
+        })
+      : [],
   ]);
+  // Each cable from this device's side: its port first, then the far end.
+  const connections = cables
+    .map((link) => {
+      const mine = link.deviceAId === device.id;
+      return {
+        link,
+        port: mine ? link.portA : link.portB,
+        other: mine ? link.deviceB : link.deviceA,
+        otherPort: mine ? link.portB : link.portA,
+        loop: link.deviceAId === link.deviceBId,
+      };
+    })
+    .sort((x, y) => (x.port ?? "").localeCompare(y.port ?? "", undefined, { numeric: true }));
+  const linkOptions = linkTargets.map((d) => ({ id: d.id, name: d.name, hint: [d.type.name, d.ipAddress].filter(Boolean).join(" · ") }));
 
   const isServer = device.kind === "SERVER";
   const linkedIds = new Set(device.credentials.map((link) => link.credentialSetId));
@@ -230,6 +259,75 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
                         ) : null}
                       </TR>
                     ))}
+                  </TBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex-row items-center justify-between gap-3">
+              <CardTitle>Connections</CardTitle>
+              <div className="flex flex-wrap items-center gap-2">
+                {connections.length > 0 ? (
+                  <Link
+                    href={`/infrastructure/topology?focus=${device.id}`}
+                    className="inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium transition-colors hover:border-primary/40 hover:bg-accent"
+                  >
+                    Show on the map
+                  </Link>
+                ) : null}
+                {canManage ? <LinkDialog devices={linkOptions} fixedDeviceId={device.id} /> : null}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {connections.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No cables recorded. Add them here, or import a neighbour table.</p>
+              ) : (
+                <Table>
+                  <THead>
+                    <TR><TH>Port</TH><TH>Connects to</TH><TH>Its port</TH><TH>Recorded</TH>{canManage ? <TH className="text-right">Actions</TH> : null}</TR>
+                  </THead>
+                  <TBody>
+                    {connections.map(({ link, port, other, otherPort, loop }) => {
+                      const ownCompanyOnly = isGlobalAdmin || (link.deviceA.companyId === user.companyId && link.deviceB.companyId === user.companyId);
+                      return (
+                        <TR key={link.id}>
+                          <TD className={loop ? "font-mono text-xs text-destructive" : "font-mono text-xs"}>{port ?? "?"}</TD>
+                          <TD>
+                            {loop ? (
+                              <span className="text-xs font-medium text-destructive">Loop back to this device</span>
+                            ) : isGlobalAdmin || other.companyId === user.companyId ? (
+                              <Link href={`/infrastructure/devices/${other.id}`} className="font-medium hover:underline">{other.name}</Link>
+                            ) : (
+                              <span className="text-muted-foreground">{other.name}</span>
+                            )}
+                          </TD>
+                          <TD className="font-mono text-xs">{otherPort ?? "?"}</TD>
+                          <TD className="text-xs text-muted-foreground">
+                            {link.source === "DISCOVERY" ? `Discovered${link.lastSeenAt ? `, seen ${formatDate(link.lastSeenAt)}` : ""}` : "Added by hand"}
+                          </TD>
+                          {canManage ? (
+                            <TD className="text-right">
+                              {ownCompanyOnly ? (
+                                <div className="flex justify-end">
+                                  <LinkDialog
+                                    devices={linkOptions}
+                                    fixedDeviceId={device.id}
+                                    trigger="icon"
+                                    link={{ id: link.id, deviceAId: link.deviceAId, portA: link.portA, deviceBId: link.deviceBId, portB: link.portB, notes: link.notes }}
+                                  />
+                                  <RemoveLinkButton
+                                    linkId={link.id}
+                                    label={`${device.name} ${port ?? ""} to ${other.name} ${otherPort ?? ""}`.replace(/\s+/g, " ").trim()}
+                                  />
+                                </div>
+                              ) : null}
+                            </TD>
+                          ) : null}
+                        </TR>
+                      );
+                    })}
                   </TBody>
                 </Table>
               )}

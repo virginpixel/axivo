@@ -106,7 +106,19 @@ export const credentialLinkSchema = z
   })
   .strict();
 
+/** A cable between two devices. Both ends may be one device, which records a loop. */
+export const linkSchema = z
+  .object({
+    deviceAId: uuidSchema,
+    portA: optionalText(100),
+    deviceBId: uuidSchema,
+    portB: optionalText(100),
+    notes: optionalText(),
+  })
+  .strict();
+
 export type DeviceInput = z.infer<typeof deviceSchema>;
 export type DeviceTypeInput = z.infer<typeof deviceTypeSchema>;
 export type CredentialSetInput = z.infer<typeof credentialSetSchema>;
 export type CredentialLinkInput = z.infer<typeof credentialLinkSchema>;
+export type LinkInput = z.infer<typeof linkSchema>;

@@ -23,6 +23,7 @@ let db: typeof import("@/shared/db").db;
 let service: typeof import("@/modules/infrastructure/service");
 let vault: typeof import("@/modules/infrastructure/vault");
 let importer: typeof import("@/modules/infrastructure/import");
+let topology: typeof import("@/modules/infrastructure/topology");
 
 const SECRET = "S3cret-Switch-Pass!";
 const audit = { actorLabel: "integration-test" };
@@ -42,14 +43,14 @@ function device(overrides: Record<string, unknown>) {
   };
 }
 
-async function workbook(rows: (string | number)[][]): Promise<File> {
+async function workbook(rows: (string | number)[][], name = "servers.xlsx"): Promise<File> {
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
   wb.addWorksheet("Summary").addRow(["Server list"]);
   const sheet = wb.addWorksheet("Sheet1");
   rows.forEach((row) => sheet.addRow(row));
   const buffer = await wb.xlsx.writeBuffer();
-  return new File([buffer], "servers.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  return new File([buffer], name, { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 }
 
 beforeAll(async () => {
@@ -62,6 +63,7 @@ beforeAll(async () => {
   service = await import("@/modules/infrastructure/service");
   vault = await import("@/modules/infrastructure/vault");
   importer = await import("@/modules/infrastructure/import");
+  topology = await import("@/modules/infrastructure/topology");
   cxr = await db.company.create({ data: { name: "Crossroads" } });
   hrh = await db.company.create({ data: { name: "Hard Rock Hotel" } });
   switchType = await db.infraDeviceType.create({ data: { kind: "NETWORK", name: "Switch" } });
@@ -210,5 +212,100 @@ describe("import", () => {
 
     const all = JSON.stringify(await db.auditEvent.findMany({ include: { fieldChanges: true } }));
     expect(all).not.toContain("Imp0rt-Pass");
+  });
+});
+
+describe("connections", () => {
+  let core: { id: string };
+  let acc1: { id: string };
+  let acc2: { id: string };
+  let hrhCore: { id: string };
+
+  beforeAll(async () => {
+    core = await service.createDevice(admin(), device({ name: "BOH_DC_Core_SW1", ipAddress: "10.100.200.254" }));
+    acc1 = await service.createDevice(admin(), device({ name: "BOH-ADMIN-SW01", ipAddress: "10.100.200.25" }));
+    acc2 = await service.createDevice(admin(), device({ name: "BOH-RES-SW03", hostname: "boh-res-sw03.crossroadsmv.local", ipAddress: "10.100.200.12" }));
+    hrhCore = await service.createDevice(admin(), device({ companyId: hrh.id, name: "HRH-CORE-SW01" }));
+  });
+
+  it("records a cable once per port and checks loops and companies", async () => {
+    const link = await topology.createLink(admin(), {
+      deviceAId: acc1.id, portA: "GigabitEthernet1/1/1", deviceBId: core.id, portB: "te1/0/14", notes: null,
+    });
+    expect(link.portA).toBe("Gi1/1/1");
+    expect(link.portB).toBe("Te1/0/14");
+    // The same core port cannot take a second cable.
+    await expect(
+      topology.createLink(admin(), { deviceAId: acc2.id, portA: "Gi1/1/4", deviceBId: core.id, portB: "Te1/0/14", notes: null }),
+    ).rejects.toThrow(/correct the highlighted/i);
+    // A loop needs two different ports.
+    await expect(
+      topology.createLink(admin(), { deviceAId: acc2.id, portA: "Gi1/0/1", deviceBId: acc2.id, portB: "gi1/0/1", notes: null }),
+    ).rejects.toThrow(/correct the highlighted/i);
+    // Another company's user cannot connect to a Crossroads switch.
+    await expect(
+      topology.createLink(hrhUser(), { deviceAId: hrhCore.id, portA: "Te1/1/1", deviceBId: core.id, portB: "Te1/1/1", notes: null }),
+    ).rejects.toThrow(/correct the highlighted/i);
+    const events = await db.auditEvent.findMany({ where: { eventType: "link.created" } });
+    expect(events.map((e) => e.targetId).sort()).toEqual([acc1.id, core.id].sort());
+  });
+
+  it("imports a neighbour table: merges both ends, records loops, replaces moved cables and lists unknown neighbours", async () => {
+    const header = ["Company", "Switch", "Switch IP", "Local port", "Neighbour type", "Neighbour", "Neighbour IP", "Neighbour platform", "Neighbour port", "Seen via"];
+    const table = [
+      header,
+      // Both ends report the same cable.
+      ["Crossroads", "BOH-RES-SW03", "10.100.200.12", "Gi1/1/1", "Switch", "BOH_DC_Core_SW1", "10.100.200.254", "cisco", "Te1/0/20", "CDP"],
+      ["Crossroads", "BOH_DC_Core_SW1", "10.100.200.254", "TenGigabitEthernet1/0/20", "Switch", "BOH-RES-SW03.crossroadsmv.local", "192.168.0.170", "cisco", "GigabitEthernet1/1/1", "CDP"],
+      // The admin switch's uplink moved from Te1/0/14 to Te1/0/15.
+      ["Crossroads", "BOH-ADMIN-SW01", "10.100.200.25", "Gi1/1/1", "Switch", "BOH_DC_Core_SW1", "10.100.200.254", "cisco", "Te1/0/15", "CDP"],
+      // A loop: the switch hears itself.
+      ["Crossroads", "BOH-RES-SW03", "10.100.200.12", "Gi1/0/13", "Switch", "BOH-RES-SW03", "10.100.200.12", "cisco", "Gi1/0/14", "CDP"],
+      ["Crossroads", "BOH-RES-SW03", "10.100.200.12", "Gi1/0/14", "Switch", "BOH-RES-SW03", "10.100.200.12", "cisco", "Gi1/0/13", "CDP"],
+      // Not in the register.
+      ["Crossroads", "BOH-RES-SW03", "10.100.200.12", "Gi1/0/5", "Access point", "CDM-Bar", "10.100.93.169", "cisco AIR", "Gi0", "CDP"],
+      ["Crossroads", "UNKNOWN-SW", "10.100.200.99", "Gi1/0/1", "Switch", "BOH_DC_Core_SW1", "", "", "Te1/0/30", "CDP"],
+    ];
+    const preview = await topology.previewLinkImport(admin(), await workbook(table, "1 Switches v2.xlsx"));
+    expect(preview.links).toHaveLength(3);
+    const res = preview.links.find((l) => !l.loop && (l.a.id === acc2.id || l.b.id === acc2.id))!;
+    expect(res.seenFromBothEnds).toBe(true);
+    expect(res.outcome).toBe("new");
+    const moved = preview.links.find((l) => l.a.id === acc1.id || l.b.id === acc1.id)!;
+    expect(moved.outcome).toBe("changed");
+    expect(moved.replaces[0]).toMatch(/Te1\/0\/14/);
+    expect(preview.links.filter((l) => l.loop)).toHaveLength(1);
+    expect(preview.unmatched.map((u) => u.name).sort()).toEqual(["CDM-Bar", "UNKNOWN-SW"]);
+
+    const result = await topology.commitLinkImport(admin(), await workbook(table, "1 Switches v2.xlsx"), { removeStale: false });
+    expect(result).toEqual({ created: 3, confirmed: 0, replaced: 1, removed: 0 });
+    const uplink = await db.infraLink.findFirstOrThrow({ where: { OR: [{ deviceAId: acc1.id }, { deviceBId: acc1.id }] } });
+    expect([uplink.portA, uplink.portB].sort()).toEqual(["Gi1/1/1", "Te1/0/15"]);
+    expect(uplink.source).toBe("DISCOVERY");
+
+    // Running it again only confirms what is there.
+    const again = await topology.commitLinkImport(admin(), await workbook(table, "1 Switches v2.xlsx"), { removeStale: false });
+    expect(again).toEqual({ created: 0, confirmed: 3, replaced: 0, removed: 0 });
+
+    // The loop cable is gone from the next table, so it can be removed.
+    const fixed = table.filter((row) => row[3] !== "Gi1/0/13" && row[3] !== "Gi1/0/14");
+    const later = await topology.previewLinkImport(admin(), await workbook(fixed, "later.xlsx"));
+    expect(later.stale).toHaveLength(1);
+    expect(later.stale[0]!.description).toMatch(/^BOH-RES-SW03 Gi1\/0\/1[34] to BOH-RES-SW03 Gi1\/0\/1[34]$/);
+    const cleaned = await topology.commitLinkImport(admin(), await workbook(fixed, "later.xlsx"), { removeStale: true });
+    expect(cleaned.removed).toBe(1);
+    expect(await db.auditEvent.count({ where: { eventType: "link.imported" } })).toBe(3);
+  });
+
+  it("draws only what a company may see, and drops cables with a deleted device", async () => {
+    const all = await topology.loadTopology(admin());
+    expect(all.nodes.map((n) => n.name).sort()).toEqual(["BOH-ADMIN-SW01", "BOH-RES-SW03", "BOH_DC_Core_SW1"]);
+    expect(all.links).toHaveLength(2);
+    const hrhView = await topology.loadTopology(hrhUser());
+    expect(hrhView.links).toHaveLength(0);
+    expect(hrhView.unconnected.map((d) => d.name)).toContain("HRH-CORE-SW01");
+
+    await service.deleteDevice(admin(), acc1.id);
+    expect(await db.infraLink.count({ where: { OR: [{ deviceAId: acc1.id }, { deviceBId: acc1.id }] } })).toBe(0);
   });
 });

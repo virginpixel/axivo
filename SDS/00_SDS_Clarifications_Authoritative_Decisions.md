@@ -234,6 +234,13 @@ the assets issued to people:
 -   Spreadsheet import with a preview step. Logins found in an
     imported sheet are encrypted on the server and grouped into
     credential sets; they are never sent back to the browser.
+-   Connections and a topology map (added 17 November 2026): each
+    cable is recorded as a port on one device to a port on another,
+    typed by hand or imported from a neighbour table (CDP/LLDP, such
+    as the discovery workbook's Neighbours sheet). The map shows which
+    switch connects to which and from which port, and flags a device
+    whose ports lead back to itself (a loop). Importing a neighbour
+    table only reads a file; Axivo does not log in to switches.
 
 Planned later phases, each in its own release: an IP & VLAN plan
 (sites, VLANs, subnets, address usage), then OPEX and CAPEX budgets in
