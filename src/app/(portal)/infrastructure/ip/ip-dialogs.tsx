@@ -238,21 +238,18 @@ export function AddressDialog({
   catalogs,
   companyId,
   record,
-  suggested,
   trigger = "button",
 }: {
   catalogs: IpCatalogs;
   companyId: string;
   record?: { id: string; address: string; status: "USED" | "RESERVED"; hostname: string | null; macAddress: string | null; deviceId: string | null; description: string | null };
-  /** The next free address, offered for a new record. */
-  suggested?: string | null;
-  trigger?: "button" | "icon" | "free";
+  trigger?: "button" | "icon";
 }) {
   const { run, loading, fieldErrors } = useAction();
   const [open, setOpen] = useState(false);
   const blank = () => ({
     companyId,
-    address: record?.address ?? suggested ?? "",
+    address: record?.address ?? "",
     status: record?.status ?? ("USED" as "USED" | "RESERVED"),
     hostname: record?.hostname ?? "",
     macAddress: record?.macAddress ?? "",
@@ -268,8 +265,6 @@ export function AddressDialog({
         <span>
           {trigger === "icon" ? (
             <Button variant="ghost" size="icon" aria-label={`Edit ${record?.address ?? "address"}`}><Pencil className="h-4 w-4" /></Button>
-          ) : trigger === "free" ? (
-            <Button size="sm">Use {suggested}</Button>
           ) : (
             <Button size="sm" variant="outline"><Plus className="h-4 w-4" /> Record an address</Button>
           )}

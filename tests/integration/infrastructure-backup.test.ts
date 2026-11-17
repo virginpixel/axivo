@@ -29,6 +29,8 @@ let runner: typeof import("@/modules/infrastructure/config-runner");
 let ssh: typeof import("@/modules/infrastructure/config-ssh");
 let backups: typeof import("@/modules/infrastructure/config-backup");
 let assetLinks: typeof import("@/modules/infrastructure/asset-link");
+let ipam: typeof import("@/modules/infrastructure/ipam");
+let arp: typeof import("@/modules/infrastructure/arp-runner");
 
 const LOGIN = { username: "netadmin", password: "S3cret-Switch-Pass!" };
 const ENABLE = "En4ble-Pass!";
@@ -105,6 +107,17 @@ function startSwitch(sw: FakeSwitch): Promise<{ port: number; close: () => void 
             else if (command === "show version") stream.write(`\r\n${versionText(sw)}`);
             else if (command === "show inventory") stream.write(`\r\nPID: SG350-28P-K9   VID: V01   SN: ${sw.serial}\r\n`);
             else if (command === "show system") stream.write("\r\nSystem Name: SB\r\n");
+            else if (command === "show ip arp") {
+              stream.write(
+                "\r\nProtocol  Address          Age (min)  Hardware Addr   Type   Interface\r\n" +
+                  "Internet  10.100.35.254           -   0011.2233.4455  ARPA   Vlan50\r\n" +
+                  "Internet  10.100.32.5            12   aabb.cc00.0005  ARPA   Vlan50\r\n" +
+                  "Internet  10.100.32.10            3   aabb.cc00.0010  ARPA   Vlan50\r\n" +
+                  "Internet  10.100.33.7             0   aabb.cc00.0337  ARPA   Vlan50\r\n" +
+                  "Internet  10.100.34.9             0   Incomplete      ARPA\r\n" +
+                  "Internet  10.1.1.1                5   aabb.cc00.0101  ARPA   Vlan1\r\n",
+              );
+            }
             else if (command === "show running-config") {
               if (!enabled) {
                 stream.write("\r\n% Invalid input detected at '^' marker.\r\n");
@@ -169,6 +182,8 @@ const CONFIG = [
   "! Last configuration change at 02:00:01 MVT Mon Nov 17 2026 by netadmin",
   "version 16.12",
   "hostname SW-TEST",
+  "interface Vlan50",
+  " ip address 10.100.35.254 255.255.252.0",
   ...Array.from({ length: 48 }, (_, i) => `interface GigabitEthernet1/0/${i + 1}\n switchport access vlan 10`).join("\n").split("\n"),
   "end",
 ];
@@ -191,6 +206,8 @@ beforeAll(async () => {
   ssh = await import("@/modules/infrastructure/config-ssh");
   backups = await import("@/modules/infrastructure/config-backup");
   assetLinks = await import("@/modules/infrastructure/asset-link");
+  ipam = await import("@/modules/infrastructure/ipam");
+  arp = await import("@/modules/infrastructure/arp-runner");
   cxr = await db.company.create({ data: { name: "Crossroads" } });
   switchType = await db.infraDeviceType.create({ data: { kind: "NETWORK", name: "Switch" } });
   category = await db.assetCategory.create({ data: { name: "Network Switch" } });
@@ -321,6 +338,39 @@ describe("the backup pass", () => {
     });
     expect(await db.infraConfigBackup.count({ where: { deviceId } })).toBe(2);
   });
+});
+
+describe("reading a subnet's ARP table", () => {
+  it("finds the routing switch from its saved configuration and records what the ARP table holds", async () => {
+    const sw = await db.infraDevice.findFirstOrThrow({ where: { name: "SW-TEST" } });
+    // The backup above saved the interfaces it routes.
+    expect(sw.routedNetworks).toEqual(expect.arrayContaining([{ interface: "Vlan50", address: "10.100.35.254", prefix: 22 }]));
+
+    const subnet = await ipam.createSubnet(admin(), {
+      companyId: cxr.id, cidr: "10.100.32.0/22", vlanId: null, gateway: "10.100.35.254", dhcpRelay: null, locationId: null, purpose: null, status: "ACTIVE", notes: null,
+    });
+    expect((await ipam.routingSwitch(subnet))?.name).toBe("SW-TEST");
+    await ipam.setArpScan(admin(), subnet.id, { enabled: true, deviceId: null });
+    // Recorded by hand before: keeps its status, gains what the switch saw.
+    await ipam.saveIpAddress(admin(), { companyId: cxr.id, address: "10.100.32.5", status: "RESERVED", hostname: "nvr", macAddress: null, deviceId: null, description: null });
+
+    const collect = (input: Parameters<typeof ssh.collectArp>[0]) => ssh.collectArp({ ...input, port: iosServer.port, timeoutMs: 30_000 });
+    const totals = await arp.runArpScan({}, collect);
+    expect(totals).toMatchObject({ subnets: 1, found: 3, added: 2, failed: 0 });
+    expect(iosSwitch.commands).toContain("show ip arp");
+
+    const inside = await db.ipAddress.findMany({ where: { companyId: cxr.id, address: { startsWith: "10.100.3" } }, orderBy: { addressNum: "asc" } });
+    // Not the switch's own address, not an incomplete entry, nothing outside the subnet.
+    expect(inside.map((a) => a.address)).toEqual(["10.100.32.5", "10.100.32.10", "10.100.33.7"]);
+    expect(inside[0]).toMatchObject({ status: "RESERVED", hostname: "nvr", macAddress: "aa:bb:cc:00:00:05", source: "MANUAL" });
+    expect(inside[1]).toMatchObject({ status: "USED", macAddress: "aa:bb:cc:00:00:10", source: "DISCOVERY" });
+    expect(inside.every((a) => a.lastSeenAt)).toBe(true);
+    expect(await db.subnet.findUniqueOrThrow({ where: { id: subnet.id } })).toMatchObject({ arpStatus: "OK", arpMessage: "Read from SW-TEST: 3 addresses, 2 new." });
+
+    // A second read adds nothing and removes nothing.
+    expect(await arp.runArpScan({ subnetIds: [subnet.id] }, collect)).toMatchObject({ found: 3, added: 0 });
+    expect(await db.ipAddress.count({ where: { companyId: cxr.id, address: { startsWith: "10.100.3" } } })).toBe(3);
+  }, 60_000);
 });
 
 describe("devices and assets", () => {

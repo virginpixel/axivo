@@ -1,11 +1,13 @@
+import { Prisma } from "@prisma/client";
 import { db } from "@/shared/db";
+import { enqueueConfigBackup } from "@/shared/queue/queue";
 import { recordAudit, diffRecords } from "@/shared/audit/audit";
 import { BusinessRuleError, NotFoundError, ValidationError } from "@/shared/errors";
 import { assertCompanyAccess, companyFilter, type Scope } from "./service";
 import { readSheets } from "./import";
 import { suggestCompany } from "./import-parse";
 import {
-  cidrFromParts, contains, ipToNumber, nextFree, normalizeMac, overlaps, parseCidr, subnetFacts, type Cidr,
+  cidrFromParts, contains, ipToNumber, normalizeMac, overlaps, parseCidr, subnetFacts, type Cidr,
 } from "./ip-math";
 import { parseAddressRow, parsePlanRow, pickAddressSheet, pickPlanSheet, type AddressRow, type PlanRow } from "./ipam-parse";
 import type { IpAddressInput, SubnetInput, VlanInput } from "./validators";
@@ -327,7 +329,7 @@ export async function loadPlan(scope: Scope, companyId?: string) {
   };
 }
 
-/** One subnet: its facts, every address recorded in it, the devices in it, and the next free address. */
+/** One subnet: its facts, every address recorded in it and the devices in it. */
 export async function loadSubnet(scope: Scope, id: string) {
   const subnet = await db.subnet.findUnique({
     where: { id },
@@ -356,17 +358,12 @@ export async function loadSubnet(scope: Scope, id: string) {
     const n = ipToNumber(d.ipAddress!);
     return n !== null && contains(cidr, n);
   });
-  const taken = new Set<number>(addresses.map((a) => Number(a.addressNum)));
-  for (const d of inside) taken.add(ipToNumber(d.ipAddress!)!);
-  if (subnet.gateway) taken.add(ipToNumber(subnet.gateway)!);
   return {
     subnet,
     facts: subnetFacts(subnet.network, subnet.prefix),
     addresses: addresses.map((a) => ({ ...a, addressNum: Number(a.addressNum) })),
     devices: inside,
     overlapping,
-    taken: [...taken].sort((x, y) => x - y),
-    nextFree: nextFree(subnet.network, subnet.prefix, taken),
   };
 }
 
@@ -725,4 +722,73 @@ export async function commitIpamImport(scope: Scope, file: File): Promise<IpamIm
     { timeout: 180_000 },
   );
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// ARP reading
+// ---------------------------------------------------------------------------
+
+/**
+ * The switch that routes a subnet: the one chosen on the subnet, else the
+ * network device whose saved configuration has an interface address inside
+ * it (its gateway), the closest prefix first.
+ */
+export async function routingSwitch(subnet: { companyId: string; rangeStart: bigint; rangeEnd: bigint; prefix: number; arpDeviceId: string | null }) {
+  if (subnet.arpDeviceId) {
+    const chosen = await db.infraDevice.findFirst({ where: { id: subnet.arpDeviceId, deletedAt: null }, select: { id: true, name: true } });
+    if (chosen) return { ...chosen, how: "chosen" as const };
+  }
+  const devices = await db.infraDevice.findMany({
+    where: { companyId: subnet.companyId, kind: "NETWORK", deletedAt: null, routedNetworks: { not: Prisma.DbNull } },
+    select: { id: true, name: true, routedNetworks: true },
+  });
+  const start = Number(subnet.rangeStart);
+  const end = Number(subnet.rangeEnd);
+  let best: { id: string; name: string; distance: number } | null = null;
+  for (const device of devices) {
+    for (const net of (device.routedNetworks as { address: string; prefix: number }[] | null) ?? []) {
+      const n = ipToNumber(net.address);
+      if (n === null || n < start || n > end) continue;
+      const distance = Math.abs(net.prefix - subnet.prefix);
+      if (!best || distance < best.distance) best = { id: device.id, name: device.name, distance };
+    }
+  }
+  return best ? { id: best.id, name: best.name, how: "config" as const } : null;
+}
+
+export async function setArpScan(scope: Scope, subnetId: string, input: { enabled: boolean; deviceId: string | null }) {
+  const subnet = await db.subnet.findUnique({ where: { id: subnetId } });
+  if (!subnet) throw new NotFoundError("Subnet not found.");
+  assertCompanyAccess(scope, subnet.companyId);
+  if (input.deviceId) {
+    const device = await db.infraDevice.findFirst({ where: { id: input.deviceId, companyId: subnet.companyId, kind: "NETWORK", deletedAt: null } });
+    if (!device) throw new ValidationError(undefined, { deviceId: "Choose a network device of this company." });
+  }
+  if (subnet.arpScan === input.enabled && subnet.arpDeviceId === input.deviceId) return;
+  await db.$transaction(async (tx) => {
+    await tx.subnet.update({ where: { id: subnetId }, data: { arpScan: input.enabled, arpDeviceId: input.deviceId, updatedById: scope.audit.actorUserId ?? null } });
+    await recordAudit(
+      { ...scope.audit, companyId: subnet.companyId },
+      {
+        module: MODULE,
+        eventType: "subnet.arp_changed",
+        action: `${input.enabled ? "Turned on" : "Turned off"} the nightly ARP read of ${cidrText(subnet)}`,
+        targetType: "subnet",
+        targetId: subnetId,
+        targetLabel: cidrText(subnet),
+      },
+      tx,
+    );
+  });
+}
+
+/** Ask the worker to read this subnet's ARP table now. */
+export async function requestArpScan(scope: Scope, subnetId: string) {
+  const subnet = await db.subnet.findUnique({ where: { id: subnetId } });
+  if (!subnet) throw new NotFoundError("Subnet not found.");
+  assertCompanyAccess(scope, subnet.companyId);
+  if (!(await routingSwitch(subnet))) {
+    throw new BusinessRuleError("No switch is known to route this subnet yet. Choose one, or back up the core switch first.");
+  }
+  await enqueueConfigBackup({ trigger: "MANUAL", arpSubnetIds: [subnetId], actorUserId: scope.audit.actorUserId ?? null, actorLabel: scope.audit.actorLabel });
 }

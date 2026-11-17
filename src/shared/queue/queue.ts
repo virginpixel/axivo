@@ -19,6 +19,8 @@ export interface ConfigBackupJobPayload {
   trigger: "SCHEDULED" | "MANUAL";
   /** Only these devices; every included device when absent. */
   deviceIds?: string[];
+  /** Read the ARP table for these subnets only, instead of backing up. */
+  arpSubnetIds?: string[];
   actorUserId?: string | null;
   actorLabel?: string;
 }

@@ -91,8 +91,6 @@ describe("VLANs, subnets and addresses", () => {
 
     const detail = await ipam.loadSubnet(admin(), mgmt.subnets[0]!.id);
     expect(detail.devices.map((d) => d.id)).toEqual([device.id]);
-    // .1 recorded, .2 the device, .3 reserved: .4 is next.
-    expect(detail.nextFree).toBe("10.100.100.4");
     expect(detail.addresses[0]).toMatchObject({ macAddress: "aa:bb:cc:dd:ee:01" });
 
     const found = await ipam.lookupIp(admin(), "10.100.100.3");

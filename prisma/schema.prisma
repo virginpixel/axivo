@@ -2410,6 +2410,9 @@ model InfraDevice {
   configCheckedAt DateTime?         @map("config_checked_at")
   configStatus    String?           @map("config_status")
   configError     String?           @map("config_error")
+  /// Addresses the device routes (its VLAN gateways), read from its saved
+  /// configuration: which switch to ask for a subnet's ARP table.
+  routedNetworks  Json?             @map("routed_networks")
   notes           String?           @map("notes")
   createdAt       DateTime          @default(now()) @map("created_at")
   createdById     String?           @map("created_by") @db.Uuid
@@ -2426,6 +2429,7 @@ model InfraDevice {
   asset        Asset?                   @relation(fields: [assetId], references: [id], onDelete: SetNull)
   configs      InfraConfigBackup[]
   ipAddresses  IpAddress[]
+  arpSubnets   Subnet[]                 @relation("subnet_arp_device")
   guests       InfraDevice[]            @relation("infra_device_host")
   applications InfraDeviceApplication[]
   credentials  InfraDeviceCredential[]
@@ -2610,30 +2614,39 @@ model Vlan {
 /// An IPv4 subnet. The range is kept as numbers so the addresses inside it
 /// and the subnets it overlaps can be found with a range query.
 model Subnet {
-  id          String         @id @default(uuid()) @db.Uuid
-  companyId   String         @map("company_id") @db.Uuid
-  vlanId      String?        @map("vlan_id") @db.Uuid
+  id           String         @id @default(uuid()) @db.Uuid
+  companyId    String         @map("company_id") @db.Uuid
+  vlanId       String?        @map("vlan_id") @db.Uuid
   /// Network address, e.g. 10.100.100.0.
-  network     String         @map("network")
-  prefix      Int            @map("prefix")
+  network      String         @map("network")
+  prefix       Int            @map("prefix")
   /// First and last address of the range (network and broadcast), as numbers.
-  rangeStart  BigInt         @map("range_start")
-  rangeEnd    BigInt         @map("range_end")
-  gateway     String?        @map("gateway")
-  dhcpRelay   String?        @map("dhcp_relay")
-  locationId  String?        @map("location_id") @db.Uuid
-  purpose     String?        @map("purpose")
-  status      IpPlanStatus   @default(ACTIVE) @map("status")
-  source      IpRecordSource @default(MANUAL) @map("source")
-  notes       String?        @map("notes")
-  createdAt   DateTime       @default(now()) @map("created_at")
-  createdById String?        @map("created_by") @db.Uuid
-  updatedAt   DateTime       @updatedAt @map("updated_at")
-  updatedById String?        @map("updated_by") @db.Uuid
+  rangeStart   BigInt         @map("range_start")
+  rangeEnd     BigInt         @map("range_end")
+  gateway      String?        @map("gateway")
+  dhcpRelay    String?        @map("dhcp_relay")
+  locationId   String?        @map("location_id") @db.Uuid
+  purpose      String?        @map("purpose")
+  status       IpPlanStatus   @default(ACTIVE) @map("status")
+  source       IpRecordSource @default(MANUAL) @map("source")
+  /// Read the routing switch's ARP table for this subnet each night.
+  arpScan      Boolean        @default(false) @map("arp_scan")
+  /// The switch to read, when it cannot be found from the saved configurations.
+  arpDeviceId  String?        @map("arp_device_id") @db.Uuid
+  /// The last ARP read: when, and what it found or why not.
+  arpCheckedAt DateTime?      @map("arp_checked_at")
+  arpStatus    String?        @map("arp_status")
+  arpMessage   String?        @map("arp_message")
+  notes        String?        @map("notes")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  createdById  String?        @map("created_by") @db.Uuid
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  updatedById  String?        @map("updated_by") @db.Uuid
 
-  company  Company   @relation(fields: [companyId], references: [id])
-  vlan     Vlan?     @relation(fields: [vlanId], references: [id], onDelete: SetNull)
-  location Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  company   Company      @relation(fields: [companyId], references: [id])
+  vlan      Vlan?        @relation(fields: [vlanId], references: [id], onDelete: SetNull)
+  location  Location?    @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  arpDevice InfraDevice? @relation("subnet_arp_device", fields: [arpDeviceId], references: [id], onDelete: SetNull)
 
   @@unique([companyId, network, prefix])
   @@index([companyId, rangeStart, rangeEnd])

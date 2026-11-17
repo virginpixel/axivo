@@ -5,6 +5,7 @@ import {
   type EmailJobPayload, type ConfigBackupJobPayload,
 } from "@/shared/queue/queue";
 import { runConfigBackup } from "@/modules/infrastructure/config-runner";
+import { runArpScan } from "@/modules/infrastructure/arp-runner";
 import { scheduledRunDue } from "@/modules/infrastructure/config-parse";
 import { getBackupSettings } from "@/modules/infrastructure/config-backup";
 import { deliverEmailNotification, queueNotification } from "@/modules/notifications/service";
@@ -398,7 +399,15 @@ async function main(): Promise<void> {
   const configBackupWorker = new Worker<ConfigBackupJobPayload>(
     QUEUE_NAMES.CONFIG_BACKUP,
     async (job) => {
+      if (job.data.arpSubnetIds) {
+        // "Scan now" on a subnet: only its ARP table.
+        await runArpScan({ subnetIds: job.data.arpSubnetIds, actorUserId: job.data.actorUserId, actorLabel: job.data.actorLabel });
+        return;
+      }
       await runConfigBackup(job.data);
+      // Nightly, after the configurations (which say which switch routes
+      // what): the ARP tables of the subnets that have the read turned on.
+      if (job.data.trigger === "SCHEDULED") await runArpScan({});
     },
     { connection, concurrency: 1, lockDuration: 10 * 60_000 },
   );

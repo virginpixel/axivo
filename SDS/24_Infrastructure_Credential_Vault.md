@@ -157,8 +157,22 @@ A connection is one cable: a port on one device to a port on another.
 - The IP & VLANs page lists each VLAN with its subnets and gateway,
   flags subnets that overlap another of the same company, and finds any IP address: the subnets holding it, its record
   and the devices using it. A subnet's page shows its range, a map of
-  every address (up to /22), the next free address and every recorded
-  address, including devices in the register that use one. A device's
+  every address up to /22 (pointing at a square shows its IP and what is
+  known about it) and every recorded address, including devices in the
+  register that use one.
+- ARP reading: each subnet can have "Read the ARP table every night"
+  turned on (off by default), and Scan now reads it at once. The worker
+  logs in to the switch that routes the subnet, with the read-only login
+  of the configuration backup, and runs only `show ip arp` (`show arp` on
+  other families); nothing is sent to the devices. That switch is found
+  from the interface addresses in the saved configurations (kept on each
+  device at every backup), or chosen on the subnet. Each address found is
+  recorded as Used with its MAC address, or has its MAC and "last seen"
+  refreshed; status, name and description stay as they were. Nothing is
+  ever removed. An address found by discovery or an ARP read and not seen
+  for 30 days is shown faded. The nightly read runs right after the
+  configuration backup, at the same hour. Only devices that talk through
+  the gateway appear; the page says so. A device's
   page shows the subnet and VLAN of its IP address.
 - Import → VLANs & IPs reads a VLAN plan (the discovery "VLAN plan"
   sheet, or headings like VLAN, Name, Subnet, Gateway) and an address

@@ -1,9 +1,11 @@
+import type { Prisma } from "@prisma/client";
 import { db } from "@/shared/db";
 import { decryptSecret, encryptSecret, sha256 } from "@/shared/crypto/encryption";
 import { recordAudit, SYSTEM_ACTOR, type AuditContext } from "@/shared/audit/audit";
 import type { ConfigBackupJobPayload } from "@/shared/queue/queue";
 import { collectConfig, CollectError, type CollectInput, type CollectResult } from "./config-ssh";
 import { comparable, diffCounts, looksLikeConfig, parseIdentity, type DeviceIdentity } from "./config-parse";
+import { routedNetworks } from "./arp-parse";
 
 /**
  * The configuration backup pass (SDS Doc 24). Worker-only: it is the one
@@ -153,7 +155,14 @@ async function backupOne(
     }
     await tx.infraDevice.update({
       where: { id: device.id },
-      data: { ...data, configCheckedAt: new Date(), configStatus: "OK", configError: null },
+      data: {
+        ...data,
+        configCheckedAt: new Date(),
+        configStatus: "OK",
+        configError: null,
+        // The addresses it routes: tells the ARP reading which switch to ask for a subnet.
+        routedNetworks: routedNetworks(result.config) as unknown as Prisma.InputJsonValue,
+      },
     });
     if (fieldChanges.length > 0) {
       const serial = fieldChanges.find((change) => change.field === "serialNumber" && change.previousValue);

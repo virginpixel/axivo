@@ -23,6 +23,14 @@ export const PAGING_OFF: Record<ConfigFamily, string> = {
   aoscx: "no page",
 };
 
+/** Reads the ARP table: which IP answered on which MAC, through this switch. */
+export const ARP_COMMAND: Record<ConfigFamily, string> = {
+  ios: "show ip arp",
+  sb: "show arp",
+  procurve: "show arp",
+  aoscx: "show arp",
+};
+
 /** Extra read-only commands each family needs to describe itself. */
 export const IDENTITY_COMMANDS: Record<ConfigFamily, string[]> = {
   ios: ["show inventory"],

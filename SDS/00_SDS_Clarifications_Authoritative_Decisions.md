@@ -267,9 +267,12 @@ the assets issued to people:
     IP addresses are recorded per company as Used or Reserved, with
     DNS name, MAC address and vendor, the switch and port they were
     seen on, and the device they belong to. A subnet's page shows a
-    map of its addresses, any subnet it overlaps and the next free
-    address (subnet usage is not shown: it could not be kept
-    accurate); any IP can be looked up to find its subnet and
+    map of its addresses and any subnet it overlaps (no usage figure
+    and no "next free address": they could not be kept accurate). A
+    subnet can be read nightly, or on demand, from the ARP table of the
+    switch that routes it, read-only like the configuration backup;
+    addresses found are recorded with their MAC address and when last
+    seen, never removed, and shown faded after 30 days unseen; any IP can be looked up to find its subnet and
     VLAN. The discovery workbooks ("VLAN plan" and "Live devices"
     sheets) import as they are. IPv6 is out of scope for now.
 

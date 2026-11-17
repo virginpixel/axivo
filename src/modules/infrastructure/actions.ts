@@ -540,3 +540,25 @@ export async function commitIpamImportAction(formData: FormData): Promise<Action
     return toActionError(error);
   }
 }
+
+export async function setArpScanAction(subnetId: string, raw: unknown): Promise<ActionResult<undefined>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    const input = parse(z.object({ enabled: z.boolean(), deviceId: uuidSchema.nullable() }).strict(), raw);
+    await ipam.setArpScan(scopeOf(context), parse(uuidSchema, subnetId), input);
+    revalidateIpam();
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function requestArpScanAction(subnetId: string): Promise<ActionResult<undefined>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    await ipam.requestArpScan(scopeOf(context), parse(uuidSchema, subnetId));
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}

@@ -1,6 +1,6 @@
 import { Client, type ClientChannel, type ConnectConfig } from "ssh2";
 import {
-  IDENTITY_COMMANDS, PAGING_OFF, cleanConfig, detectFamily, plain, type ConfigFamily,
+  ARP_COMMAND, IDENTITY_COMMANDS, PAGING_OFF, cleanConfig, detectFamily, plain, type ConfigFamily,
 } from "./config-parse";
 
 /**
@@ -186,7 +186,10 @@ function openShell(client: Client): Promise<ClientChannel> {
   });
 }
 
-async function session(input: CollectInput): Promise<CollectResult> {
+/** Read the running configuration, or only the ARP table. */
+type Mode = "config" | "arp";
+
+async function session(input: CollectInput, mode: Mode): Promise<CollectResult> {
   const { client, inSession } = await connect(input);
   try {
     const eol = /^(hp|aruba)/i.test(input.manufacturer ?? "") ? "\r" : "\n";
@@ -247,6 +250,14 @@ async function session(input: CollectInput): Promise<CollectResult> {
     shell.send(PAGING_OFF[family]);
     await shell.read(atPrompt, 8_000);
 
+    if (mode === "arp") {
+      shell.send(ARP_COMMAND[family]);
+      const arp = await shell.read(atPrompt, 60_000, 6000);
+      if (!atPrompt(lastOf(arp))) throw new CollectError("The ARP table did not finish printing in time.");
+      if (!shell.isClosed) shell.send("exit");
+      return { family, prompt, outputs: { "show version": version, arp: plain(arp) }, config: "" };
+    }
+
     const outputs: Record<string, string> = { "show version": version };
     for (const command of IDENTITY_COMMANDS[family]) {
       shell.send(command);
@@ -267,11 +278,20 @@ async function session(input: CollectInput): Promise<CollectResult> {
 
 /** Read one device, giving up after the time limit. */
 export async function collectConfig(input: CollectInput): Promise<CollectResult> {
+  return withLimit(input, "config");
+}
+
+/** Read one routing switch's ARP table (outputs.arp), giving up after the time limit. */
+export async function collectArp(input: CollectInput): Promise<CollectResult> {
+  return withLimit(input, "arp");
+}
+
+async function withLimit(input: CollectInput, mode: Mode): Promise<CollectResult> {
   const limit = input.timeoutMs ?? 180_000;
   let timer: NodeJS.Timeout | undefined;
   try {
     return await Promise.race([
-      session(input),
+      session(input, mode),
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => reject(new CollectError("Gave up: the device took too long to answer.")), limit);
       }),
