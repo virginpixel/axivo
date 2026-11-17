@@ -473,6 +473,7 @@ export async function commitBudgetImport(audit: AuditContext, budgetId: string, 
             amount: l.amount,
             months: l.months ?? Prisma.JsonNull,
             notes: l.notes,
+            locationCode: l.locationCode,
           },
         });
         added += 1;
@@ -533,10 +534,10 @@ export async function exportBudget(audit: AuditContext, id: string, companyId?: 
   sheet.addRow([`${budget.year} ${budget.kind} budget (USD)${company ? `, ${company}'s share` : ""}${search ? `, lines matching "${search}"` : ""}`]).font = { bold: true, size: 13 };
   sheet.addRow([]);
   if (budget.kind === "OPEX") {
-    const header = sheet.addRow(["Department", "Product or service", "Vendor", "Kind of cost", ...MONTH_NAMES, "Year", "Paid by", "Notes"]);
+    const header = sheet.addRow(["Department", "Product or service", "Vendor", "Kind of cost", ...MONTH_NAMES, "Year", "Paid by", "Used by", "Notes"]);
     header.font = { bold: true };
     for (const l of lines) {
-      sheet.addRow([l.department, l.description, l.vendor?.name ?? null, l.category, ...l.monthsInView, l.inView, split(l), l.notes]);
+      sheet.addRow([l.department, l.description, l.vendor?.name ?? null, l.category, ...l.monthsInView, l.inView, split(l), l.locationCode, l.notes]);
     }
     const totals = sheet.addRow(["", "Total", "", "", ...byMonth, total]);
     totals.font = { bold: true };
@@ -545,7 +546,7 @@ export async function exportBudget(audit: AuditContext, id: string, companyId?: 
   } else {
     const header = sheet.addRow([
       "Ref", "Department", "Item", "Category", "Priority", "CAPEX type", "Needed in", "Quantity", "Unit price", "Associated cost",
-      company ? "Share" : "Total", "Paid by", "Location code", "Reason / justification", "Notes",
+      company ? "Share" : "Total", "Paid by", "Used by", "Reason / justification", "Notes",
     ]);
     header.font = { bold: true };
     for (const l of lines) {

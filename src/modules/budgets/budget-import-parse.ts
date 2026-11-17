@@ -15,6 +15,8 @@ export interface OpexRow {
   department: string | null;
   description: string;
   vendor: string | null;
+  /** Who uses it: a department, outlet or place. */
+  locationCode: string | null;
   amount: number;
   /** Null when the twelve months are equal: an even spread. */
   months: number[] | null;
@@ -81,7 +83,8 @@ function opexColumns(header: string[]) {
   const total = find(/total/);
   const remark = find(/remark|note|comment/) >= 0 ? find(/remark|note|comment/) : total >= 0 ? total + 1 : -1;
   const reference = find(/^(#|no\.?|ref.*)$/);
-  return { months, description, department, vendor, total, remark, reference };
+  const usedBy = find(/^used by|location/);
+  return { months, description, department, vendor, total, remark, reference, usedBy };
 }
 
 export function parseOpex(sheets: Sheet[]): Parsed<OpexRow> | null {
@@ -111,6 +114,7 @@ export function parseOpex(sheets: Sheet[]): Parsed<OpexRow> | null {
           department: columns.department >= 0 ? text(cells[columns.department]) : null,
           description,
           vendor: columns.vendor >= 0 ? text(cells[columns.vendor]) : null,
+          locationCode: columns.usedBy >= 0 ? text(cells[columns.usedBy]) : null,
           amount,
           months: monthTotal > 0 && !equal ? months.map(round2) : null,
           notes: columns.remark >= 0 ? text(cells[columns.remark]) : null,
@@ -136,7 +140,7 @@ function capexColumns(header: string[]) {
     reference: find(/^ref/),
     description,
     priority: find(/priority/),
-    location: find(/location/),
+    location: find(/location|^used by/),
     category: find(/category/),
     capexType: find(/capex type|^type/),
     quantity,

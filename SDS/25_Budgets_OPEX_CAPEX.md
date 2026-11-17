@@ -20,7 +20,7 @@ purchasing or spend tracking; budgets are the plan, not the books.
 ## Lines
 - Every line has a description, and may have a reference (IT-04), a
   department (free text, suggested from the budget's other lines), a
-  vendor (from Settings → Vendors), a category, a location code and
+  vendor (from Settings → Vendors), a category, who uses it (Used by) and
   notes.
 - OPEX: the amount for the year, spread evenly over the twelve months
   (in cents, the remainder on the last months so the year adds up), or
@@ -50,7 +50,7 @@ split) or removed, and every step with its reason.
   and the lines, by year or month by month. The department on a line
   only says whose application or service it is; it is not totalled.
   A search box (filtering as you type) finds lines by item, reference,
-  department, vendor, category, location code, justification or note.
+  department, vendor, category, used by, justification or note.
   Choosing a company shows only the lines it pays for, at its share.
 - Each line has a note icon: pointing at it shows the note, or "No notes
   added".

@@ -143,16 +143,17 @@ async function sample(kind: SampleKind): Promise<Sample> {
       return {
         file: "OPEX sample.xlsx",
         sheet: "OPEX",
-        headings: ["#", "Department", "Product Name", "Vendor", ...MONTHS, "Total Amount per Year", "Remark"],
+        headings: ["#", "Department", "Product Name", "Vendor", "Used by", ...MONTHS, "Total Amount per Year", "Remark"],
         rows: [
-          [1, "IT", "Microsoft 365", "Pacific Technologies", ...Array(12).fill(916.67), 11000, "Business Standard licences"],
-          [2, "IT", "Internet", "Dhiraagu", ...Array(11).fill(15000), 20000, 185000, ""],
+          [1, "IT", "Microsoft 365", "Pacific Technologies", "All offices", ...Array(12).fill(916.67), 11000, "Business Standard licences"],
+          [2, "IT", "Internet", "Dhiraagu", "Whole resort", ...Array(11).fill(15000), 20000, 185000, ""],
         ],
         help: [
           ["#", "No", "A reference number."],
           ["Department", "No", "Whose application or service it is."],
           ["Product Name", "Yes", "The product or service."],
           ["Vendor", "No", "Vendors not yet in Settings are added."],
+          ["Used by", "No", "Who uses it: a department, outlet or place, e.g. Front Office."],
           ["January to December", "Yes", "The amount in USD for each month. Equal months become an even spread."],
           ["Total Amount per Year", "No", "Used when given; otherwise the months are added up."],
           ["Remark", "No", "Kept as the line's note."],
@@ -163,7 +164,7 @@ async function sample(kind: SampleKind): Promise<Sample> {
         file: "CAPEX sample.xlsx",
         sheet: "CAPEX",
         before: [["IT DEPARTMENT"]],
-        headings: ["Ref#", "Description", "Priority Order", "Location Code", "Asset Category", "CAPEX types", "Q'ty", "Unit Price", "Associated Cost", "Total Amount", "Required Period", "Reasons/Justification"],
+        headings: ["Ref#", "Description", "Priority Order", "Used by", "Asset Category", "CAPEX types", "Q'ty", "Unit Price", "Associated Cost", "Total Amount", "Required Period", "Reasons/Justification"],
         rows: [
           [null, "HARDWARE"],
           ["IT-01", "UniFi U6-Pro Access Point", "First Priority", "HR", "", "New Operation Enhancement", 5, 400, null, 2000, "Q1", "Reliable Wi-Fi in staff accommodation."],
@@ -175,7 +176,7 @@ async function sample(kind: SampleKind): Promise<Sample> {
           ["Ref#", "No", "e.g. IT-01."],
           ["Description", "Yes", "The item."],
           ["Priority Order", "No", "First Priority, Medium Priority or Wish List."],
-          ["Location Code", "No", "Where the item will be used, e.g. HR, IT, Warehouse."],
+          ["Used by", "No", "Who will use the item, e.g. HR, IT, Warehouse. Your own sheets' Location Code column is read the same way."],
           ["CAPEX types", "No", "Revenue Generating, Cost Saving, Regular Replacement, New Operation Enhancement or Others."],
           ["Q'ty, Unit Price", "Yes", "Quantity and price in USD."],
           ["Associated Cost", "No", "Shipping, installation."],

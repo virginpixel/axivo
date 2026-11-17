@@ -165,12 +165,12 @@ describe("export, search and sample files", () => {
 
     const opex = parse.parseOpex(await read("opex"))!;
     expect(opex.lines).toMatchObject([
-      { department: "IT", description: "Microsoft 365", vendor: "Pacific Technologies", amount: 11000, months: null },
+      { department: "IT", description: "Microsoft 365", vendor: "Pacific Technologies", locationCode: "All offices", amount: 11000, months: null },
       { description: "Internet", amount: 185000 },
     ]);
     const capex = parse.parseCapexSheets(await read("capex"))[0]!;
     expect(capex.lines).toMatchObject([
-      { reference: "IT-01", department: "IT", category: "Hardware", amount: 2000, priority: "FIRST", period: "Q1" },
+      { reference: "IT-01", department: "IT", category: "Hardware", amount: 2000, priority: "FIRST", period: "Q1", locationCode: "HR" },
       { reference: "IT-02", amount: 7400, priority: "MEDIUM", capexType: "REGULAR_REPLACEMENT" },
     ]);
   });

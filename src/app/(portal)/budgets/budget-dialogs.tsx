@@ -453,8 +453,8 @@ export function LineDialog({
           </div>
           <div className="space-y-3 sm:col-span-3">
             <div>
-              <Label htmlFor="line-location">Location code</Label>
-              <Input id="line-location" value={form.locationCode} onChange={(e) => set("locationCode", e.target.value)} />
+              <Label htmlFor="line-location">Used by</Label>
+              <Input id="line-location" placeholder="e.g. HR, Front Office, Warehouse" value={form.locationCode} onChange={(e) => set("locationCode", e.target.value)} />
             </div>
             <div>
               <Label htmlFor="line-notes">Notes</Label>

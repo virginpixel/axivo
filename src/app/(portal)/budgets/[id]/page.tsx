@@ -254,6 +254,7 @@ export default async function BudgetPage({
                   <span className="text-sm font-medium">{l.description}</span>
                   <p className="text-xs text-muted-foreground">
                     {[
+                      l.locationCode ? `Used by ${l.locationCode}` : null,
                       l.category,
                       capex && l.capexType ? CAPEX_TYPE_LABELS[l.capexType] : null,
                       capex && l.period ? `Needed ${l.period}` : null,
