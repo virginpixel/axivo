@@ -84,11 +84,57 @@ A connection is one cable: a port on one device to a port on another.
   out. A new cable on a port that already had a different one replaces
   it. Imported cables that a later table no longer shows can be removed,
   on request; cables added by hand are never removed by an import.
-- The Topology page draws the devices in tiers by hops from the
-  best-connected switch, labels each line with its ports, and lists every
-  cable in a table view. Clicking a device lists its ports. Another
-  company's device at the far end of a visible cable shows only its name.
+- The Topology page grows a tree from the best-connected switch of each
+  group (the core): its branches go out on both sides of it, and every
+  switch's own branches sit in the column right next to it, so a line
+  never crosses another switch's branch. Each line is labelled with its
+  ports, and every cable is also listed in a table view. Clicking a
+  device lists its ports. Another company's device at the far end of a
+  visible cable shows only its name.
 - Deleting a device removes its cables.
+
+## Configuration backups
+- Every night at the hour set on the Config backups page (organisation
+  timezone; default 02:00), the worker backs up each active network
+  device that is included (the default) and has an IP address and an
+  SSH login linked. A device's login is the linked credential set whose
+  purpose is SSH, else the first that is not for a web UI or enable; a
+  set with purpose Enable gives the enable password, else the login's
+  own password is tried.
+- It logs in, enters enable mode when the device starts at `>`, turns
+  paging off, and runs only `show version`, the family's identity
+  command (`show inventory` / `show system`) and `show running-config`.
+  Supported: Cisco IOS and IOS XE, Cisco small business, Aruba/HP
+  ProCurve and ArubaOS-CX. Nothing on the device is ever changed.
+- A new copy is stored, encrypted, only when the configuration differs
+  from the last one, ignoring lines that change by themselves (the last
+  change timestamp, the NTP clock period). Each copy records the lines
+  added and removed and the firmware at the time.
+- Model, serial number, operating system and firmware in the register
+  are set from what the device reports, with the change in the device's
+  history. A changed serial number is flagged as possibly replaced
+  hardware. On the linked asset only empty model and serial fields are
+  filled in.
+- Each device keeps the result of its last attempt (saved, failed with
+  the reason, or not set up). One device failing never stops the others.
+- A user with `infrastructure.manage` may back up one device or all
+  included devices of their company at once, and leave a device out of
+  the nightly run. The schedule needs `settings.manage`.
+- Opening, comparing or downloading a saved configuration needs
+  `infrastructure.configs.view` and is audited on the device.
+
+## Devices and assets
+- A device may be linked to one asset of the same company. The device
+  form can create the asset (name, serial number, manufacturer, model
+  and location copied from the device; category and tag chosen), link
+  an existing one by tag, serial number or name, or unlink it. Creating
+  an asset also needs `assets.manage`.
+- Link to assets (on each register) links every device without an
+  asset: to the unlinked asset with the same serial number, else the
+  same name, else a new asset in a chosen category. It shows the result
+  per device before anything is changed.
+- An asset's page links to its device. Deleting a device leaves its
+  asset in place.
 
 ## Permissions
 | Permission | Default roles |
@@ -97,9 +143,13 @@ A connection is one cable: a port on one device to a port on another.
 | infrastructure.manage | System Admin, IT Admin |
 | infrastructure.credentials.manage | System Admin, IT Admin |
 | infrastructure.credentials.reveal | System Admin |
+| infrastructure.configs.view | System Admin, IT Admin |
 
 ## Audit
 Device create, update, status change, delete, application links,
 credential set create, update, password change, delete, link, unlink,
-reveal, connection add, change and remove (on both devices' pages), and
-each import.
+reveal, connection add, change and remove (on both devices' pages),
+each import, asset link and unlink, each configuration backup run, a
+configuration saved or changed, register fields updated from the
+device, a device included in or left out of the nightly run, and every
+opening, comparison or download of a saved configuration.

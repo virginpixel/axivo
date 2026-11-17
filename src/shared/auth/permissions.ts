@@ -44,6 +44,7 @@ export const PERMISSIONS = {
   "infrastructure.manage": "Create and edit network devices and servers, and import them",
   "infrastructure.credentials.manage": "Create credential sets, set passwords and link them to devices",
   "infrastructure.credentials.reveal": "Reveal stored passwords (every reveal is audited)",
+  "infrastructure.configs.view": "View and download saved device configurations (they hold keys and password hashes; every view is audited)",
 
   // Forms
   "forms.view": "View forms",
@@ -113,6 +114,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "infrastructure.view",
     "infrastructure.manage",
     "infrastructure.credentials.manage",
+    "infrastructure.configs.view",
     "forms.view",
     "forms.manage",
     "workflows.view",

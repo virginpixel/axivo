@@ -1072,6 +1072,7 @@ model Asset {
   maintenance AssetMaintenance[]
   checkouts   AssetCheckout[]
   disposal    AssetDisposal?
+  infraDevice InfraDevice?
 
   @@unique([companyId, assetTag])
   @@index([companyId, status])
@@ -2391,6 +2392,15 @@ model InfraDevice {
   status          InfraDeviceStatus @default(ACTIVE) @map("status")
   /// The host a virtual machine runs on.
   hostDeviceId    String?           @map("host_device_id") @db.Uuid
+  /// The asset record for the same box: purchase, warranty and disposal live
+  /// there, how it is wired and configured lives here.
+  assetId         String?           @unique @map("asset_id") @db.Uuid
+  /// Include in the nightly configuration backup.
+  configBackup    Boolean           @default(true) @map("config_backup")
+  /// Last backup attempt, whether it worked, and why not.
+  configCheckedAt DateTime?         @map("config_checked_at")
+  configStatus    String?           @map("config_status")
+  configError     String?           @map("config_error")
   notes           String?           @map("notes")
   createdAt       DateTime          @default(now()) @map("created_at")
   createdById     String?           @map("created_by") @db.Uuid
@@ -2404,6 +2414,8 @@ model InfraDevice {
   location     Location?                @relation(fields: [locationId], references: [id])
   manufacturer Manufacturer?            @relation(fields: [manufacturerId], references: [id])
   host         InfraDevice?             @relation("infra_device_host", fields: [hostDeviceId], references: [id])
+  asset        Asset?                   @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  configs      InfraConfigBackup[]
   guests       InfraDevice[]            @relation("infra_device_host")
   applications InfraDeviceApplication[]
   credentials  InfraDeviceCredential[]
@@ -2502,4 +2514,47 @@ model InfraDeviceCredential {
   @@unique([deviceId, credentialSetId])
   @@index([credentialSetId])
   @@map("infra_device_credentials")
+}
+
+/// One saved running configuration. A new row is written only when the
+/// configuration differs from the device's last one, so the list is the
+/// device's change history.
+model InfraConfigBackup {
+  id                String   @id @default(uuid()) @db.Uuid
+  deviceId          String   @map("device_id") @db.Uuid
+  takenAt           DateTime @default(now()) @map("taken_at")
+  /// AES-256-GCM ciphertext: configurations hold keys and password hashes.
+  contentCiphertext String   @map("content_ciphertext")
+  /// SHA-256 of the configuration without its timestamps, to spot changes.
+  contentHash       String   @map("content_hash")
+  lineCount         Int      @map("line_count")
+  /// Lines added and removed against the previous version (0 for the first).
+  linesAdded        Int      @default(0) @map("lines_added")
+  linesRemoved      Int      @default(0) @map("lines_removed")
+  /// What the device reported when this copy was taken.
+  firmware          String?  @map("firmware")
+  createdById       String?  @map("created_by") @db.Uuid
+
+  device InfraDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, takenAt])
+  @@map("infra_config_backups")
+}
+
+/// One pass of the configuration backup, nightly or started by hand.
+model InfraBackupRun {
+  id          String    @id @default(uuid()) @db.Uuid
+  trigger     String    @map("trigger")
+  startedAt   DateTime  @default(now()) @map("started_at")
+  finishedAt  DateTime? @map("finished_at")
+  devices     Int       @default(0) @map("devices")
+  unchanged   Int       @default(0) @map("unchanged")
+  changed     Int       @default(0) @map("changed")
+  failed      Int       @default(0) @map("failed")
+  /// Devices with no IP address or no login linked: nothing was tried.
+  skipped     Int       @default(0) @map("skipped")
+  createdById String?   @map("created_by") @db.Uuid
+
+  @@index([startedAt])
+  @@map("infra_backup_runs")
 }

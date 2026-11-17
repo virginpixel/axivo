@@ -8,6 +8,7 @@ export default async function InfrastructureLayout({ children }: { children: Rea
     { href: "/infrastructure/network", label: "Network devices" },
     { href: "/infrastructure/servers", label: "Servers & hosts" },
     { href: "/infrastructure/topology", label: "Topology" },
+    { href: "/infrastructure/backups", label: "Config backups" },
     { href: "/infrastructure/credentials", label: "Credential vault" },
     ...(user.permissions.has("infrastructure.manage") ? [{ href: "/infrastructure/import", label: "Import" }] : []),
   ];

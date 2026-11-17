@@ -8,7 +8,7 @@ import {
   setDeviceStatusAction,
   quickCreateManufacturerIdAction,
 } from "@/modules/infrastructure/actions";
-import { DEVICE_STATUSES, type DeviceKind, type DeviceStatus } from "@/modules/infrastructure/validators";
+import { DEVICE_STATUSES, type AssetMode, type DeviceKind, type DeviceStatus } from "@/modules/infrastructure/validators";
 import { useAction } from "@/shared/ui/use-action";
 import { useToast } from "@/shared/ui/toast";
 import { Button } from "@/shared/ui/button";
@@ -25,6 +25,9 @@ export interface DeviceCatalogs {
   manufacturers: { id: string; name: string }[];
   hosts: { id: string; name: string; companyId: string }[];
   applications: { id: string; name: string; companyId: string; isShared: boolean }[];
+  assetCategories: { id: string; name: string }[];
+  /** Creating an asset needs the asset register's own right. */
+  canCreateAssets: boolean;
 }
 
 export interface DeviceRecord {
@@ -46,6 +49,14 @@ export interface DeviceRecord {
   hostDeviceId: string | null;
   notes: string | null;
   applicationIds: string[];
+  /** The linked asset, as "Name (TAG)". */
+  assetLabel: string | null;
+}
+
+/** A category that looks like it is meant for this kind of device, to save a click. */
+function likelyCategory(catalogs: DeviceCatalogs, kind: DeviceKind) {
+  const pattern = kind === "NETWORK" ? /network|switch|router|firewall/i : /server|host/i;
+  return catalogs.assetCategories.find((category) => pattern.test(category.name))?.id ?? "";
 }
 
 function emptyForm(kind: DeviceKind, catalogs: DeviceCatalogs, device?: DeviceRecord) {
@@ -68,6 +79,10 @@ function emptyForm(kind: DeviceKind, catalogs: DeviceCatalogs, device?: DeviceRe
     hostDeviceId: device?.hostDeviceId ?? "",
     notes: device?.notes ?? "",
     applicationIds: device?.applicationIds ?? [],
+    // A new device gets its asset by default; an existing one keeps what it has.
+    assetMode: (device ? "keep" : catalogs.canCreateAssets && catalogs.assetCategories.length > 0 ? "create" : "none") as AssetMode,
+    assetCategoryId: likelyCategory(catalogs, kind),
+    assetLookup: "",
   };
 }
 
@@ -103,7 +118,12 @@ export function DeviceDialog({
   }
 
   async function submit() {
-    const payload = { ...form, applicationIds: isServer ? form.applicationIds : [] };
+    const payload = {
+      ...form,
+      applicationIds: isServer ? form.applicationIds : [],
+      // "No asset" on a device that never had one changes nothing.
+      assetMode: form.assetMode === "none" && !device?.assetLabel ? "keep" : form.assetMode,
+    };
     await run(() => (device ? updateDeviceAction(device.id, payload) : createDeviceAction(payload)), {
       successMessage: device ? "Saved." : `Added the ${noun}.`,
       onSuccess: () => setOpen(false),
@@ -266,6 +286,7 @@ export function DeviceDialog({
             <Label htmlFor="dev-notes">Notes</Label>
             <Textarea id="dev-notes" rows={3} value={form.notes} onChange={(e) => set("notes", e.target.value)} />
           </div>
+          <AssetChoice form={form} set={set} catalogs={catalogs} linked={device?.assetLabel ?? null} errors={fieldErrors} />
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
@@ -273,6 +294,84 @@ export function DeviceDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+type DeviceForm = ReturnType<typeof emptyForm>;
+
+/** The asset part of the device form: create one, link one, or none. */
+function AssetChoice({
+  form,
+  set,
+  catalogs,
+  linked,
+  errors,
+}: {
+  form: DeviceForm;
+  set: <K extends keyof DeviceForm>(key: K, value: DeviceForm[K]) => void;
+  catalogs: DeviceCatalogs;
+  linked: string | null;
+  errors: Record<string, string | undefined>;
+}) {
+  const choices: { mode: AssetMode; label: string }[] = [
+    ...(linked ? [{ mode: "keep" as const, label: "Keep it" }] : []),
+    ...(catalogs.canCreateAssets ? [{ mode: "create" as const, label: "Create a new asset" }] : []),
+    { mode: "link", label: linked ? "Link a different asset" : "Link an existing asset" },
+    { mode: "none", label: linked ? "Unlink" : "No asset" },
+  ];
+  const mode = !linked && form.assetMode === "keep" ? "none" : form.assetMode;
+  return (
+    <fieldset className="rounded-xl border p-3 sm:col-span-2">
+      <legend className="px-1 text-sm font-medium">Asset</legend>
+      <p className="mb-2 text-xs text-muted-foreground">
+        {linked ? <>Linked to <span className="font-medium text-foreground">{linked}</span>. </> : null}
+        The asset register keeps the tag, purchase and warranty. This record keeps how it is wired and set up.
+      </p>
+      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Asset">
+        {choices.map((choice) => (
+          <button
+            key={choice.mode}
+            type="button"
+            role="radio"
+            aria-checked={mode === choice.mode}
+            onClick={() => set("assetMode", choice.mode)}
+            className={
+              mode === choice.mode
+                ? "rounded-full border border-primary bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
+                : "rounded-full border px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            }
+          >
+            {choice.label}
+          </button>
+        ))}
+      </div>
+      {mode === "create" ? (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="dev-asset-category" required>Asset category</Label>
+            <Select id="dev-asset-category" value={form.assetCategoryId} onChange={(e) => set("assetCategoryId", e.target.value)}>
+              <option value="" disabled>Select category</option>
+              {catalogs.assetCategories.map((category) => (
+                <option key={category.id} value={category.id}>{category.name}</option>
+              ))}
+            </Select>
+            <FieldError message={errors.assetCategoryId} />
+          </div>
+          <div>
+            <Label htmlFor="dev-asset-tag">Asset tag</Label>
+            <Input id="dev-asset-tag" value={form.assetLookup} onChange={(e) => set("assetLookup", e.target.value)} />
+            <HelperText>Optional. Name, serial, model and location are taken from this form.</HelperText>
+            <FieldError message={errors.assetLookup} />
+          </div>
+        </div>
+      ) : mode === "link" ? (
+        <div className="mt-3">
+          <Label htmlFor="dev-asset-lookup" required>Asset tag, serial number or name</Label>
+          <Input id="dev-asset-lookup" value={form.assetLookup} onChange={(e) => set("assetLookup", e.target.value)} />
+          <FieldError message={errors.assetLookup} />
+        </div>
+      ) : null}
+    </fieldset>
   );
 }
 

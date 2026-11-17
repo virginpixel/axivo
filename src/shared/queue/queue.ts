@@ -11,7 +11,17 @@ import { env } from "@/shared/env";
 export const QUEUE_NAMES = {
   EMAIL: "axivo-email",
   MAINTENANCE: "axivo-maintenance",
+  /** Configuration backups: one run at a time, so two never log in at once. */
+  CONFIG_BACKUP: "axivo-config-backup",
 } as const;
+
+export interface ConfigBackupJobPayload {
+  trigger: "SCHEDULED" | "MANUAL";
+  /** Only these devices; every included device when absent. */
+  deviceIds?: string[];
+  actorUserId?: string | null;
+  actorLabel?: string;
+}
 
 export interface EmailJobPayload {
   notificationId: string;
@@ -84,4 +94,26 @@ export async function enqueueEmail(notificationId: string): Promise<void> {
   } catch (error) {
     console.error("[axivo] Failed to enqueue email job (will be retried by sweep):", error);
   }
+}
+
+let configBackupQueue: Queue | null = null;
+
+export function getConfigBackupQueue(): Queue {
+  if (!configBackupQueue) {
+    configBackupQueue = new Queue(QUEUE_NAMES.CONFIG_BACKUP, {
+      connection: redisConnection(),
+      defaultJobOptions: {
+        // A failed device is recorded on the device; a retry of the whole run
+        // would only log in to every switch a second time.
+        attempts: 1,
+        removeOnComplete: { age: 7 * 24 * 3600, count: 500 },
+        removeOnFail: { age: 7 * 24 * 3600 },
+      },
+    });
+  }
+  return configBackupQueue;
+}
+
+export async function enqueueConfigBackup(payload: ConfigBackupJobPayload): Promise<void> {
+  await getConfigBackupQueue().add(payload.trigger === "SCHEDULED" ? "scheduled" : "manual", payload);
 }

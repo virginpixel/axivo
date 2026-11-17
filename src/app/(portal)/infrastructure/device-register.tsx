@@ -11,6 +11,7 @@ import { DEVICE_STATUSES, KIND_PATHS, type DeviceKind, type DeviceStatus } from 
 import type { Prisma } from "@prisma/client";
 import { loadDeviceCatalogs, locationPath } from "./catalogs";
 import { DeviceDialog } from "./device-dialogs";
+import { AssetLinkDialog } from "./asset-link-dialog";
 
 export interface RegisterParams {
   q?: string;
@@ -75,6 +76,7 @@ export async function DeviceRegister({
         manufacturer: { select: { name: true } },
         host: { select: { id: true, name: true } },
         applications: { select: { applicationId: true } },
+        asset: { select: { id: true, name: true, assetTag: true } },
         _count: { select: { credentials: true } },
       },
     }),
@@ -102,7 +104,14 @@ export async function DeviceRegister({
             ? "Physical servers, virtual machines, storage and appliances, with the applications they run and the logins that manage them."
             : "Switches, firewalls, routers and wireless controllers, with their firmware and the logins that manage them."
         }
-        actions={canManage ? <DeviceDialog kind={kind} catalogs={catalogs} /> : undefined}
+        actions={
+          canManage ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <AssetLinkDialog kind={kind} categories={catalogs.canCreateAssets ? catalogs.assetCategories : []} />
+              <DeviceDialog kind={kind} catalogs={catalogs} />
+            </div>
+          ) : undefined
+        }
       />
 
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-3">
@@ -175,6 +184,11 @@ export async function DeviceRegister({
                     {device.name}
                   </Link>
                   {device.hostname ? <p className="max-w-56 truncate text-xs text-muted-foreground">{device.hostname}</p> : null}
+                  {device.asset ? (
+                    <Link href={`/assets/${device.asset.id}`} className="block max-w-56 truncate text-xs text-muted-foreground hover:underline">
+                      Asset {device.asset.assetTag ?? device.asset.name}
+                    </Link>
+                  ) : null}
                 </TD>
                 <TD>{device.type.name}</TD>
                 <TD className="font-mono text-xs tabular-nums">{device.ipAddress ?? "None"}</TD>
@@ -231,6 +245,7 @@ export async function DeviceRegister({
                         hostDeviceId: device.hostDeviceId,
                         notes: device.notes,
                         applicationIds: device.applications.map((link) => link.applicationId),
+                        assetLabel: device.asset ? (device.asset.assetTag ? `${device.asset.name} (${device.asset.assetTag})` : device.asset.name) : null,
                       }}
                     />
                   </TD>

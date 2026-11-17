@@ -54,6 +54,10 @@ export const SETTING_KEYS = {
   CONTRACT_ALERT_EMAILS: "contracts.alertEmails",
   LICENSE_ALERT_EMAILS: "licenses.alertEmails",
 
+  // Infrastructure (Doc 24)
+  /** Nightly configuration backup of network devices: on/off and the hour. */
+  CONFIG_BACKUP: "infrastructure.configBackup",
+
   // System
   MAINTENANCE_MODE: "system.maintenanceMode",
   GENERAL: "system.general",
@@ -95,6 +99,7 @@ const DEFAULTS: Record<string, unknown> = {
   // to the company's administrators, which is what happened before this existed.
   [SETTING_KEYS.CONTRACT_ALERT_EMAILS]: [],
   [SETTING_KEYS.LICENSE_ALERT_EMAILS]: [],
+  [SETTING_KEYS.CONFIG_BACKUP]: { enabled: true, hour: 2 },
   [SETTING_KEYS.MAINTENANCE_MODE]: { enabled: false, message: "" },
   [SETTING_KEYS.TUNNEL]: { enabled: false, hostname: "" },
   [SETTING_KEYS.BRANDING]: {

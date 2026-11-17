@@ -2,6 +2,7 @@ import { db, type DbClient } from "@/shared/db";
 import { recordAudit, diffRecords, type AuditContext } from "@/shared/audit/audit";
 import { AuthorizationError, BusinessRuleError, NotFoundError, ValidationError } from "@/shared/errors";
 import type { DeviceInput, DeviceStatus, DeviceTypeInput } from "./validators";
+import { applyAssetPlan, planAsset } from "./asset-link";
 
 /**
  * Infrastructure register: network devices and servers & hosts (SDS Doc 24).
@@ -159,6 +160,7 @@ const DIFF_FIELDS = [
 export async function createDevice(scope: Scope, input: DeviceInput) {
   assertCompanyAccess(scope, input.companyId);
   const { kind, applicationIds } = await validateReferences(input);
+  const assetPlan = await planAsset(input, { companyId: input.companyId, name: input.name, serialNumber: input.serialNumber }, null);
   return db.$transaction(async (tx) => {
     const device = await tx.infraDevice.create({
       data: {
@@ -183,6 +185,7 @@ export async function createDevice(scope: Scope, input: DeviceInput) {
       },
       tx,
     );
+    await applyAssetPlan(tx, scope.audit, device.id, assetPlan);
     return device;
   });
 }
@@ -195,6 +198,7 @@ export async function updateDevice(scope: Scope, id: string, input: DeviceInput)
     throw new BusinessRuleError("Devices cannot be moved between companies.");
   }
   const { kind, applicationIds } = await validateReferences(input, id);
+  const assetPlan = await planAsset(input, { companyId: input.companyId, name: input.name, serialNumber: input.serialNumber }, id);
   return db.$transaction(async (tx) => {
     const before = await loadAuditable(tx, id);
     await tx.infraDeviceApplication.deleteMany({ where: { deviceId: id, applicationId: { notIn: applicationIds } } });
@@ -226,6 +230,7 @@ export async function updateDevice(scope: Scope, id: string, input: DeviceInput)
         tx,
       );
     }
+    await applyAssetPlan(tx, scope.audit, id, assetPlan);
     return after;
   });
 }

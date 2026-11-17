@@ -39,7 +39,8 @@ function device(overrides: Record<string, unknown>) {
   return {
     companyId: cxr.id, typeId: switchType.id, name: "SW", hostname: null, ipAddress: null, locationId: null,
     manufacturerId: null, model: null, serialNumber: null, operatingSystem: null, version: null, domain: null,
-    purpose: null, status: "ACTIVE" as const, hostDeviceId: null, notes: null, applicationIds: [], ...overrides,
+    purpose: null, status: "ACTIVE" as const, hostDeviceId: null, notes: null, applicationIds: [],
+    assetMode: "keep" as const, assetCategoryId: null, assetLookup: null, ...overrides,
   };
 }
 

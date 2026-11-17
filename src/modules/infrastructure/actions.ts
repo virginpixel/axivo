@@ -5,16 +5,18 @@ import { z } from "zod";
 import { db } from "@/shared/db";
 import { requirePermission, type ActionContext } from "@/shared/auth/guard";
 import { recordAudit } from "@/shared/audit/audit";
-import { ok, toActionError, BusinessRuleError, ValidationError, type ActionResult } from "@/shared/errors";
+import { ok, toActionError, AuthorizationError, BusinessRuleError, ValidationError, type ActionResult } from "@/shared/errors";
 import { parseInput as parse, uuidSchema, optionalText } from "@/shared/validation/common";
 import * as service from "./service";
 import * as vault from "./vault";
 import { previewImport, commitImport, type ImportPreview, type ImportResult } from "./import";
 import * as topology from "./topology";
 import type { LinkImportPreview, LinkImportResult } from "./topology";
+import * as backups from "./config-backup";
+import { planAssetLinks, commitAssetLinks, type AssetLinkRow } from "./asset-link";
 import {
-  deviceSchema, deviceTypeSchema, credentialSetSchema, credentialLinkSchema, linkSchema,
-  DEVICE_STATUSES, DEVICE_KINDS,
+  deviceSchema, deviceTypeSchema, credentialSetSchema, credentialLinkSchema, linkSchema, assetLinkRunSchema,
+  backupSettingsSchema, DEVICE_STATUSES, DEVICE_KINDS, type DeviceInput,
 } from "./validators";
 
 /** Infrastructure register and credential vault server actions (SDS Doc 24). */
@@ -35,10 +37,19 @@ function revalidateInfrastructure() {
 // Devices
 // ---------------------------------------------------------------------------
 
+/** Creating an asset is an asset-register change, so it needs that right too. */
+function assertAssetRights(context: ActionContext, input: DeviceInput) {
+  if (input.assetMode === "create" && !context.user.permissions.has("assets.manage")) {
+    throw new AuthorizationError("Creating an asset needs the right to manage assets.");
+  }
+}
+
 export async function createDeviceAction(raw: unknown): Promise<ActionResult<{ id: string }>> {
   try {
     const context = await requirePermission("infrastructure.manage");
-    const device = await service.createDevice(scopeOf(context), parse(deviceSchema, raw));
+    const input = parse(deviceSchema, raw);
+    assertAssetRights(context, input);
+    const device = await service.createDevice(scopeOf(context), input);
     revalidateInfrastructure();
     return ok({ id: device.id });
   } catch (error) {
@@ -49,7 +60,9 @@ export async function createDeviceAction(raw: unknown): Promise<ActionResult<{ i
 export async function updateDeviceAction(id: string, raw: unknown): Promise<ActionResult<{ id: string }>> {
   try {
     const context = await requirePermission("infrastructure.manage");
-    const device = await service.updateDevice(scopeOf(context), parse(uuidSchema, id), parse(deviceSchema, raw));
+    const input = parse(deviceSchema, raw);
+    assertAssetRights(context, input);
+    const device = await service.updateDevice(scopeOf(context), parse(uuidSchema, id), input);
     revalidateInfrastructure();
     return ok({ id: device.id });
   } catch (error) {
@@ -352,6 +365,79 @@ export async function commitLinkImportAction(formData: FormData): Promise<Action
     const result = await topology.commitLinkImport(scopeOf(context), fileFrom(formData), { removeStale });
     revalidateInfrastructure();
     return ok(result);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Assets
+// ---------------------------------------------------------------------------
+
+function assetScope(context: ActionContext): string[] | null {
+  return context.user.systemRoleKey === "SYSTEM_ADMINISTRATOR" ? null : [context.user.companyId];
+}
+
+export async function previewAssetLinksAction(raw: unknown): Promise<ActionResult<AssetLinkRow[]>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    const input = parse(assetLinkRunSchema, raw);
+    return ok(await planAssetLinks(assetScope(context), input.kind, !!input.categoryId));
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function commitAssetLinksAction(
+  raw: unknown,
+): Promise<ActionResult<{ linked: number; created: number; skipped: number }>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    const input = parse(assetLinkRunSchema, raw);
+    if (input.categoryId && !context.user.permissions.has("assets.manage")) {
+      throw new AuthorizationError("Creating assets needs the right to manage assets.");
+    }
+    const result = await commitAssetLinks(context.audit, assetScope(context), input.kind, input.categoryId);
+    revalidateInfrastructure();
+    revalidatePath("/assets", "layout");
+    return ok(result);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Configuration backups
+// ---------------------------------------------------------------------------
+
+export async function requestConfigBackupAction(deviceId?: string): Promise<ActionResult<undefined>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    await backups.requestBackup(scopeOf(context), deviceId ? [parse(uuidSchema, deviceId)] : undefined);
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function setBackupIncludedAction(deviceId: string, included: boolean): Promise<ActionResult<undefined>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    await backups.setBackupIncluded(scopeOf(context), parse(uuidSchema, deviceId), parse(z.boolean(), included));
+    revalidateInfrastructure();
+    return ok(undefined);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function saveBackupSettingsAction(raw: unknown): Promise<ActionResult<undefined>> {
+  try {
+    // The schedule is one for every company.
+    const context = await requirePermission("settings.manage");
+    await backups.saveBackupSettings(scopeOf(context), parse(backupSettingsSchema, raw));
+    revalidateInfrastructure();
+    return ok(undefined);
   } catch (error) {
     return toActionError(error);
   }

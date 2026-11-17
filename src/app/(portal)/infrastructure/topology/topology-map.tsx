@@ -8,7 +8,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
-  ArrowDownFromLine, ArrowRightFromLine, ExternalLink, List, Map as MapIcon, Network, Router, Search, Server,
+  MoveVertical, MoveHorizontal, ExternalLink, List, Map as MapIcon, Network, Router, Search, Server,
   ShieldCheck, TriangleAlert, Wifi, X,
 } from "lucide-react";
 import type { TopologyNode, TopologyLink } from "@/modules/infrastructure/topology";
@@ -40,6 +40,7 @@ type DeviceNodeData = {
 type CableEdgeData = {
   cables: LaidOutEdge["cables"];
   highlight: boolean;
+  reversed: boolean;
   dim: boolean;
   direction: Direction;
   title: string;
@@ -115,7 +116,9 @@ function DeviceNode({ data }: NodeProps<DeviceNodeType>) {
         dim && "opacity-25",
       )}
     >
-      <Handle type="target" position={direction === "LR" ? Position.Left : Position.Top} isConnectable={false} className={handle} />
+      {/* Branches grow both ways from the core, so each side has a way in and out. */}
+      <Handle id="t-near" type="target" position={direction === "LR" ? Position.Left : Position.Top} isConnectable={false} className={handle} />
+      <Handle id="s-far" type="source" position={direction === "LR" ? Position.Left : Position.Top} isConnectable={false} className={handle} />
       <div className="flex items-center gap-2">
         <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         <span className="min-w-0 flex-1 truncate text-[13px] font-semibold" title={node.name}>{node.name}</span>
@@ -132,7 +135,8 @@ function DeviceNode({ data }: NodeProps<DeviceNodeType>) {
       <p className="mt-0.5 truncate pl-6 text-[11px] text-muted-foreground">
         {node.accessible ? [node.typeName, node.ipAddress].filter(Boolean).join(" · ") : node.companyName}
       </p>
-      <Handle type="source" position={direction === "LR" ? Position.Right : Position.Bottom} isConnectable={false} className={handle} />
+      <Handle id="s-near" type="source" position={direction === "LR" ? Position.Right : Position.Bottom} isConnectable={false} className={handle} />
+      <Handle id="t-far" type="target" position={direction === "LR" ? Position.Right : Position.Bottom} isConnectable={false} className={handle} />
     </div>
   );
 }
@@ -148,7 +152,9 @@ function CableEdge({ id, sourceX, sourceY, targetX, targetY, data }: EdgeProps<C
   if (!data) return null;
   const horizontal = data.direction === "LR";
   const span = horizontal ? targetX - sourceX : targetY - sourceY;
-  const offset = Math.max(Math.abs(span) / 2, 48);
+  // Lines on the core's far side run the other way.
+  const way = data.reversed ? -1 : 1;
+  const offset = Math.max(Math.abs(span) / 2, 48) * way;
   const c1x = horizontal ? sourceX + offset : sourceX;
   const c1y = horizontal ? sourceY : sourceY + offset;
   const c2x = horizontal ? targetX - offset : targetX;
@@ -277,6 +283,8 @@ function MapCanvas({
           type: "cable",
           source: edge.source,
           target: edge.target,
+          sourceHandle: edge.reversed ? "s-far" : "s-near",
+          targetHandle: edge.reversed ? "t-far" : "t-near",
           selectable: false,
           zIndex: touches ? 10 : 0,
           data: {
@@ -284,6 +292,7 @@ function MapCanvas({
             highlight: touches,
             dim: !!selectedId && !touches,
             direction,
+            reversed: edge.reversed,
             title: edge.cables.map((c) => `${s} ${portText(c.sourcePort)} → ${t} ${portText(c.targetPort)}`).join("\n"),
           },
         };
@@ -314,7 +323,7 @@ function MapCanvas({
             />
           </div>
           <div className="flex rounded-full border bg-card p-0.5 shadow-sm" role="group" aria-label="Layout direction">
-            {([["LR", ArrowRightFromLine, "Left to right"], ["TB", ArrowDownFromLine, "Top down"]] as const).map(([value, Icon, label]) => (
+            {([["LR", MoveHorizontal, "Sideways"], ["TB", MoveVertical, "Up and down"]] as const).map(([value, Icon, label]) => (
               <button
                 key={value}
                 type="button"

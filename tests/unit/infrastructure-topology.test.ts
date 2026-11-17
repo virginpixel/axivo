@@ -71,6 +71,40 @@ describe("topology: layout", () => {
     expect(coreEdge.cables.map((c) => c.targetPort)).toEqual(["Te1/0/1", "Te1/0/2"]);
     expect(result.loops.get("lonely")).toHaveLength(1);
     expect(result.positions.size).toBe(5);
-    expect(result.positions.get("acc1")!.y).toBeGreaterThan(result.positions.get("dist")!.y);
+    // Three branches: the core grows both ways, every branch one step from it.
+    const dist = result.positions.get("dist")!;
+    const steps = ["core", "acc1", "acc2"].map((id) => result.positions.get(id)!.y - dist.y);
+    expect(new Set(steps.map(Math.abs)).size).toBe(1);
+    expect(steps.some((step) => step > 0) && steps.some((step) => step < 0)).toBe(true);
+    for (const edge of result.edges) {
+      expect(edge.reversed).toBe(result.positions.get(edge.target)!.y < result.positions.get(edge.source)!.y);
+    }
+  });
+
+  it("keeps every switch's branches in the column next to it", () => {
+    // A core with one deep branch and several short ones: the short ones must
+    // not be pushed out past the deep one's switches.
+    const ids = ["core", "big", "b1", "b2", "b3", "b1a", "b1b", "b1c", "small1", "small2", "small3", "leafy"];
+    const all = ids.map((id) => ({ id, name: id }));
+    const cables = [
+      link("1", "core", "big"), link("2", "core", "small1"), link("3", "core", "small2"), link("4", "core", "small3"),
+      link("5", "big", "b1"), link("6", "big", "b2"), link("7", "big", "b3"),
+      link("8", "b1", "b1a"), link("9", "b1", "b1b"), link("10", "b1", "b1c"),
+      link("11", "small1", "leafy"),
+    ];
+    const result = layoutTopology(all, cables, "LR");
+    for (const edge of result.edges) {
+      const from = result.positions.get(edge.source)!;
+      const to = result.positions.get(edge.target)!;
+      expect(Math.abs(to.x - from.x)).toBe(224 + 150);
+    }
+    // No two switches overlap.
+    const spots = [...result.positions.values()];
+    for (let i = 0; i < spots.length; i += 1) {
+      for (let j = i + 1; j < spots.length; j += 1) {
+        const apart = Math.abs(spots[i]!.x - spots[j]!.x) >= 224 || Math.abs(spots[i]!.y - spots[j]!.y) >= 64;
+        expect(apart).toBe(true);
+      }
+    }
   });
 });

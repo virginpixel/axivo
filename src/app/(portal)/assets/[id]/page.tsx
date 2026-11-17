@@ -28,6 +28,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
       company: true,
       category: true,
       vendor: { select: { id: true, name: true } },
+      infraDevice: { select: { id: true, name: true, ipAddress: true, kind: true, deletedAt: true } },
       location: true,
       assignments: {
         where: { deletedAt: null },
@@ -294,6 +295,12 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
               <Row label="Model" value={asset.model ?? "None"} />
               <Row label="Vendor" value={asset.vendor?.name ?? "None"} />
               <Row label="Location" value={asset.location?.name ?? "None"} />
+              {asset.infraDevice && !asset.infraDevice.deletedAt ? (
+                <Row
+                  label={asset.infraDevice.kind === "NETWORK" ? "Network device" : "Server"}
+                  value={<Link href={`/infrastructure/devices/${asset.infraDevice.id}`} className="hover:underline">{asset.infraDevice.name}</Link>}
+                />
+              ) : null}
               <Row label="Purchase date" value={asset.purchaseDate ? formatDate(asset.purchaseDate) : "None"} />
               <Row
                 label="Purchase price"
@@ -455,7 +462,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-4 border-b pb-2 last:border-0">
       <dt className="text-muted-foreground">{label}</dt>

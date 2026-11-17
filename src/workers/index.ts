@@ -1,6 +1,12 @@
 import { Worker, type Job } from "bullmq";
 import { db } from "@/shared/db";
-import { redisConnection, QUEUE_NAMES, getMaintenanceQueue, type EmailJobPayload } from "@/shared/queue/queue";
+import {
+  redisConnection, QUEUE_NAMES, getMaintenanceQueue, getConfigBackupQueue,
+  type EmailJobPayload, type ConfigBackupJobPayload,
+} from "@/shared/queue/queue";
+import { runConfigBackup } from "@/modules/infrastructure/config-runner";
+import { scheduledRunDue } from "@/modules/infrastructure/config-parse";
+import { getBackupSettings } from "@/modules/infrastructure/config-backup";
 import { deliverEmailNotification, queueNotification } from "@/modules/notifications/service";
 import { expireOverdueSecrets } from "@/modules/credentials/service";
 import { recordAudit, SYSTEM_ACTOR } from "@/shared/audit/audit";
@@ -271,6 +277,31 @@ async function sweepStuckNotifications(): Promise<void> {
   }
 }
 
+/**
+ * Starts the nightly configuration backup once the chosen hour has come in
+ * the organisation's timezone. Checked every few minutes rather than pinned to
+ * a cron time, so a changed hour applies without a restart and a worker that
+ * was down at that hour still runs it when it comes back.
+ */
+async function configBackupTick(): Promise<void> {
+  const settings = await getBackupSettings();
+  if (!settings.enabled) return;
+  const general = await getSetting<{ defaultTimezone?: string }>(SETTING_KEYS.GENERAL);
+  const timeZone = general?.defaultTimezone?.trim() || "UTC";
+  const last = await db.infraBackupRun.findFirst({
+    where: { trigger: "SCHEDULED" },
+    orderBy: { startedAt: "desc" },
+    select: { startedAt: true },
+  });
+  const now = new Date();
+  if (!scheduledRunDue(now, timeZone, settings.hour, last?.startedAt ?? null)) return;
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone }).format(now);
+  // One job per local day, however many ticks find it due before it starts.
+  await getConfigBackupQueue().add("scheduled", { trigger: "SCHEDULED" } satisfies ConfigBackupJobPayload, {
+    jobId: `config-backup-${day}`,
+  });
+}
+
 const MAINTENANCE_HANDLERS: Record<string, () => Promise<void>> = {
   "expire-credential-secrets": expireCredentialSecrets,
   "cleanup-expired-tokens": cleanupExpiredTokens,
@@ -279,6 +310,7 @@ const MAINTENANCE_HANDLERS: Record<string, () => Promise<void>> = {
   "pending-approval-reminders": pendingApprovalReminders,
   "cleanup-sessions": cleanupSessions,
   "sweep-stuck-notifications": sweepStuckNotifications,
+  "config-backup-tick": configBackupTick,
 };
 
 async function getNotifiableAdmins(companyId: string): Promise<{ email: string; name: string }[]> {
@@ -323,6 +355,7 @@ async function scheduleRecurringJobs(): Promise<void> {
     { name: "pending-approval-reminders", pattern: "0 * * * *" },
     { name: "cleanup-sessions", pattern: "45 2 * * *" },
     { name: "sweep-stuck-notifications", pattern: "*/10 * * * *" },
+    { name: "config-backup-tick", pattern: "*/10 * * * *" },
   ];
   for (const job of schedule) {
     await queue.upsertJobScheduler(`scheduler-${job.name}`, { pattern: job.pattern }, {
@@ -360,12 +393,25 @@ async function main(): Promise<void> {
     console.error(`[axivo-worker] Maintenance job ${job?.name} failed:`, error.message);
   });
 
+  // Configuration backups log in to switches for minutes at a time: their own
+  // queue, one run at a time, so they never hold up email or maintenance.
+  const configBackupWorker = new Worker<ConfigBackupJobPayload>(
+    QUEUE_NAMES.CONFIG_BACKUP,
+    async (job) => {
+      await runConfigBackup(job.data);
+    },
+    { connection, concurrency: 1, lockDuration: 10 * 60_000 },
+  );
+  configBackupWorker.on("failed", (job, error) => {
+    console.error(`[axivo-worker] Config backup job ${job?.id} failed:`, error.message);
+  });
+
   await scheduleRecurringJobs();
   console.log("[axivo-worker] Worker ready; recurring jobs scheduled.");
 
   const shutdown = async () => {
     console.log("[axivo-worker] Shutting down gracefully...");
-    await Promise.allSettled([emailWorker.close(), maintenanceWorker.close()]);
+    await Promise.allSettled([emailWorker.close(), maintenanceWorker.close(), configBackupWorker.close()]);
     await db.$disconnect();
     process.exit(0);
   };

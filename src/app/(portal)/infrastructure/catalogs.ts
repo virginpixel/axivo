@@ -7,7 +7,7 @@ import type { DeviceCatalogs } from "./device-dialogs";
 export async function loadDeviceCatalogs(user: AuthenticatedUser): Promise<DeviceCatalogs> {
   const isGlobalAdmin = user.systemRoleKey === "SYSTEM_ADMINISTRATOR";
   const scope = isGlobalAdmin ? {} : { companyId: user.companyId };
-  const [companies, types, locations, manufacturers, hosts, applications] = await Promise.all([
+  const [companies, types, locations, manufacturers, hosts, applications, assetCategories] = await Promise.all([
     db.company.findMany({
       where: { deletedAt: null, isActive: true, ...(isGlobalAdmin ? {} : { id: user.companyId }) },
       orderBy: { name: "asc" },
@@ -33,6 +33,7 @@ export async function loadDeviceCatalogs(user: AuthenticatedUser): Promise<Devic
       orderBy: { name: "asc" },
       select: { id: true, name: true, companyId: true, isShared: true },
     }),
+    db.assetCategory.findMany({ where: { deletedAt: null, isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   return {
     companies,
@@ -43,6 +44,8 @@ export async function loadDeviceCatalogs(user: AuthenticatedUser): Promise<Devic
     manufacturers,
     hosts,
     applications,
+    assetCategories,
+    canCreateAssets: user.permissions.has("assets.manage"),
   };
 }
 

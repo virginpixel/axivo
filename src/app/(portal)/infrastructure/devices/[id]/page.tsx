@@ -14,6 +14,7 @@ import { loadDeviceCatalogs, locationPath } from "../../catalogs";
 import { DeviceDialog, DeviceStatusControl } from "../../device-dialogs";
 import { LinkCredentialDialog, RevealPassword, UnlinkCredentialButton, NoPasswordNote } from "../../credential-dialogs";
 import { LinkDialog, RemoveLinkButton } from "../../link-dialogs";
+import { BackupNowButton, BackupIncludedToggle } from "../../backup-controls";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
   const canManage = user.permissions.has("infrastructure.manage");
   const canManageLogins = user.permissions.has("infrastructure.credentials.manage");
   const canReveal = user.permissions.has("infrastructure.credentials.reveal");
+  const canViewConfigs = user.permissions.has("infrastructure.configs.view");
 
   const device = await db.infraDevice.findFirst({
     where: { id, deletedAt: null, ...(isGlobalAdmin ? {} : { companyId: user.companyId }) },
@@ -39,6 +41,13 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
       type: { select: { name: true } },
       manufacturer: { select: { name: true } },
       host: { select: { id: true, name: true, deletedAt: true } },
+      asset: { select: { id: true, name: true, assetTag: true, status: true, deletedAt: true } },
+      configs: {
+        orderBy: { takenAt: "desc" },
+        take: 20,
+        select: { id: true, takenAt: true, lineCount: true, linesAdded: true, linesRemoved: true, firmware: true },
+      },
+      _count: { select: { configs: true } },
       guests: { where: { deletedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true, ipAddress: true, status: true, operatingSystem: true } },
       applications: { include: { application: { select: { id: true, name: true } } } },
       credentials: {
@@ -105,6 +114,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
   const linkOptions = linkTargets.map((d) => ({ id: d.id, name: d.name, hint: [d.type.name, d.ipAddress].filter(Boolean).join(" · ") }));
 
   const isServer = device.kind === "SERVER";
+  const asset = device.asset && !device.asset.deletedAt ? device.asset : null;
   const linkedIds = new Set(device.credentials.map((link) => link.credentialSetId));
   const logins = device.credentials.filter((link) => !link.credentialSet.deletedAt);
 
@@ -142,6 +152,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
                   hostDeviceId: device.hostDeviceId,
                   notes: device.notes,
                   applicationIds: device.applications.map((link) => link.applicationId),
+                  assetLabel: asset ? (asset.assetTag ? `${asset.name} (${asset.assetTag})` : asset.name) : null,
                 }}
               />
               <DeleteButton
@@ -188,6 +199,14 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
                 />
               ) : null}
               {device.purpose ? <Row label="Purpose" value={device.purpose} /> : null}
+              <Row
+                label="Asset"
+                value={
+                  asset ? (
+                    <Link href={`/assets/${asset.id}`} className="hover:underline">{asset.assetTag ?? asset.name}</Link>
+                  ) : "Not linked"
+                }
+              />
             </dl>
             {sameIp.length > 0 ? (
               <p className="mt-4 rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-xs leading-relaxed">
@@ -334,6 +353,76 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
             </CardContent>
           </Card>
 
+          {!isServer ? (
+            <Card>
+              <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
+                <CardTitle>Configuration backup</CardTitle>
+                {canManage ? (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <BackupIncludedToggle deviceId={device.id} included={device.configBackup} />
+                    <BackupNowButton deviceId={device.id} />
+                  </div>
+                ) : null}
+              </CardHeader>
+              <CardContent>
+                <BackupStatusLine status={device.configStatus} error={device.configError} checkedAt={device.configCheckedAt} included={device.configBackup} />
+                {device.configs.length === 0 ? (
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    No configuration saved yet. Link an SSH login to this device, then back it up.
+                  </p>
+                ) : (
+                  <>
+                    <div className="mt-3" />
+                    <Table>
+                      <THead>
+                        <TR><TH>Saved</TH><TH>Firmware</TH><TH>Lines</TH><TH>Change</TH>{canViewConfigs ? <TH className="text-right">Open</TH> : null}</TR>
+                      </THead>
+                      <TBody>
+                        {device.configs.map((config, index) => {
+                          const first = index === device.configs.length - 1 && device._count.configs === device.configs.length;
+                          const base = `/infrastructure/devices/${device.id}/config/${config.id}`;
+                          return (
+                            <TR key={config.id}>
+                              <TD className="text-xs">
+                                {formatDateTime(config.takenAt)}
+                                {index === 0 ? <span className="ml-2 text-muted-foreground">latest</span> : null}
+                              </TD>
+                              <TD className="font-mono text-xs">{config.firmware ?? "?"}</TD>
+                              <TD className="text-xs tabular-nums">{config.lineCount}</TD>
+                              <TD className="text-xs">
+                                {first ? (
+                                  <span className="text-muted-foreground">First copy</span>
+                                ) : (
+                                  <span className="font-mono">
+                                    <span className="text-success">+{config.linesAdded}</span>{" "}
+                                    <span className="text-destructive">-{config.linesRemoved}</span>
+                                  </span>
+                                )}
+                              </TD>
+                              {canViewConfigs ? (
+                                <TD className="text-right text-xs">
+                                  <Link href={base} className="font-medium hover:underline">View</Link>
+                                  {!first ? (
+                                    <Link href={`${base}?compare=1`} className="ml-3 font-medium hover:underline">Changes</Link>
+                                  ) : null}
+                                </TD>
+                              ) : null}
+                            </TR>
+                          );
+                        })}
+                      </TBody>
+                    </Table>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      A new copy is kept only when the configuration changes.
+                      {device._count.configs > device.configs.length ? ` Showing the latest ${device.configs.length} of ${device._count.configs}.` : ""}
+                      {!canViewConfigs ? " Opening a saved configuration needs the right to view configurations." : ""}
+                    </p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
+
           {isServer ? (
             <Card>
               <CardHeader><CardTitle>Applications on this server</CardTitle></CardHeader>
@@ -398,6 +487,31 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
           </Card>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** What the last backup attempt did, in one line. */
+function BackupStatusLine({
+  status, error, checkedAt, included,
+}: { status: string | null; error: string | null; checkedAt: Date | null; included: boolean }) {
+  if (!checkedAt) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        {included ? "Not backed up yet. The nightly backup will try it." : "Left out of the nightly backup."}
+      </p>
+    );
+  }
+  const tone = status === "OK" ? "text-success" : status === "FAILED" ? "text-destructive" : "text-warning";
+  const word = status === "OK" ? "Saved" : status === "FAILED" ? "Failed" : "Not set up";
+  return (
+    <div className="text-sm">
+      <p>
+        <span className={`font-medium ${tone}`}>{word}</span>
+        <span className="text-muted-foreground"> · last tried {formatDateTime(checkedAt)}</span>
+      </p>
+      {error ? <p className="text-xs text-muted-foreground">{error}</p> : null}
+      {!included ? <p className="text-xs text-muted-foreground">Left out of the nightly backup.</p> : null}
     </div>
   );
 }

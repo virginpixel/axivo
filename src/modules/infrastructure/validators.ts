@@ -53,6 +53,9 @@ export const nullableIp = () =>
     })
     .refine((value) => value === null || isIpAddress(value), { message: "Enter a valid IP address, e.g. 10.100.200.10." });
 
+export const ASSET_MODES = ["keep", "none", "create", "link"] as const;
+export type AssetMode = (typeof ASSET_MODES)[number];
+
 export const deviceSchema = z
   .object({
     companyId: uuidSchema,
@@ -73,8 +76,24 @@ export const deviceSchema = z
     notes: optionalText(),
     /** Applications that run on a server. Ignored for network devices. */
     applicationIds: z.array(uuidSchema).max(200).default([]),
+    /**
+     * The asset record for this box: leave as it is, create one, link one by
+     * its tag or serial number, or have none.
+     */
+    assetMode: z.enum(ASSET_MODES).default("keep"),
+    assetCategoryId: nullableUuid(),
+    /** Asset tag for a new asset, or the tag / serial / name to find one to link. */
+    assetLookup: optionalText(200),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.assetMode === "create" && !value.assetCategoryId) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["assetCategoryId"], message: "Choose the asset category." });
+    }
+    if (value.assetMode === "link" && !value.assetLookup) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["assetLookup"], message: "Enter the asset tag or serial number." });
+    }
+  });
 
 export const deviceTypeSchema = z
   .object({
@@ -122,3 +141,18 @@ export type DeviceTypeInput = z.infer<typeof deviceTypeSchema>;
 export type CredentialSetInput = z.infer<typeof credentialSetSchema>;
 export type CredentialLinkInput = z.infer<typeof credentialLinkSchema>;
 export type LinkInput = z.infer<typeof linkSchema>;
+
+export const assetLinkRunSchema = z
+  .object({
+    kind: z.enum(DEVICE_KINDS),
+    /** Category for the assets that have to be created; none means link only. */
+    categoryId: nullableUuid(),
+  })
+  .strict();
+
+export const backupSettingsSchema = z
+  .object({
+    enabled: z.boolean(),
+    hour: z.coerce.number().int().min(0).max(23),
+  })
+  .strict();

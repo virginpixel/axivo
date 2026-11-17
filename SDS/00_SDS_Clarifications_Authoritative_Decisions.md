@@ -240,7 +240,25 @@ the assets issued to people:
     as the discovery workbook's Neighbours sheet). The map shows which
     switch connects to which and from which port, and flags a device
     whose ports lead back to itself (a loop). Importing a neighbour
-    table only reads a file; Axivo does not log in to switches.
+    table only reads a file.
+-   Configuration backups (added 18 November 2026): every night, at
+    an hour set in Settings, the worker logs in over SSH to each
+    active network device that has an SSH login linked, runs only
+    read-only `show` commands, and keeps an encrypted copy of the
+    running configuration whenever it changes. Model, serial number
+    and firmware in the register are updated from what the device
+    reports. Saved configurations hold keys and password hashes, so
+    opening or downloading one needs `infrastructure.configs.view`
+    (System Administrators and IT Administrators by default) and is
+    audited. This is the only place Axivo logs in to a device; it
+    never changes a device's configuration.
+-   Devices and assets (added 18 November 2026): a device may be
+    linked to one asset, one to one. The asset keeps tag, purchase,
+    warranty and disposal; the device keeps how it is wired and
+    configured. A device can create its asset, link an existing one
+    by tag, serial number or name, or have none. Devices already in
+    the register can be linked in bulk (same serial number first,
+    then same name, else a new asset).
 
 Planned later phases, each in its own release: an IP & VLAN plan
 (sites, VLANs, subnets, address usage), then OPEX and CAPEX budgets in
