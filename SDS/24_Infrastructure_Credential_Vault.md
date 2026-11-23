@@ -129,6 +129,21 @@ A connection is one cable: a port on one device to a port on another.
   the nightly run. The schedule needs `settings.manage`.
 - Opening, comparing or downloading a saved configuration needs
   `infrastructure.configs.view` and is audited on the device.
+- The Config backups page can be searched by device, IP address, company
+  or message. A device left out of the nightly run shows "Left out" and
+  that its backup is switched off, not the reason its last try failed.
+
+## Lists
+- Every list in Infrastructure (network devices, servers, credential
+  sets, a set's devices, config backups, VLANs, subnets, a subnet's
+  addresses, cables, and a device's logins, cables, saved copies and
+  guests) sorts by any column but the actions. IP addresses and subnets
+  sort in address order, names with numbers in natural order (SW2 before
+  SW10), and empty values stay at the bottom either way.
+- Long lists are paged (50 rows; 25 for a credential set's devices). The
+  sort covers every row, not only the page shown. A new search or filter
+  goes back to the first page.
+- On the topology map, a device's border turns green under the pointer.
 
 ## Devices and assets
 - A device may be linked to one asset of the same company. The device

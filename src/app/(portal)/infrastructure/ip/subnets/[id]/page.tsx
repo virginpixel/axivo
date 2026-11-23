@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requirePermission } from "@/shared/auth/guard";
 import { PageHeader } from "@/shared/ui/page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
-import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
+import { SortableTable, type SortableRow } from "@/shared/ui/sortable-table";
 import { Badge } from "@/shared/ui/badge";
 import { DeleteButton } from "@/shared/ui/delete-button";
 import { NotFoundError } from "@/shared/errors";
@@ -193,82 +193,116 @@ export default async function SubnetPage({ params }: { params: Promise<{ id: str
           {addresses.length + registerOnly.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nothing recorded in this subnet yet.</p>
           ) : (
-            <Table>
-              <THead>
-                <TR>
-                  <TH>Address</TH><TH>Name</TH><TH>MAC</TH><TH>Device</TH><TH>Seen on</TH><TH>Status</TH>
-                  {canManage ? <TH className="text-right">Actions</TH> : null}
-                </TR>
-              </THead>
-              <TBody>
-                {[
-                  ...addresses.map((a) => ({ kind: "record" as const, num: a.addressNum, a })),
-                  ...registerOnly.map((d) => ({ kind: "device" as const, num: ipToNumber(d.ipAddress!)!, d })),
-                ]
-                  .sort((x, y) => x.num - y.num)
-                  .map((row) =>
-                    row.kind === "device" ? (
-                      <TR key={`d-${row.d.id}`}>
-                        <TD className="font-mono text-xs">{row.d.ipAddress}</TD>
-                        <TD className="text-xs text-muted-foreground">From the register</TD>
-                        <TD />
-                        <TD><Link href={`/infrastructure/devices/${row.d.id}`} className="text-sm font-medium hover:underline">{row.d.name}</Link></TD>
-                        <TD />
-                        <TD><Badge variant="success">Used</Badge></TD>
-                        {canManage ? <TD /> : null}
-                      </TR>
-                    ) : (
-                      <TR key={row.a.id} className={stale(row.a) ? "opacity-55" : undefined}>
-                        <TD className="font-mono text-xs">{row.a.address}{row.a.address === subnet.gateway ? <span className="ml-1.5 text-muted-foreground">gateway</span> : null}</TD>
-                        <TD>
-                          <span className="text-sm">{row.a.hostname ?? ""}</span>
-                          {row.a.description ? <p className="text-xs text-muted-foreground">{row.a.description}</p> : null}
-                        </TD>
-                        <TD>
-                          <span className="font-mono text-xs">{row.a.macAddress ?? ""}</span>
-                          {row.a.macVendor ? <p className="text-xs text-muted-foreground">{row.a.macVendor}</p> : null}
-                        </TD>
-                        <TD>
-                          {row.a.device && !row.a.device.deletedAt ? (
-                            <Link href={`/infrastructure/devices/${row.a.device.id}`} className="text-sm font-medium hover:underline">{row.a.device.name}</Link>
-                          ) : null}
-                        </TD>
-                        <TD className="text-xs">
-                          {row.a.switchName ? `${row.a.switchName}${row.a.switchPort ? ` ${row.a.switchPort}` : ""}` : ""}
-                          {row.a.lastSeenAt ? (
-                            <p className="text-muted-foreground">
-                              {stale(row.a) ? `Not seen since ${formatDate(row.a.lastSeenAt)}` : `Last seen ${formatDate(row.a.lastSeenAt)}`}
-                            </p>
-                          ) : null}
-                        </TD>
-                        <TD><Badge variant={row.a.status === "RESERVED" ? "info" : "success"}>{row.a.status === "RESERVED" ? "Reserved" : "Used"}</Badge></TD>
-                        {canManage && catalogs ? (
-                          <TD className="text-right">
+            <SortableTable
+              pageSize={50}
+              noun="address"
+              initialSort={{ key: "address", dir: "asc" }}
+              columns={[
+                { key: "address", label: "Address" },
+                { key: "name", label: "Name" },
+                { key: "mac", label: "MAC" },
+                { key: "device", label: "Device" },
+                { key: "seen", label: "Seen on" },
+                { key: "status", label: "Status" },
+                ...(canManage ? [{ key: "actions", label: "Actions", sortable: false, align: "right" as const }] : []),
+              ]}
+              rows={[
+                ...registerOnly.map((d): SortableRow => ({
+                  key: `d-${d.id}`,
+                  cells: {
+                    address: { sortValue: ipToNumber(d.ipAddress!), node: d.ipAddress, className: "font-mono text-xs" },
+                    name: { node: "From the register", className: "text-xs text-muted-foreground" },
+                    mac: { node: null },
+                    device: { sortValue: d.name, node: <Link href={`/infrastructure/devices/${d.id}`} className="text-sm font-medium hover:underline">{d.name}</Link> },
+                    seen: { node: null },
+                    status: { sortValue: "Used", node: <Badge variant="success">Used</Badge> },
+                    actions: { node: null },
+                  },
+                })),
+                ...addresses.map((a): SortableRow => {
+                  const device = a.device && !a.device.deletedAt ? a.device : null;
+                  return {
+                    key: a.id,
+                    className: stale(a) ? "opacity-55" : undefined,
+                    cells: {
+                      address: {
+                        sortValue: a.addressNum,
+                        className: "font-mono text-xs",
+                        node: (
+                          <>
+                            {a.address}
+                            {a.address === subnet.gateway ? <span className="ml-1.5 text-muted-foreground">gateway</span> : null}
+                          </>
+                        ),
+                      },
+                      name: {
+                        sortValue: a.hostname,
+                        node: (
+                          <>
+                            <span className="text-sm">{a.hostname ?? ""}</span>
+                            {a.description ? <p className="text-xs text-muted-foreground">{a.description}</p> : null}
+                          </>
+                        ),
+                      },
+                      mac: {
+                        sortValue: a.macAddress,
+                        node: (
+                          <>
+                            <span className="font-mono text-xs">{a.macAddress ?? ""}</span>
+                            {a.macVendor ? <p className="text-xs text-muted-foreground">{a.macVendor}</p> : null}
+                          </>
+                        ),
+                      },
+                      device: {
+                        sortValue: device?.name,
+                        node: device ? <Link href={`/infrastructure/devices/${device.id}`} className="text-sm font-medium hover:underline">{device.name}</Link> : null,
+                      },
+                      seen: {
+                        sortValue: a.switchName ? `${a.switchName} ${a.switchPort ?? ""}` : null,
+                        className: "text-xs",
+                        node: (
+                          <>
+                            {a.switchName ? `${a.switchName}${a.switchPort ? ` ${a.switchPort}` : ""}` : ""}
+                            {a.lastSeenAt ? (
+                              <p className="text-muted-foreground">
+                                {stale(a) ? `Not seen since ${formatDate(a.lastSeenAt)}` : `Last seen ${formatDate(a.lastSeenAt)}`}
+                              </p>
+                            ) : null}
+                          </>
+                        ),
+                      },
+                      status: {
+                        sortValue: a.status === "RESERVED" ? "Reserved" : "Used",
+                        node: <Badge variant={a.status === "RESERVED" ? "info" : "success"}>{a.status === "RESERVED" ? "Reserved" : "Used"}</Badge>,
+                      },
+                      actions: {
+                        node:
+                          canManage && catalogs ? (
                             <div className="flex justify-end">
                               <AddressDialog
                                 catalogs={catalogs}
                                 companyId={subnet.companyId}
                                 trigger="icon"
                                 record={{
-                                  id: row.a.id, address: row.a.address, status: row.a.status, hostname: row.a.hostname,
-                                  macAddress: row.a.macAddress, deviceId: row.a.deviceId, description: row.a.description,
+                                  id: a.id, address: a.address, status: a.status, hostname: a.hostname,
+                                  macAddress: a.macAddress, deviceId: a.deviceId, description: a.description,
                                 }}
                               />
                               <DeleteButton
                                 action={deleteIpAddressAction}
-                                id={row.a.id}
-                                entityLabel={row.a.address}
-                                message={`Release ${row.a.address}? It shows as free again.`}
+                                id={a.id}
+                                entityLabel={a.address}
+                                message={`Release ${a.address}? It shows as free again.`}
                                 successMessage="Address released."
                               />
                             </div>
-                          </TD>
-                        ) : null}
-                      </TR>
-                    ),
-                  )}
-              </TBody>
-            </Table>
+                          ) : null,
+                      },
+                    },
+                  };
+                }),
+              ]}
+            />
           )}
         </CardContent>
       </Card>

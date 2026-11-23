@@ -5,7 +5,8 @@ import { db } from "@/shared/db";
 import { PageHeader } from "@/shared/ui/page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { StatusBadge } from "@/shared/ui/badge";
-import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
+import { SortableTable } from "@/shared/ui/sortable-table";
+import { ipToNumber } from "@/modules/infrastructure/ip-math";
 import { DeleteButton } from "@/shared/ui/delete-button";
 import { formatDate, formatDateTime } from "@/shared/utils";
 import { deleteDeviceAction } from "@/modules/infrastructure/actions";
@@ -260,39 +261,44 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
               {logins.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No logins linked to this device.</p>
               ) : (
-                <Table>
-                  <THead>
-                    <TR><TH>Credential set</TH><TH>Username</TH><TH>Used for</TH><TH>Password</TH>{canManageLogins ? <TH className="text-right">Unlink</TH> : null}</TR>
-                  </THead>
-                  <TBody>
-                    {logins.map((link) => (
-                      <TR key={link.id}>
-                        <TD>
-                          <Link href={`/infrastructure/credentials/${link.credentialSet.id}`} className="font-medium hover:underline">
-                            {link.credentialSet.name}
-                          </Link>
-                          {link.credentialSet.companyId === null ? <p className="text-xs text-muted-foreground">Shared</p> : null}
-                        </TD>
-                        <TD className="font-mono text-xs">{link.credentialSet.username ?? "None"}</TD>
-                        <TD>{link.purpose ?? "Not specified"}</TD>
-                        <TD>
-                          {!link.credentialSet.passwordChangedAt ? (
-                            <NoPasswordNote />
-                          ) : canReveal ? (
-                            <RevealPassword id={link.credentialSet.id} compact />
-                          ) : (
-                            <span className="text-xs text-muted-foreground">Stored</span>
-                          )}
-                        </TD>
-                        {canManageLogins ? (
-                          <TD className="text-right">
-                            <UnlinkCredentialButton linkId={link.id} label={link.credentialSet.name} />
-                          </TD>
-                        ) : null}
-                      </TR>
-                    ))}
-                  </TBody>
-                </Table>
+                <SortableTable
+                  initialSort={{ key: "set", dir: "asc" }}
+                  columns={[
+                    { key: "set", label: "Credential set" },
+                    { key: "username", label: "Username" },
+                    { key: "purpose", label: "Used for" },
+                    { key: "password", label: "Password", sortable: false },
+                    ...(canManageLogins ? [{ key: "unlink", label: "Unlink", sortable: false, align: "right" as const }] : []),
+                  ]}
+                  rows={logins.map((link) => ({
+                    key: link.id,
+                    cells: {
+                      set: {
+                        sortValue: link.credentialSet.name,
+                        node: (
+                          <>
+                            <Link href={`/infrastructure/credentials/${link.credentialSet.id}`} className="font-medium hover:underline">
+                              {link.credentialSet.name}
+                            </Link>
+                            {link.credentialSet.companyId === null ? <p className="text-xs text-muted-foreground">Shared</p> : null}
+                          </>
+                        ),
+                      },
+                      username: { sortValue: link.credentialSet.username, node: link.credentialSet.username ?? "None", className: "font-mono text-xs" },
+                      purpose: { sortValue: link.purpose, node: link.purpose ?? "Not specified" },
+                      password: {
+                        node: !link.credentialSet.passwordChangedAt ? (
+                          <NoPasswordNote />
+                        ) : canReveal ? (
+                          <RevealPassword id={link.credentialSet.id} compact />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Stored</span>
+                        ),
+                      },
+                      unlink: { node: canManageLogins ? <UnlinkCredentialButton linkId={link.id} label={link.credentialSet.name} /> : null },
+                    },
+                  }))}
+                />
               )}
             </CardContent>
           </Card>
@@ -316,52 +322,54 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
               {connections.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No cables recorded. Add them here, or import a neighbour table.</p>
               ) : (
-                <Table>
-                  <THead>
-                    <TR><TH>Port</TH><TH>Connects to</TH><TH>Its port</TH><TH>Recorded</TH>{canManage ? <TH className="text-right">Actions</TH> : null}</TR>
-                  </THead>
-                  <TBody>
-                    {connections.map(({ link, port, other, otherPort, loop }) => {
-                      const ownCompanyOnly = isGlobalAdmin || (link.deviceA.companyId === user.companyId && link.deviceB.companyId === user.companyId);
-                      return (
-                        <TR key={link.id}>
-                          <TD className={loop ? "font-mono text-xs text-destructive" : "font-mono text-xs"}>{port ?? "?"}</TD>
-                          <TD>
-                            {loop ? (
-                              <span className="text-xs font-medium text-destructive">Loop back to this device</span>
-                            ) : isGlobalAdmin || other.companyId === user.companyId ? (
-                              <Link href={`/infrastructure/devices/${other.id}`} className="font-medium hover:underline">{other.name}</Link>
-                            ) : (
-                              <span className="text-muted-foreground">{other.name}</span>
-                            )}
-                          </TD>
-                          <TD className="font-mono text-xs">{otherPort ?? "?"}</TD>
-                          <TD className="text-xs text-muted-foreground">
-                            {link.source === "DISCOVERY" ? `Discovered${link.lastSeenAt ? `, seen ${formatDate(link.lastSeenAt)}` : ""}` : "Added by hand"}
-                          </TD>
-                          {canManage ? (
-                            <TD className="text-right">
-                              {ownCompanyOnly ? (
-                                <div className="flex justify-end">
-                                  <LinkDialog
-                                    devices={linkOptions}
-                                    fixedDeviceId={device.id}
-                                    trigger="icon"
-                                    link={{ id: link.id, deviceAId: link.deviceAId, portA: link.portA, deviceBId: link.deviceBId, portB: link.portB, notes: link.notes }}
-                                  />
-                                  <RemoveLinkButton
-                                    linkId={link.id}
-                                    label={`${device.name} ${port ?? ""} to ${other.name} ${otherPort ?? ""}`.replace(/\s+/g, " ").trim()}
-                                  />
-                                </div>
-                              ) : null}
-                            </TD>
-                          ) : null}
-                        </TR>
-                      );
-                    })}
-                  </TBody>
-                </Table>
+                <SortableTable
+                  initialSort={{ key: "port", dir: "asc" }}
+                  columns={[
+                    { key: "port", label: "Port" },
+                    { key: "other", label: "Connects to" },
+                    { key: "otherPort", label: "Its port" },
+                    { key: "recorded", label: "Recorded" },
+                    ...(canManage ? [{ key: "actions", label: "Actions", sortable: false, align: "right" as const }] : []),
+                  ]}
+                  rows={connections.map(({ link, port, other, otherPort, loop }) => {
+                    const ownCompanyOnly = isGlobalAdmin || (link.deviceA.companyId === user.companyId && link.deviceB.companyId === user.companyId);
+                    const recorded = link.source === "DISCOVERY" ? `Discovered${link.lastSeenAt ? `, seen ${formatDate(link.lastSeenAt)}` : ""}` : "Added by hand";
+                    return {
+                      key: link.id,
+                      cells: {
+                        port: { sortValue: port, node: port ?? "?", className: loop ? "font-mono text-xs text-destructive" : "font-mono text-xs" },
+                        other: {
+                          sortValue: loop ? "" : other.name,
+                          node: loop ? (
+                            <span className="text-xs font-medium text-destructive">Loop back to this device</span>
+                          ) : isGlobalAdmin || other.companyId === user.companyId ? (
+                            <Link href={`/infrastructure/devices/${other.id}`} className="font-medium hover:underline">{other.name}</Link>
+                          ) : (
+                            <span className="text-muted-foreground">{other.name}</span>
+                          ),
+                        },
+                        otherPort: { sortValue: otherPort, node: otherPort ?? "?", className: "font-mono text-xs" },
+                        recorded: { sortValue: recorded, node: recorded, className: "text-xs text-muted-foreground" },
+                        actions: {
+                          node: canManage && ownCompanyOnly ? (
+                            <div className="flex justify-end">
+                              <LinkDialog
+                                devices={linkOptions}
+                                fixedDeviceId={device.id}
+                                trigger="icon"
+                                link={{ id: link.id, deviceAId: link.deviceAId, portA: link.portA, deviceBId: link.deviceBId, portB: link.portB, notes: link.notes }}
+                              />
+                              <RemoveLinkButton
+                                linkId={link.id}
+                                label={`${device.name} ${port ?? ""} to ${other.name} ${otherPort ?? ""}`.replace(/\s+/g, " ").trim()}
+                              />
+                            </div>
+                          ) : null,
+                        },
+                      },
+                    };
+                  })}
+                />
               )}
             </CardContent>
           </Card>
@@ -386,45 +394,58 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
                 ) : (
                   <>
                     <div className="mt-3" />
-                    <Table>
-                      <THead>
-                        <TR><TH>Saved</TH><TH>Firmware</TH><TH>Lines</TH><TH>Change</TH>{canViewConfigs ? <TH className="text-right">Open</TH> : null}</TR>
-                      </THead>
-                      <TBody>
-                        {device.configs.map((config, index) => {
-                          const first = index === device.configs.length - 1 && device._count.configs === device.configs.length;
-                          const base = `/infrastructure/devices/${device.id}/config/${config.id}`;
-                          return (
-                            <TR key={config.id}>
-                              <TD className="text-xs">
-                                {formatDateTime(config.takenAt)}
-                                {index === 0 ? <span className="ml-2 text-muted-foreground">latest</span> : null}
-                              </TD>
-                              <TD className="font-mono text-xs">{config.firmware ?? "?"}</TD>
-                              <TD className="text-xs tabular-nums">{config.lineCount}</TD>
-                              <TD className="text-xs">
-                                {first ? (
-                                  <span className="text-muted-foreground">First copy</span>
-                                ) : (
-                                  <span className="font-mono">
-                                    <span className="text-success">+{config.linesAdded}</span>{" "}
-                                    <span className="text-destructive">-{config.linesRemoved}</span>
-                                  </span>
-                                )}
-                              </TD>
-                              {canViewConfigs ? (
-                                <TD className="text-right text-xs">
+                    <SortableTable
+                      initialSort={{ key: "saved", dir: "desc" }}
+                      columns={[
+                        { key: "saved", label: "Saved" },
+                        { key: "firmware", label: "Firmware" },
+                        { key: "lines", label: "Lines" },
+                        { key: "change", label: "Change" },
+                        ...(canViewConfigs ? [{ key: "open", label: "Open", sortable: false, align: "right" as const }] : []),
+                      ]}
+                      rows={device.configs.map((config, index) => {
+                        const first = index === device.configs.length - 1 && device._count.configs === device.configs.length;
+                        const base = `/infrastructure/devices/${device.id}/config/${config.id}`;
+                        return {
+                          key: config.id,
+                          cells: {
+                            saved: {
+                              sortValue: config.takenAt.getTime(),
+                              className: "text-xs",
+                              node: (
+                                <>
+                                  {formatDateTime(config.takenAt)}
+                                  {index === 0 ? <span className="ml-2 text-muted-foreground">latest</span> : null}
+                                </>
+                              ),
+                            },
+                            firmware: { sortValue: config.firmware, node: config.firmware ?? "?", className: "font-mono text-xs" },
+                            lines: { sortValue: config.lineCount, node: config.lineCount, className: "text-xs tabular-nums" },
+                            change: {
+                              sortValue: first ? null : config.linesAdded + config.linesRemoved,
+                              className: "text-xs",
+                              node: first ? (
+                                <span className="text-muted-foreground">First copy</span>
+                              ) : (
+                                <span className="font-mono">
+                                  <span className="text-success">+{config.linesAdded}</span>{" "}
+                                  <span className="text-destructive">-{config.linesRemoved}</span>
+                                </span>
+                              ),
+                            },
+                            open: {
+                              className: "text-xs",
+                              node: canViewConfigs ? (
+                                <>
                                   <Link href={base} className="font-medium hover:underline">View</Link>
-                                  {!first ? (
-                                    <Link href={`${base}?compare=1`} className="ml-3 font-medium hover:underline">Changes</Link>
-                                  ) : null}
-                                </TD>
-                              ) : null}
-                            </TR>
-                          );
-                        })}
-                      </TBody>
-                    </Table>
+                                  {!first ? <Link href={`${base}?compare=1`} className="ml-3 font-medium hover:underline">Changes</Link> : null}
+                                </>
+                              ) : null,
+                            },
+                          },
+                        };
+                      })}
+                    />
                     <p className="mt-2 text-xs text-muted-foreground">
                       A new copy is kept only when the configuration changes.
                       {device._count.configs > device.configs.length ? ` Showing the latest ${device.configs.length} of ${device._count.configs}.` : ""}
@@ -464,19 +485,24 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
             <Card>
               <CardHeader><CardTitle>Running on this host</CardTitle></CardHeader>
               <CardContent>
-                <Table>
-                  <THead><TR><TH>Name</TH><TH>IP address</TH><TH>OS</TH><TH>Status</TH></TR></THead>
-                  <TBody>
-                    {device.guests.map((guest) => (
-                      <TR key={guest.id}>
-                        <TD><Link href={`/infrastructure/devices/${guest.id}`} className="font-medium hover:underline">{guest.name}</Link></TD>
-                        <TD className="font-mono text-xs">{guest.ipAddress ?? "None"}</TD>
-                        <TD className="text-xs">{guest.operatingSystem ?? "None"}</TD>
-                        <TD><StatusBadge status={guest.status} /></TD>
-                      </TR>
-                    ))}
-                  </TBody>
-                </Table>
+                <SortableTable
+                  initialSort={{ key: "name", dir: "asc" }}
+                  columns={[
+                    { key: "name", label: "Name" },
+                    { key: "ip", label: "IP address" },
+                    { key: "os", label: "OS" },
+                    { key: "status", label: "Status" },
+                  ]}
+                  rows={device.guests.map((guest) => ({
+                    key: guest.id,
+                    cells: {
+                      name: { sortValue: guest.name, node: <Link href={`/infrastructure/devices/${guest.id}`} className="font-medium hover:underline">{guest.name}</Link> },
+                      ip: { sortValue: guest.ipAddress ? ipToNumber(guest.ipAddress) ?? guest.ipAddress : null, node: guest.ipAddress ?? "None", className: "font-mono text-xs" },
+                      os: { sortValue: guest.operatingSystem, node: guest.operatingSystem ?? "None", className: "text-xs" },
+                      status: { sortValue: guest.status, node: <StatusBadge status={guest.status} /> },
+                    },
+                  }))}
+                />
               </CardContent>
             </Card>
           ) : null}
@@ -508,12 +534,12 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
 function BackupStatusLine({
   status, error, checkedAt, included,
 }: { status: string | null; error: string | null; checkedAt: Date | null; included: boolean }) {
+  // Switched off: why the last try failed no longer matters.
+  if (!included) {
+    return <p className="text-sm text-muted-foreground">Left out of the nightly backup.</p>;
+  }
   if (!checkedAt) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        {included ? "Not backed up yet. The nightly backup will try it." : "Left out of the nightly backup."}
-      </p>
-    );
+    return <p className="text-sm text-muted-foreground">Not backed up yet. The nightly backup will try it.</p>;
   }
   const tone = status === "OK" ? "text-success" : status === "FAILED" ? "text-destructive" : "text-warning";
   const word = status === "OK" ? "Saved" : status === "FAILED" ? "Failed" : "Not set up";
@@ -524,7 +550,6 @@ function BackupStatusLine({
         <span className="text-muted-foreground"> · last tried {formatDateTime(checkedAt)}</span>
       </p>
       {error ? <p className="text-xs text-muted-foreground">{error}</p> : null}
-      {!included ? <p className="text-xs text-muted-foreground">Left out of the nightly backup.</p> : null}
     </div>
   );
 }

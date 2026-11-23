@@ -14,7 +14,7 @@ import {
 import type { TopologyNode, TopologyLink } from "@/modules/infrastructure/topology";
 import { Combobox } from "@/shared/ui/combobox";
 import { Input } from "@/shared/ui/input";
-import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
+import { SortableTable } from "@/shared/ui/sortable-table";
 import { cn } from "@/shared/utils";
 import { layoutTopology, NODE_HEIGHT, NODE_WIDTH, TRUNK_OFFSET, type Direction, type LaidOutEdge } from "./topology-layout";
 import { LinkDialog, RemoveLinkButton, type DeviceOption } from "../link-dialogs";
@@ -116,8 +116,9 @@ function DeviceNode({ data }: NodeProps<DeviceNodeType>) {
     <div
       style={{ width: NODE_WIDTH, height: NODE_HEIGHT }}
       className={cn(
-        "flex flex-col justify-center rounded-xl border bg-card px-3 text-card-foreground shadow-sm transition-opacity duration-200",
+        "flex flex-col justify-center rounded-xl border bg-card px-3 text-card-foreground shadow-sm transition-[opacity,border-color,box-shadow] duration-200",
         selected && "border-primary ring-2 ring-primary/30",
+        !selected && "hover:border-success hover:ring-2 hover:ring-success/30",
         !selected && loops.length > 0 && "border-destructive/70",
         !node.accessible && "border-dashed bg-muted/60",
         dim && "opacity-25",
@@ -563,9 +564,7 @@ function CableList({ nodes, links, canManage, devices }: Pick<Props, "nodes" | "
     return links
       .map((link) => ({ link, a: byId.get(link.a), b: byId.get(link.b) }))
       .filter(({ link, a, b }) =>
-        !q || [a?.name, b?.name, link.portA, link.portB, a?.ipAddress, b?.ipAddress].some((v) => v?.toLowerCase().includes(q)))
-      .sort((x, y) =>
-        (x.a?.name ?? "").localeCompare(y.a?.name ?? "") || (x.link.portA ?? "").localeCompare(y.link.portA ?? "", undefined, { numeric: true }));
+        !q || [a?.name, b?.name, link.portA, link.portB, a?.ipAddress, b?.ipAddress].some((v) => v?.toLowerCase().includes(q)));
   }, [links, byId, query]);
 
   return (
@@ -574,47 +573,53 @@ function CableList({ nodes, links, canManage, devices }: Pick<Props, "nodes" | "
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
         <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search device, port or IP" className="pl-9" aria-label="Search cables" />
       </div>
-      <Table>
-        <THead>
-          <TR>
-            <TH>Device</TH><TH>Port</TH><TH>Connects to</TH><TH>Its port</TH><TH>Recorded</TH>
-            {canManage ? <TH className="text-right">Actions</TH> : null}
-          </TR>
-        </THead>
-        <TBody>
-          {rows.length === 0 ? (
-            <TR><TD colSpan={canManage ? 6 : 5} className="py-8 text-center text-muted-foreground">No cable matches.</TD></TR>
-          ) : rows.map(({ link, a, b }) => {
-            const loop = link.a === link.b;
-            const label = `${a?.name ?? ""} ${link.portA ?? ""} to ${b?.name ?? ""} ${link.portB ?? ""}`.replace(/\s+/g, " ").trim();
-            return (
-              <TR key={link.id}>
-                <TD><DeviceName node={a} /></TD>
-                <TD className="font-mono text-xs">{portText(link.portA)}</TD>
-                <TD>{loop ? <span className="text-xs font-medium text-destructive">Loop back to itself</span> : <DeviceName node={b} />}</TD>
-                <TD className="font-mono text-xs">{portText(link.portB)}</TD>
-                <TD className="text-xs text-muted-foreground">
-                  {link.source === "DISCOVERY" ? `Discovered${link.seenLabel ? `, seen ${link.seenLabel}` : ""}` : "Added by hand"}
-                </TD>
-                {canManage ? (
-                  <TD className="text-right">
-                    {a?.accessible && b?.accessible ? (
-                      <div className="flex justify-end">
-                        <LinkDialog
-                          devices={devices}
-                          trigger="icon"
-                          link={{ id: link.id, deviceAId: link.a, portA: link.portA, deviceBId: link.b, portB: link.portB, notes: link.notes }}
-                        />
-                        <RemoveLinkButton linkId={link.id} label={label} />
-                      </div>
-                    ) : null}
-                  </TD>
-                ) : null}
-              </TR>
-            );
-          })}
-        </TBody>
-      </Table>
+      <SortableTable
+        pageSize={50}
+        resetKey={query}
+        noun="cable"
+        emptyMessage="No cable matches."
+        initialSort={{ key: "device", dir: "asc" }}
+        columns={[
+          { key: "device", label: "Device" },
+          { key: "port", label: "Port" },
+          { key: "other", label: "Connects to" },
+          { key: "otherPort", label: "Its port" },
+          { key: "recorded", label: "Recorded" },
+          ...(canManage ? [{ key: "actions", label: "Actions", sortable: false, align: "right" as const }] : []),
+        ]}
+        rows={rows.map(({ link, a, b }) => {
+          const loop = link.a === link.b;
+          const label = `${a?.name ?? ""} ${link.portA ?? ""} to ${b?.name ?? ""} ${link.portB ?? ""}`.replace(/\s+/g, " ").trim();
+          const recorded = link.source === "DISCOVERY" ? `Discovered${link.seenLabel ? `, seen ${link.seenLabel}` : ""}` : "Added by hand";
+          return {
+            key: link.id,
+            cells: {
+              // Ties on the device fall back to its port, so a switch's cables stay in port order.
+              device: { sortValue: `${a?.name ?? ""} ${link.portA ?? ""}`, node: <DeviceName node={a} /> },
+              port: { sortValue: link.portA, node: portText(link.portA), className: "font-mono text-xs" },
+              other: {
+                sortValue: loop ? "" : b?.name,
+                node: loop ? <span className="text-xs font-medium text-destructive">Loop back to itself</span> : <DeviceName node={b} />,
+              },
+              otherPort: { sortValue: link.portB, node: portText(link.portB), className: "font-mono text-xs" },
+              recorded: { sortValue: recorded, node: recorded, className: "text-xs text-muted-foreground" },
+              actions: {
+                node:
+                  canManage && a?.accessible && b?.accessible ? (
+                    <div className="flex justify-end">
+                      <LinkDialog
+                        devices={devices}
+                        trigger="icon"
+                        link={{ id: link.id, deviceAId: link.a, portA: link.portA, deviceBId: link.b, portB: link.portB, notes: link.notes }}
+                      />
+                      <RemoveLinkButton linkId={link.id} label={label} />
+                    </div>
+                  ) : null,
+              },
+            },
+          };
+        })}
+      />
     </div>
   );
 }

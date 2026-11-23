@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { requirePermission } from "@/shared/auth/guard";
 import { db } from "@/shared/db";
-import { PageHeader, Pagination } from "@/shared/ui/page";
-import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
+import { PageHeader } from "@/shared/ui/page";
+import { EmptyState } from "@/shared/ui/table";
+import { SortableTable } from "@/shared/ui/sortable-table";
 import { Select } from "@/shared/ui/input";
 import { LiveSearch } from "@/shared/ui/live-search";
 import { formatDate } from "@/shared/utils";
@@ -18,12 +19,11 @@ const PAGE_SIZE = 50;
 export default async function CredentialVaultPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; company?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; company?: string }>;
 }) {
   const { user } = await requirePermission("infrastructure.view");
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
-  const page = Math.max(1, Number(params.page) || 1);
   const isGlobalAdmin = user.systemRoleKey === "SYSTEM_ADMINISTRATOR";
   const canManage = user.permissions.has("infrastructure.credentials.manage");
   const canReveal = user.permissions.has("infrastructure.credentials.reveal");
@@ -50,12 +50,10 @@ export default async function CredentialVaultPage({
     ],
   };
 
-  const [sets, total, companies] = await Promise.all([
+  const [sets, companies] = await Promise.all([
     db.credentialSet.findMany({
       where,
       orderBy: { name: "asc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
       // No ciphertext: the list only needs to know whether a password exists.
       select: {
         id: true, name: true, username: true, notes: true, companyId: true, passwordChangedAt: true,
@@ -63,7 +61,6 @@ export default async function CredentialVaultPage({
         _count: { select: { devices: { where: { device: { deletedAt: null } } } } },
       },
     }),
-    db.credentialSet.count({ where }),
     db.company.findMany({
       where: { deletedAt: null, isActive: true, ...(isGlobalAdmin ? {} : { id: user.companyId }) },
       orderBy: { name: "asc" },
@@ -104,55 +101,50 @@ export default async function CredentialVaultPage({
           }
         />
       ) : (
-        <Table>
-          <THead>
-            <TR>
-              <TH>Name</TH><TH>Username</TH><TH>Company</TH><TH>Devices</TH><TH>Password set</TH>
-              {canReveal ? <TH>Password</TH> : null}
-              {canManage ? <TH className="text-right">Edit</TH> : null}
-            </TR>
-          </THead>
-          <TBody>
-            {sets.map((set) => (
-              <TR key={set.id}>
-                <TD>
-                  <Link href={`/infrastructure/credentials/${set.id}`} className="font-medium text-foreground hover:underline">{set.name}</Link>
-                </TD>
-                <TD className="font-mono text-xs">{set.username ?? "None"}</TD>
-                <TD>{set.company?.name ?? "Shared"}</TD>
-                <TD className="tabular-nums">{set._count.devices}</TD>
-                <TD className="text-xs">{set.passwordChangedAt ? formatDate(set.passwordChangedAt) : <NoPasswordNote />}</TD>
-                {canReveal ? (
-                  <TD>{set.passwordChangedAt ? <RevealPassword id={set.id} compact /> : null}</TD>
-                ) : null}
-                {canManage ? (
-                  <TD className="text-right">
-                    {set.companyId === null && !isGlobalAdmin ? null : (
-                      <CredentialSetDialog
-                        companies={companies}
-                        canShare={isGlobalAdmin}
-                        set={{ id: set.id, companyId: set.companyId, name: set.name, username: set.username, notes: set.notes, hasPassword: !!set.passwordChangedAt }}
-                      />
-                    )}
-                  </TD>
-                ) : null}
-              </TR>
-            ))}
-          </TBody>
-        </Table>
+        <SortableTable
+          pageSize={PAGE_SIZE}
+          resetKey={JSON.stringify(params)}
+          noun="credential set"
+          initialSort={{ key: "name", dir: "asc" }}
+          columns={[
+            { key: "name", label: "Name" },
+            { key: "username", label: "Username" },
+            { key: "company", label: "Company" },
+            { key: "devices", label: "Devices" },
+            { key: "passwordSet", label: "Password set" },
+            ...(canReveal ? [{ key: "password", label: "Password", sortable: false }] : []),
+            ...(canManage ? [{ key: "edit", label: "Edit", sortable: false, align: "right" as const }] : []),
+          ]}
+          rows={sets.map((set) => ({
+            key: set.id,
+            cells: {
+              name: {
+                sortValue: set.name,
+                node: <Link href={`/infrastructure/credentials/${set.id}`} className="font-medium text-foreground hover:underline">{set.name}</Link>,
+              },
+              username: { sortValue: set.username, node: set.username ?? "None", className: "font-mono text-xs" },
+              company: { sortValue: set.company?.name ?? "Shared", node: set.company?.name ?? "Shared" },
+              devices: { sortValue: set._count.devices, node: set._count.devices, className: "tabular-nums" },
+              passwordSet: {
+                sortValue: set.passwordChangedAt?.getTime() ?? null,
+                node: set.passwordChangedAt ? formatDate(set.passwordChangedAt) : <NoPasswordNote />,
+                className: "text-xs",
+              },
+              password: { node: canReveal && set.passwordChangedAt ? <RevealPassword id={set.id} compact /> : null },
+              edit: {
+                node:
+                  canManage && !(set.companyId === null && !isGlobalAdmin) ? (
+                    <CredentialSetDialog
+                      companies={companies}
+                      canShare={isGlobalAdmin}
+                      set={{ id: set.id, companyId: set.companyId, name: set.name, username: set.username, notes: set.notes, hasPassword: !!set.passwordChangedAt }}
+                    />
+                  ) : null,
+              },
+            },
+          }))}
+        />
       )}
-      <Pagination
-        page={page}
-        pageCount={Math.max(1, Math.ceil(total / PAGE_SIZE))}
-        total={total}
-        buildHref={(next) => {
-          const search = new URLSearchParams();
-          if (q) search.set("q", q);
-          if (params.company) search.set("company", params.company);
-          search.set("page", String(next));
-          return `/infrastructure/credentials?${search.toString()}`;
-        }}
-      />
     </div>
   );
 }

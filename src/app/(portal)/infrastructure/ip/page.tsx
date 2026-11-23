@@ -2,13 +2,14 @@ import Link from "next/link";
 import { TriangleAlert } from "lucide-react";
 import { requirePermission } from "@/shared/auth/guard";
 import { PageHeader, StatCard } from "@/shared/ui/page";
-import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
+import { EmptyState } from "@/shared/ui/table";
+import { SortableTable } from "@/shared/ui/sortable-table";
 import { Badge } from "@/shared/ui/badge";
 import { CompanyPill } from "@/shared/ui/filter-pill";
 import { LiveSearch } from "@/shared/ui/live-search";
 import { DeleteButton } from "@/shared/ui/delete-button";
 import { loadPlan, lookupIp } from "@/modules/infrastructure/ipam";
-import { isIpv4 } from "@/modules/infrastructure/ip-math";
+import { ipToNumber, isIpv4 } from "@/modules/infrastructure/ip-math";
 import { deleteVlanAction } from "@/modules/infrastructure/actions";
 import { IP_PLAN_STATUS_LABELS } from "@/modules/infrastructure/validators";
 import { loadIpCatalogs } from "./catalogs";
@@ -25,6 +26,11 @@ const SHOW = [
 ] as const;
 
 const STATUS_BADGE = { ACTIVE: "success", RESERVED: "info", UNUSED: "default" } as const;
+
+/** A subnet sorts by where its range starts, so 10.100.9.0 comes before 10.100.10.0. */
+function cidrSort(cidr: string | undefined): number | null {
+  return cidr ? ipToNumber(cidr.split("/")[0]!) : null;
+}
 
 /** Each company's VLANs and subnets, how full each subnet is, and where any IP lives (SDS Doc 24). */
 export default async function IpPlanPage({
@@ -129,47 +135,65 @@ export default async function IpPlanPage({
       ) : (
         <>
           {vlans.length > 0 ? (
-            <Table>
-              <THead>
-                <TR>
-                  <TH>VLAN</TH>
-                  <TH>Name</TH>
-                  {showCompany ? <TH>Company</TH> : null}
-                  <TH>Subnet</TH>
-                  <TH>Gateway</TH>
-                  <TH>Status</TH>
-                  {canManage ? <TH className="text-right">Actions</TH> : null}
-                </TR>
-              </THead>
-              <TBody>
-                {vlans.map((vlan) => (
-                  <TR key={vlan.id}>
-                    <TD className="font-mono text-sm font-semibold tabular-nums">{vlan.number}</TD>
-                    <TD>
-                      <span className="font-medium">{vlan.name}</span>
-                      {vlan.purpose ? <p className="text-xs text-muted-foreground">{vlan.purpose}</p> : null}
-                    </TD>
-                    {showCompany ? <TD className="text-xs">{vlan.companyName}</TD> : null}
-                    <TD>
-                      {vlan.subnets.length === 0 ? (
-                        <span className="text-xs text-muted-foreground">None</span>
-                      ) : (
-                        vlan.subnets.map((s) => (
-                          <div key={s.id} className="flex items-center gap-1.5">
-                            <Link href={`/infrastructure/ip/subnets/${s.id}`} className="font-mono text-xs font-medium hover:underline">{s.cidr}</Link>
-                            {s.overlapsWith.length > 0 ? (
-                              <span title={`Overlaps ${s.overlapsWith.join(", ")}`} className="text-warning">
-                                <TriangleAlert className="h-3.5 w-3.5" aria-label={`Overlaps ${s.overlapsWith.join(", ")}`} />
-                              </span>
-                            ) : null}
-                          </div>
-                        ))
-                      )}
-                    </TD>
-                    <TD className="font-mono text-xs">{vlan.subnets.map((s) => s.gateway).filter(Boolean).join(", ") || "None"}</TD>
-                    <TD><Badge variant={STATUS_BADGE[vlan.status]}>{IP_PLAN_STATUS_LABELS[vlan.status]}</Badge></TD>
-                    {canManage ? (
-                      <TD className="text-right">
+            <SortableTable
+              pageSize={50}
+              resetKey={`${q}|${show}|${params.company ?? ""}`}
+              noun="VLAN"
+              initialSort={{ key: "vlan", dir: "asc" }}
+              columns={[
+                { key: "vlan", label: "VLAN" },
+                { key: "name", label: "Name" },
+                ...(showCompany ? [{ key: "company", label: "Company" }] : []),
+                { key: "subnet", label: "Subnet" },
+                { key: "gateway", label: "Gateway" },
+                { key: "status", label: "Status" },
+                ...(canManage ? [{ key: "actions", label: "Actions", sortable: false, align: "right" as const }] : []),
+              ]}
+              rows={vlans.map((vlan) => {
+                const gateways = vlan.subnets.map((s) => s.gateway).filter(Boolean) as string[];
+                return {
+                  key: vlan.id,
+                  cells: {
+                    vlan: { sortValue: vlan.number, node: vlan.number, className: "font-mono text-sm font-semibold tabular-nums" },
+                    name: {
+                      sortValue: vlan.name,
+                      node: (
+                        <>
+                          <span className="font-medium">{vlan.name}</span>
+                          {vlan.purpose ? <p className="text-xs text-muted-foreground">{vlan.purpose}</p> : null}
+                        </>
+                      ),
+                    },
+                    company: { sortValue: vlan.companyName, node: vlan.companyName, className: "text-xs" },
+                    subnet: {
+                      sortValue: cidrSort(vlan.subnets[0]?.cidr),
+                      node:
+                        vlan.subnets.length === 0 ? (
+                          <span className="text-xs text-muted-foreground">None</span>
+                        ) : (
+                          vlan.subnets.map((s) => (
+                            <div key={s.id} className="flex items-center gap-1.5">
+                              <Link href={`/infrastructure/ip/subnets/${s.id}`} className="font-mono text-xs font-medium hover:underline">{s.cidr}</Link>
+                              {s.overlapsWith.length > 0 ? (
+                                <span title={`Overlaps ${s.overlapsWith.join(", ")}`} className="text-warning">
+                                  <TriangleAlert className="h-3.5 w-3.5" aria-label={`Overlaps ${s.overlapsWith.join(", ")}`} />
+                                </span>
+                              ) : null}
+                            </div>
+                          ))
+                        ),
+                    },
+                    gateway: {
+                      sortValue: gateways[0] ? ipToNumber(gateways[0]) : null,
+                      node: gateways.join(", ") || "None",
+                      className: "font-mono text-xs",
+                    },
+                    status: {
+                      sortValue: IP_PLAN_STATUS_LABELS[vlan.status],
+                      node: <Badge variant={STATUS_BADGE[vlan.status]}>{IP_PLAN_STATUS_LABELS[vlan.status]}</Badge>,
+                    },
+                    actions: {
+                      node: canManage ? (
                         <div className="flex justify-end">
                           <VlanDialog
                             catalogs={catalogs}
@@ -183,40 +207,46 @@ export default async function IpPlanPage({
                             successMessage="VLAN deleted."
                           />
                         </div>
-                      </TD>
-                    ) : null}
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
+                      ) : null,
+                    },
+                  },
+                };
+              })}
+            />
           ) : null}
 
           {loose.length > 0 ? (
             <div className="mt-6">
               <h2 className="mb-2 text-sm font-semibold">Subnets without a VLAN</h2>
-              <Table>
-                <THead>
-                  <TR>
-                    <TH>Subnet</TH>
-                    {showCompany ? <TH>Company</TH> : null}
-                    <TH>Gateway</TH>
-                    <TH>Purpose</TH>
-                  </TR>
-                </THead>
-                <TBody>
-                  {loose.map((s) => (
-                    <TR key={s.id}>
-                      <TD>
-                        <Link href={`/infrastructure/ip/subnets/${s.id}`} className="font-mono text-xs font-medium hover:underline">{s.cidr}</Link>
-                        {s.overlapsWith.length > 0 ? <p className="text-xs text-warning">Overlaps {s.overlapsWith.join(", ")}</p> : null}
-                      </TD>
-                      {showCompany ? <TD className="text-xs">{s.companyName}</TD> : null}
-                      <TD className="font-mono text-xs">{s.gateway ?? "None"}</TD>
-                      <TD className="text-xs">{s.purpose ?? ""}</TD>
-                    </TR>
-                  ))}
-                </TBody>
-              </Table>
+              <SortableTable
+                pageSize={50}
+                resetKey={`${q}|${show}|${params.company ?? ""}`}
+                noun="subnet"
+                initialSort={{ key: "subnet", dir: "asc" }}
+                columns={[
+                  { key: "subnet", label: "Subnet" },
+                  ...(showCompany ? [{ key: "company", label: "Company" }] : []),
+                  { key: "gateway", label: "Gateway" },
+                  { key: "purpose", label: "Purpose" },
+                ]}
+                rows={loose.map((s) => ({
+                  key: s.id,
+                  cells: {
+                    subnet: {
+                      sortValue: cidrSort(s.cidr),
+                      node: (
+                        <>
+                          <Link href={`/infrastructure/ip/subnets/${s.id}`} className="font-mono text-xs font-medium hover:underline">{s.cidr}</Link>
+                          {s.overlapsWith.length > 0 ? <p className="text-xs text-warning">Overlaps {s.overlapsWith.join(", ")}</p> : null}
+                        </>
+                      ),
+                    },
+                    company: { sortValue: s.companyName, node: s.companyName, className: "text-xs" },
+                    gateway: { sortValue: s.gateway ? ipToNumber(s.gateway) : null, node: s.gateway ?? "None", className: "font-mono text-xs" },
+                    purpose: { sortValue: s.purpose, node: s.purpose ?? "", className: "text-xs" },
+                  },
+                }))}
+              />
             </div>
           ) : null}
         </>

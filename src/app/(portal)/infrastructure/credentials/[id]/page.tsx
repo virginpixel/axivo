@@ -5,9 +5,10 @@ import { db } from "@/shared/db";
 import { PageHeader } from "@/shared/ui/page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { StatusBadge } from "@/shared/ui/badge";
-import { Table, THead, TBody, TR, TH, TD } from "@/shared/ui/table";
+import { SortableTable } from "@/shared/ui/sortable-table";
 import { DeleteButton } from "@/shared/ui/delete-button";
 import { formatDate, formatDateTime } from "@/shared/utils";
+import { ipToNumber } from "@/modules/infrastructure/ip-math";
 import { deleteCredentialSetAction } from "@/modules/infrastructure/actions";
 import {
   CredentialSetDialog, RevealPassword, LinkDevicesDialog, UnlinkCredentialButton, NoPasswordNote,
@@ -150,26 +151,39 @@ export default async function CredentialSetPage({ params }: { params: Promise<{ 
               {set.devices.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No device uses this login yet.</p>
               ) : (
-                <Table>
-                  <THead>
-                    <TR><TH>Device</TH><TH>Type</TH><TH>IP address</TH>{set.companyId ? null : <TH>Company</TH>}<TH>Used for</TH><TH>Status</TH>{canManage ? <TH className="text-right">Unlink</TH> : null}</TR>
-                  </THead>
-                  <TBody>
-                    {set.devices.map((link) => (
-                      <TR key={link.id}>
-                        <TD><Link href={`/infrastructure/devices/${link.device.id}`} className="font-medium hover:underline">{link.device.name}</Link></TD>
-                        <TD>{link.device.type.name}</TD>
-                        <TD className="font-mono text-xs">{link.device.ipAddress ?? "None"}</TD>
-                        {set.companyId ? null : <TD>{link.device.company.name}</TD>}
-                        <TD>{link.purpose ?? "Not specified"}</TD>
-                        <TD><StatusBadge status={link.device.status} /></TD>
-                        {canManage ? (
-                          <TD className="text-right"><UnlinkCredentialButton linkId={link.id} label={set.name} /></TD>
-                        ) : null}
-                      </TR>
-                    ))}
-                  </TBody>
-                </Table>
+                <SortableTable
+                  pageSize={25}
+                  noun="device"
+                  initialSort={{ key: "device", dir: "asc" }}
+                  columns={[
+                    { key: "device", label: "Device" },
+                    { key: "type", label: "Type" },
+                    { key: "ip", label: "IP address" },
+                    ...(set.companyId ? [] : [{ key: "company", label: "Company" }]),
+                    { key: "purpose", label: "Used for" },
+                    { key: "status", label: "Status" },
+                    ...(canManage ? [{ key: "unlink", label: "Unlink", sortable: false, align: "right" as const }] : []),
+                  ]}
+                  rows={set.devices.map((link) => ({
+                    key: link.id,
+                    cells: {
+                      device: {
+                        sortValue: link.device.name,
+                        node: <Link href={`/infrastructure/devices/${link.device.id}`} className="font-medium hover:underline">{link.device.name}</Link>,
+                      },
+                      type: { sortValue: link.device.type.name, node: link.device.type.name },
+                      ip: {
+                        sortValue: link.device.ipAddress ? ipToNumber(link.device.ipAddress) ?? link.device.ipAddress : null,
+                        node: link.device.ipAddress ?? "None",
+                        className: "font-mono text-xs",
+                      },
+                      company: { sortValue: link.device.company.name, node: link.device.company.name },
+                      purpose: { sortValue: link.purpose, node: link.purpose ?? "Not specified" },
+                      status: { sortValue: link.device.status, node: <StatusBadge status={link.device.status} /> },
+                      unlink: { node: canManage ? <UnlinkCredentialButton linkId={link.id} label={set.name} /> : null },
+                    },
+                  }))}
+                />
               )}
             </CardContent>
           </Card>

@@ -1,13 +1,15 @@
 import Link from "next/link";
 import { db } from "@/shared/db";
 import type { AuthenticatedUser } from "@/shared/auth/session";
-import { PageHeader, StatCard, Pagination } from "@/shared/ui/page";
-import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/shared/ui/table";
+import { PageHeader, StatCard } from "@/shared/ui/page";
+import { EmptyState } from "@/shared/ui/table";
+import { SortableTable } from "@/shared/ui/sortable-table";
 import { StatusBadge } from "@/shared/ui/badge";
 import { Select } from "@/shared/ui/input";
 import { LiveSearch } from "@/shared/ui/live-search";
 import { enumLabel } from "@/shared/utils";
-import { DEVICE_STATUSES, KIND_PATHS, type DeviceKind, type DeviceStatus } from "@/modules/infrastructure/validators";
+import { ipToNumber } from "@/modules/infrastructure/ip-math";
+import { DEVICE_STATUSES, type DeviceKind, type DeviceStatus } from "@/modules/infrastructure/validators";
 import type { Prisma } from "@prisma/client";
 import { loadDeviceCatalogs, locationPath } from "./catalogs";
 import { DeviceDialog } from "./device-dialogs";
@@ -18,7 +20,6 @@ export interface RegisterParams {
   company?: string;
   type?: string;
   status?: string;
-  page?: string;
 }
 
 const PAGE_SIZE = 50;
@@ -37,7 +38,6 @@ export async function DeviceRegister({
   const canManage = user.permissions.has("infrastructure.manage");
   const companyScope = isGlobalAdmin ? {} : { companyId: user.companyId };
   const q = params.q?.trim() ?? "";
-  const page = Math.max(1, Number(params.page) || 1);
   const status = DEVICE_STATUSES.includes(params.status as DeviceStatus) ? (params.status as DeviceStatus) : undefined;
   const isServer = kind === "SERVER";
 
@@ -64,12 +64,11 @@ export async function DeviceRegister({
       : {}),
   };
 
-  const [devices, total, counts, catalogs, allLocations] = await Promise.all([
+  // Every match is loaded and paged in the browser, so a column sort covers them all.
+  const [devices, counts, catalogs, allLocations] = await Promise.all([
     db.infraDevice.findMany({
       where,
       orderBy: [{ name: "asc" }],
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
       include: {
         company: { select: { name: true } },
         type: { select: { name: true } },
@@ -80,7 +79,6 @@ export async function DeviceRegister({
         _count: { select: { credentials: true } },
       },
     }),
-    db.infraDevice.count({ where }),
     db.infraDevice.groupBy({
       by: ["status"],
       where: { deletedAt: null, kind, ...companyScope, ...(isGlobalAdmin && params.company ? { companyId: params.company } : {}) },
@@ -93,7 +91,6 @@ export async function DeviceRegister({
   const typesOfKind = catalogs.types.filter((type) => type.kind === kind);
 
   const title = isServer ? "Servers & hosts" : "Network devices";
-  const basePath = KIND_PATHS[kind];
 
   return (
     <div>
@@ -160,47 +157,68 @@ export async function DeviceRegister({
           }
         />
       ) : (
-        <Table>
-          <THead>
-            <TR>
-              <TH>Name</TH>
-              <TH>Type</TH>
-              <TH>IP address</TH>
-              {isGlobalAdmin ? <TH>Company</TH> : null}
-              <TH>Location</TH>
-              <TH>Make / model</TH>
-              <TH>{isServer ? "OS" : "Firmware"}</TH>
-              {isServer ? <TH>Runs on</TH> : null}
-              <TH>Logins</TH>
-              <TH>Status</TH>
-              {canManage ? <TH className="text-right">Actions</TH> : null}
-            </TR>
-          </THead>
-          <TBody>
-            {devices.map((device) => (
-              <TR key={device.id}>
-                <TD>
-                  <Link href={`/infrastructure/devices/${device.id}`} className="font-medium text-foreground hover:underline">
-                    {device.name}
-                  </Link>
-                  {device.hostname ? <p className="max-w-56 truncate text-xs text-muted-foreground">{device.hostname}</p> : null}
-                  {device.asset ? (
-                    <Link href={`/assets/${device.asset.id}`} className="block max-w-56 truncate text-xs text-muted-foreground hover:underline">
-                      Asset {device.asset.assetTag ?? device.asset.name}
-                    </Link>
-                  ) : null}
-                </TD>
-                <TD>{device.type.name}</TD>
-                <TD className="font-mono text-xs tabular-nums">{device.ipAddress ?? "None"}</TD>
-                {isGlobalAdmin ? <TD>{device.company.name}</TD> : null}
-                <TD className="text-xs">{device.locationId ? locationPath(device.locationId, allLocations) : "None"}</TD>
-                <TD>
-                  {device.manufacturer?.name ?? ""}
-                  {device.model ? <p className="text-xs text-muted-foreground">{device.model}</p> : null}
-                  {!device.manufacturer && !device.model ? "None" : null}
-                </TD>
-                <TD className="text-xs">
-                  {isServer ? (
+        <SortableTable
+          pageSize={PAGE_SIZE}
+          resetKey={JSON.stringify(params)}
+          noun="device"
+          initialSort={{ key: "name", dir: "asc" }}
+          columns={[
+            { key: "name", label: "Name" },
+            { key: "type", label: "Type" },
+            { key: "ip", label: "IP address" },
+            ...(isGlobalAdmin ? [{ key: "company", label: "Company" }] : []),
+            { key: "location", label: "Location" },
+            { key: "make", label: "Make / model" },
+            { key: "software", label: isServer ? "OS" : "Firmware" },
+            ...(isServer ? [{ key: "host", label: "Runs on" }] : []),
+            { key: "logins", label: "Logins" },
+            { key: "status", label: "Status" },
+            ...(canManage ? [{ key: "actions", label: "Actions", sortable: false, align: "right" as const }] : []),
+          ]}
+          rows={devices.map((device) => {
+            const location = device.locationId ? locationPath(device.locationId, allLocations) : null;
+            const make = [device.manufacturer?.name, device.model].filter(Boolean).join(" ");
+            return {
+              key: device.id,
+              cells: {
+                name: {
+                  sortValue: device.name,
+                  node: (
+                    <>
+                      <Link href={`/infrastructure/devices/${device.id}`} className="font-medium text-foreground hover:underline">
+                        {device.name}
+                      </Link>
+                      {device.hostname ? <p className="max-w-56 truncate text-xs text-muted-foreground">{device.hostname}</p> : null}
+                      {device.asset ? (
+                        <Link href={`/assets/${device.asset.id}`} className="block max-w-56 truncate text-xs text-muted-foreground hover:underline">
+                          Asset {device.asset.assetTag ?? device.asset.name}
+                        </Link>
+                      ) : null}
+                    </>
+                  ),
+                },
+                type: { sortValue: device.type.name, node: device.type.name },
+                ip: {
+                  sortValue: device.ipAddress ? ipToNumber(device.ipAddress) ?? device.ipAddress : null,
+                  node: device.ipAddress ?? "None",
+                  className: "font-mono text-xs tabular-nums",
+                },
+                company: { sortValue: device.company.name, node: device.company.name },
+                location: { sortValue: location, node: location ?? "None", className: "text-xs" },
+                make: {
+                  sortValue: make || null,
+                  node: (
+                    <>
+                      {device.manufacturer?.name ?? ""}
+                      {device.model ? <p className="text-xs text-muted-foreground">{device.model}</p> : null}
+                      {!device.manufacturer && !device.model ? "None" : null}
+                    </>
+                  ),
+                },
+                software: {
+                  sortValue: isServer ? device.operatingSystem : device.version,
+                  className: "text-xs",
+                  node: isServer ? (
                     <>
                       {device.operatingSystem ?? "None"}
                       {device.version ? <p className="text-muted-foreground">{device.version}</p> : null}
@@ -210,19 +228,19 @@ export async function DeviceRegister({
                       {device.version ?? "None"}
                       {device.operatingSystem ? <p className="text-muted-foreground">{device.operatingSystem}</p> : null}
                     </>
-                  )}
-                </TD>
-                {isServer ? (
-                  <TD className="text-xs">
-                    {device.host ? (
-                      <Link href={`/infrastructure/devices/${device.host.id}`} className="hover:underline">{device.host.name}</Link>
-                    ) : "None"}
-                  </TD>
-                ) : null}
-                <TD className="tabular-nums">{device._count.credentials || "None"}</TD>
-                <TD><StatusBadge status={device.status} /></TD>
-                {canManage ? (
-                  <TD className="text-right">
+                  ),
+                },
+                host: {
+                  sortValue: device.host?.name,
+                  className: "text-xs",
+                  node: device.host ? (
+                    <Link href={`/infrastructure/devices/${device.host.id}`} className="hover:underline">{device.host.name}</Link>
+                  ) : "None",
+                },
+                logins: { sortValue: device._count.credentials, node: device._count.credentials || "None", className: "tabular-nums" },
+                status: { sortValue: device.status, node: <StatusBadge status={device.status} /> },
+                actions: {
+                  node: canManage ? (
                     <DeviceDialog
                       kind={kind}
                       catalogs={catalogs}
@@ -248,27 +266,13 @@ export async function DeviceRegister({
                         assetLabel: device.asset ? (device.asset.assetTag ? `${device.asset.name} (${device.asset.assetTag})` : device.asset.name) : null,
                       }}
                     />
-                  </TD>
-                ) : null}
-              </TR>
-            ))}
-          </TBody>
-        </Table>
+                  ) : null,
+                },
+              },
+            };
+          })}
+        />
       )}
-      <Pagination
-        page={page}
-        pageCount={Math.max(1, Math.ceil(total / PAGE_SIZE))}
-        total={total}
-        buildHref={(next) => {
-          const search = new URLSearchParams();
-          if (q) search.set("q", q);
-          if (params.company) search.set("company", params.company);
-          if (params.type) search.set("type", params.type);
-          if (params.status) search.set("status", params.status);
-          search.set("page", String(next));
-          return `${basePath}?${search.toString()}`;
-        }}
-      />
     </div>
   );
 }
