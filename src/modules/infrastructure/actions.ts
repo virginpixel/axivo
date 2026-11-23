@@ -11,6 +11,7 @@ import * as service from "./service";
 import * as vault from "./vault";
 import { previewImport, commitImport, type ImportPreview, type ImportResult } from "./import";
 import * as topology from "./topology";
+import * as services from "./services";
 import type { LinkImportPreview, LinkImportResult } from "./topology";
 import * as backups from "./config-backup";
 import * as ipam from "./ipam";
@@ -18,7 +19,7 @@ import type { IpamImportPreview, IpamImportResult } from "./ipam";
 import { planAssetLinks, commitAssetLinks, type AssetLinkRow } from "./asset-link";
 import {
   deviceSchema, deviceTypeSchema, credentialSetSchema, credentialLinkSchema, linkSchema, assetLinkRunSchema,
-  backupSettingsSchema, vlanSchema, subnetSchema, ipAddressSchema, DEVICE_STATUSES, DEVICE_KINDS, type DeviceInput,
+  backupSettingsSchema, vlanSchema, subnetSchema, ipAddressSchema, serviceSchema, DEVICE_STATUSES, DEVICE_KINDS, type DeviceInput,
 } from "./validators";
 
 /** Infrastructure register and credential vault server actions (SDS Doc 24). */
@@ -309,6 +310,43 @@ export async function commitImportAction(formData: FormData): Promise<ActionResu
     const result = await commitImport(scopeOf(context), fileFrom(formData), options);
     revalidateInfrastructure();
     return ok(result);
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Services on a server
+// ---------------------------------------------------------------------------
+
+export async function createServiceAction(raw: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    const service = await services.createService(scopeOf(context), parse(serviceSchema, raw));
+    revalidateInfrastructure();
+    return ok({ id: service.id });
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function updateServiceAction(id: string, raw: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    const service = await services.updateService(scopeOf(context), parse(uuidSchema, id), parse(serviceSchema, raw));
+    revalidateInfrastructure();
+    return ok({ id: service.id });
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function deleteServiceAction(id: string): Promise<ActionResult<undefined>> {
+  try {
+    const context = await requirePermission("infrastructure.manage");
+    await services.deleteService(scopeOf(context), parse(uuidSchema, id));
+    revalidateInfrastructure();
+    return ok(undefined);
   } catch (error) {
     return toActionError(error);
   }

@@ -24,6 +24,8 @@ let service: typeof import("@/modules/infrastructure/service");
 let vault: typeof import("@/modules/infrastructure/vault");
 let importer: typeof import("@/modules/infrastructure/import");
 let topology: typeof import("@/modules/infrastructure/topology");
+let services: typeof import("@/modules/infrastructure/services");
+let validators: typeof import("@/modules/infrastructure/validators");
 
 const SECRET = "S3cret-Switch-Pass!";
 const audit = { actorLabel: "integration-test" };
@@ -65,6 +67,8 @@ beforeAll(async () => {
   vault = await import("@/modules/infrastructure/vault");
   importer = await import("@/modules/infrastructure/import");
   topology = await import("@/modules/infrastructure/topology");
+  services = await import("@/modules/infrastructure/services");
+  validators = await import("@/modules/infrastructure/validators");
   cxr = await db.company.create({ data: { name: "Crossroads" } });
   hrh = await db.company.create({ data: { name: "Hard Rock Hotel" } });
   switchType = await db.infraDeviceType.create({ data: { kind: "NETWORK", name: "Switch" } });
@@ -308,5 +312,33 @@ describe("connections", () => {
 
     await service.deleteDevice(admin(), acc1.id);
     expect(await db.infraLink.count({ where: { OR: [{ deviceAId: acc1.id }, { deviceBId: acc1.id }] } })).toBe(0);
+  });
+});
+
+describe("services on a server", () => {
+  const input = (deviceId: string, values: Record<string, unknown>) =>
+    validators.serviceSchema.parse({ deviceId, ports: null, url: null, notes: null, ...values });
+
+  it("records each stack with tidy ports, one name per server, and only on servers", async () => {
+    const host = await service.createDevice(admin(), device({ name: "STACKSTATION", typeId: vmType.id, ipAddress: "10.100.100.107" }));
+    const portainer = await services.createService(admin(), input(host.id, { name: "Portainer", ports: "9443 , 8000-8010/TCP;9443", url: "https://10.100.100.107:9443" }));
+    expect(portainer.ports).toBe("9443, 8000-8010/tcp");
+    await expect(services.createService(admin(), input(host.id, { name: "portainer" }))).rejects.toThrow(/correct the highlighted/i);
+    expect(() => input(host.id, { name: "Bad", ports: "70000" })).toThrow(/1 to 65535/);
+    expect(() => input(host.id, { name: "Bad", url: "10.100.100.107:9443" })).toThrow(/http/);
+
+    const sw = await db.infraDevice.findFirstOrThrow({ where: { companyId: cxr.id, name: "CORE-SW1" } });
+    await expect(services.createService(admin(), input(sw.id, { name: "Web UI" }))).rejects.toThrow(/correct the highlighted/i);
+    await expect(services.createService(hrhUser(), input(host.id, { name: "Grafana" }))).rejects.toThrow();
+
+    const updated = await services.updateService(admin(), portainer.id, input(host.id, { name: "Portainer", ports: "9443" }));
+    expect(updated.ports).toBe("9443");
+    await services.deleteService(admin(), portainer.id);
+    expect(await db.infraService.count({ where: { deviceId: host.id } })).toBe(0);
+
+    // Each change is on the server's own history.
+    const events = await db.auditEvent.findMany({ where: { targetId: host.id, eventType: { startsWith: "service." } }, orderBy: { occurredAt: "asc" } });
+    expect(events.map((e) => e.eventType)).toEqual(["service.created", "service.updated", "service.deleted"]);
+    expect(events[0]!.action).toBe("Added service Portainer (9443, 8000-8010/tcp)");
   });
 });

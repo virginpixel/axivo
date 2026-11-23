@@ -41,6 +41,13 @@ export async function DeviceRegister({
   const status = DEVICE_STATUSES.includes(params.status as DeviceStatus) ? (params.status as DeviceStatus) : undefined;
   const isServer = kind === "SERVER";
 
+  const serviceMatch: Prisma.InfraServiceWhereInput = {
+    OR: [
+      { name: { contains: q, mode: "insensitive" } },
+      { ports: { contains: q } },
+      { url: { contains: q, mode: "insensitive" } },
+    ],
+  };
   const where: Prisma.InfraDeviceWhereInput = {
     deletedAt: null,
     kind,
@@ -59,6 +66,8 @@ export async function DeviceRegister({
             { model: { contains: q, mode: "insensitive" } },
             { operatingSystem: { contains: q, mode: "insensitive" } },
             { purpose: { contains: q, mode: "insensitive" } },
+            // A server is found by the services it runs, too.
+            ...(isServer ? [{ services: { some: serviceMatch } }] : []),
           ],
         }
       : {}),
@@ -77,6 +86,7 @@ export async function DeviceRegister({
         applications: { select: { applicationId: true } },
         asset: { select: { id: true, name: true, assetTag: true } },
         _count: { select: { credentials: true } },
+        ...(isServer && q ? { services: { where: serviceMatch, orderBy: { name: "asc" }, select: { id: true, name: true, ports: true } } } : {}),
       },
     }),
     db.infraDevice.groupBy({
@@ -118,7 +128,7 @@ export async function DeviceRegister({
       </div>
 
       <div className="mb-4 flex flex-wrap items-end gap-2">
-        <LiveSearch placeholder="Search name, IP, serial, model" className="w-full sm:w-72" />
+        <LiveSearch placeholder={isServer ? "Search name, IP, serial, model or service" : "Search name, IP, serial, model"} className="w-full sm:w-72" />
         <form method="get" className="flex flex-wrap items-end gap-2">
           <input type="hidden" name="q" value={q} />
           {isGlobalAdmin ? (
@@ -193,6 +203,12 @@ export async function DeviceRegister({
                         <Link href={`/assets/${device.asset.id}`} className="block max-w-56 truncate text-xs text-muted-foreground hover:underline">
                           Asset {device.asset.assetTag ?? device.asset.name}
                         </Link>
+                      ) : null}
+                      {"services" in device && device.services.length > 0 ? (
+                        <p className="max-w-64 text-xs text-primary">
+                          {device.services.length === 1 ? "Service: " : "Services: "}
+                          {device.services.map((service) => (service.ports ? `${service.name} (${service.ports})` : service.name)).join(", ")}
+                        </p>
                       ) : null}
                     </>
                   ),

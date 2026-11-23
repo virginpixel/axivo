@@ -338,6 +338,43 @@ describe("the backup pass", () => {
     });
     expect(await db.infraConfigBackup.count({ where: { deviceId } })).toBe(2);
   });
+
+  it("tries the next SSH login when one is refused, and not when the switch cannot be reached", async () => {
+    // An older SSH login with a wrong password, linked before the right one.
+    const right = await db.infraDeviceCredential.findFirstOrThrow({ where: { deviceId, purpose: "SSH" }, include: { credentialSet: true } });
+    await vault.unlinkCredential(admin(), right.id);
+    const stale = await vault.createCredentialSet(admin(), { companyId: cxr.id, name: "Old SSH", username: LOGIN.username, password: "wrong", notes: null });
+    await vault.linkCredential(admin(), { deviceId, credentialSetId: stale.id, purpose: "SSH" });
+    await vault.linkCredential(admin(), { deviceId, credentialSetId: right.credentialSetId, purpose: "SSH" });
+
+    const collect = (input: Parameters<typeof ssh.collectConfig>[0]) => ssh.collectConfig({ ...input, port: iosServer.port, timeoutMs: 30_000 });
+    await runner.runConfigBackup({ trigger: "MANUAL", deviceIds: [deviceId] }, collect);
+    const saved = await db.infraDevice.findUniqueOrThrow({ where: { id: deviceId } });
+    expect(saved.configStatus).toBe("OK");
+    expect(saved.configError).toMatch(/^Logged in with "Switch SSH"\. "Old SSH": Login refused/);
+
+    // A switch that cannot be reached fails the same way for every login: tried once.
+    let calls = 0;
+    const unreachable = async () => {
+      calls += 1;
+      throw new ssh.CollectError("No answer on SSH (port 22).");
+    };
+    await runner.runConfigBackup({ trigger: "MANUAL", deviceIds: [deviceId] }, unreachable);
+    expect(calls).toBe(1);
+    expect(await db.infraDevice.findUniqueOrThrow({ where: { id: deviceId } })).toMatchObject({
+      configStatus: "FAILED",
+      configError: "No answer on SSH (port 22).",
+    });
+
+    // Every login refused: the message names each one.
+    const refused = async (input: { username: string; password: string }) => {
+      throw new ssh.CollectError(`Login refused for ${input.password === "wrong" ? "the old one" : "the new one"}.`, true);
+    };
+    await runner.runConfigBackup({ trigger: "MANUAL", deviceIds: [deviceId] }, refused as never);
+    expect((await db.infraDevice.findUniqueOrThrow({ where: { id: deviceId } })).configError).toBe(
+      '"Old SSH": Login refused for the old one. "Switch SSH": Login refused for the new one.',
+    );
+  }, 60_000);
 });
 
 describe("reading a subnet's ARP table", () => {

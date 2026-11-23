@@ -30,7 +30,7 @@ const BUCKET_LABEL = { saved: "Saved", failed: "Failed", setup: "Not set up", ou
 function resultNote(row: BackupRow, state: ReturnType<typeof bucket>): string | null {
   if (state === "out") return "Backup is switched off for this device.";
   if (state === "setup" && !row.error) return row.ipAddress ? "No SSH login linked." : "No IP address recorded.";
-  if (state === "saved") return null;
+  // A saved device may carry a note: which login got in after another failed.
   return row.error;
 }
 

@@ -1,8 +1,8 @@
 import { db } from "@/shared/db";
 import { decryptSecret } from "@/shared/crypto/encryption";
 import { recordAudit, SYSTEM_ACTOR, type AuditContext } from "@/shared/audit/audit";
-import { collectArp, CollectError, type CollectInput, type CollectResult } from "./config-ssh";
-import { pickLogins } from "./config-runner";
+import { collectArp, type CollectInput, type CollectResult } from "./config-ssh";
+import { pickLogins, tryLogins } from "./config-runner";
 import { parseArp } from "./arp-parse";
 import { ipToNumber } from "./ip-math";
 import { routingSwitch } from "./ipam";
@@ -56,7 +56,7 @@ export async function runArpScan(
       where: { id: deviceId },
       include: {
         manufacturer: { select: { name: true } },
-        credentials: { include: { credentialSet: { select: { username: true, secretCiphertext: true, deletedAt: true } } } },
+        credentials: { include: { credentialSet: { select: { name: true, username: true, secretCiphertext: true, deletedAt: true } } } },
       },
     });
     const fail = async (message: string) => {
@@ -66,27 +66,30 @@ export async function runArpScan(
         data: { arpCheckedAt: new Date(), arpStatus: "FAILED", arpMessage: `${device.name}: ${message}`.slice(0, 500) },
       });
     };
-    const { login, enable } = pickLogins(device.credentials);
+    const { logins, enable } = pickLogins(device.credentials);
     if (!device.ipAddress) {
       await fail("no IP address recorded.");
       continue;
     }
-    if (!login) {
+    if (logins.length === 0) {
       await fail("no SSH login linked. Link one from the credential vault.");
       continue;
     }
     let entries;
     try {
-      const result = await collect({
-        host: device.ipAddress,
-        username: login.credentialSet.username!,
-        password: decryptSecret(login.credentialSet.secretCiphertext!),
-        enablePassword: enable ? decryptSecret(enable.credentialSet.secretCiphertext!) : null,
-        manufacturer: device.manufacturer?.name ?? null,
-      });
+      const host = device.ipAddress;
+      const { result } = await tryLogins(logins, (login) =>
+        collect({
+          host,
+          username: login.credentialSet.username!,
+          password: decryptSecret(login.credentialSet.secretCiphertext!),
+          enablePassword: enable ? decryptSecret(enable.credentialSet.secretCiphertext!) : null,
+          manufacturer: device.manufacturer?.name ?? null,
+        }),
+      );
       entries = parseArp(result.outputs.arp ?? "");
     } catch (error) {
-      await fail(error instanceof CollectError ? error.message : `failed: ${(error as Error).message}`);
+      await fail((error as Error).message);
       continue;
     }
 

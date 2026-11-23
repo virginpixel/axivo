@@ -15,6 +15,7 @@ import { loadDeviceCatalogs, locationPath } from "../../catalogs";
 import { DeviceDialog, DeviceStatusControl } from "../../device-dialogs";
 import { LinkCredentialDialog, RevealPassword, UnlinkCredentialButton, NoPasswordNote } from "../../credential-dialogs";
 import { LinkDialog, RemoveLinkButton } from "../../link-dialogs";
+import { ServiceDialog, RemoveServiceButton } from "../../service-dialogs";
 import { BackupNowButton, BackupIncludedToggle } from "../../backup-controls";
 import { subnetForAddress } from "@/modules/infrastructure/ipam";
 
@@ -52,6 +53,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
       _count: { select: { configs: true } },
       guests: { where: { deletedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true, ipAddress: true, status: true, operatingSystem: true } },
       applications: { include: { application: { select: { id: true, name: true } } } },
+      services: { orderBy: { name: "asc" } },
       credentials: {
         orderBy: { createdAt: "asc" },
         include: {
@@ -452,6 +454,74 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
                       {!canViewConfigs ? " Opening a saved configuration needs the right to view configurations." : ""}
                     </p>
                   </>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {isServer ? (
+            <Card>
+              <CardHeader className="flex-row items-center justify-between gap-3">
+                <CardTitle>Services</CardTitle>
+                {canManage ? <ServiceDialog deviceId={device.id} /> : null}
+              </CardHeader>
+              <CardContent>
+                {device.services.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No services recorded. Add what this server offers, such as each Docker stack and its ports.
+                  </p>
+                ) : (
+                  <SortableTable
+                    pageSize={25}
+                    noun="service"
+                    initialSort={{ key: "name", dir: "asc" }}
+                    columns={[
+                      { key: "name", label: "Name" },
+                      { key: "ports", label: "Ports" },
+                      { key: "url", label: "Address" },
+                      ...(canManage ? [{ key: "actions", label: "Actions", sortable: false, align: "right" as const }] : []),
+                    ]}
+                    rows={device.services.map((service) => ({
+                      key: service.id,
+                      cells: {
+                        name: {
+                          sortValue: service.name,
+                          node: (
+                            <>
+                              <span className="font-medium">{service.name}</span>
+                              {service.notes ? <p className="max-w-80 whitespace-pre-wrap text-xs text-muted-foreground">{service.notes}</p> : null}
+                            </>
+                          ),
+                        },
+                        // The first port decides the order, so 80 comes before 8080.
+                        ports: {
+                          sortValue: service.ports ? Number(service.ports.split(/[-,/ ]/)[0]) : null,
+                          node: service.ports ?? "None",
+                          className: "font-mono text-xs",
+                        },
+                        url: {
+                          sortValue: service.url,
+                          className: "text-xs",
+                          node: service.url ? (
+                            <a href={service.url} target="_blank" rel="noopener noreferrer" className="break-all font-medium hover:underline">
+                              {service.url}
+                            </a>
+                          ) : "None",
+                        },
+                        actions: {
+                          node: canManage ? (
+                            <div className="flex justify-end">
+                              <ServiceDialog
+                                deviceId={device.id}
+                                service={{ id: service.id, name: service.name, ports: service.ports, url: service.url, notes: service.notes }}
+                              />
+                              <RemoveServiceButton serviceId={service.id} name={service.name} />
+                            </div>
+                          ) : null,
+                        },
+                      },
+                    }))}
+                  />
                 )}
               </CardContent>
             </Card>

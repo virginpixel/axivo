@@ -135,4 +135,15 @@ describe("config backup: schedule and logins", () => {
     expect(pickLogins([{ purpose: null, credentialSet: set("admin") }]).login?.credentialSet.username).toBe("admin");
     expect(pickLogins([{ purpose: "Web UI", credentialSet: set("web") }]).login).toBeUndefined();
   });
+
+  it("lists every SSH login to try, the one linked first leading", () => {
+    const set = (username: string) => ({ username, secretCiphertext: "x", deletedAt: null });
+    const picked = pickLogins([
+      { purpose: "SSH", createdAt: new Date("2026-11-23T10:00:00Z"), credentialSet: set("new") },
+      { purpose: null, createdAt: new Date("2026-11-01T10:00:00Z"), credentialSet: set("plain") },
+      { purpose: "SSH", createdAt: new Date("2026-11-20T10:00:00Z"), credentialSet: set("old") },
+    ]);
+    // Only the SSH ones when there are any.
+    expect(picked.logins.map((l) => l.credentialSet.username)).toEqual(["old", "new"]);
+  });
 });

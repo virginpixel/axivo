@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { uuidSchema, requiredText, optionalText, nullableUuid } from "@/shared/validation/common";
+import { normalizePorts } from "./ports";
 
 /**
  * Infrastructure register and credential vault validation (SDS Doc 24).
@@ -136,6 +137,29 @@ export const linkSchema = z
   })
   .strict();
 
+/** Something a server offers: a Docker stack, a web app, a database. */
+export const serviceSchema = z
+  .object({
+    deviceId: uuidSchema,
+    name: requiredText("Name", 150),
+    ports: optionalText(200),
+    url: optionalText(500),
+    notes: optionalText(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const ports = normalizePorts(value.ports);
+    if (!ports.ok) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["ports"], message: ports.error });
+    if (value.url && !/^https?:\/\/[^\s]+$/i.test(value.url)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["url"], message: "Start the address with http:// or https://." });
+    }
+  })
+  .transform((value) => {
+    const ports = normalizePorts(value.ports);
+    return { ...value, ports: ports.ok ? ports.value : null };
+  });
+
+export type ServiceInput = z.infer<typeof serviceSchema>;
 export type DeviceInput = z.infer<typeof deviceSchema>;
 export type DeviceTypeInput = z.infer<typeof deviceTypeSchema>;
 export type CredentialSetInput = z.infer<typeof credentialSetSchema>;

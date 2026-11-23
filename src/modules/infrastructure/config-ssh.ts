@@ -35,8 +35,16 @@ export interface CollectResult {
   config: string;
 }
 
-/** A failure worth showing as it is: the message is written for a person. */
-export class CollectError extends Error {}
+/**
+ * A failure worth showing as it is: the message is written for a person.
+ * `loginProblem` marks a failure that another login could get past (refused,
+ * no enable rights), as opposed to a device that cannot be reached at all.
+ */
+export class CollectError extends Error {
+  constructor(message: string, readonly loginProblem = false) {
+    super(message);
+  }
+}
 
 /** Only `show` commands and session settings are ever sent. */
 const ALLOWED = /^(show [\w -]+|terminal length 0|terminal datadump|no page|enable|exit)$/;
@@ -169,7 +177,7 @@ function connect(input: CollectInput): Promise<{ client: Client; inSession: bool
     client.once("ready", () => resolve({ client, inSession: method === "none" }));
     client.once("error", (error: Error & { level?: string }) => {
       client.end();
-      if (error.level === "client-authentication") reject(new CollectError("Login refused: check the username and password."));
+      if (error.level === "client-authentication") reject(new CollectError("Login refused: check the username and password.", true));
       else if (error.level === "client-timeout") reject(new CollectError("No answer on SSH (port 22)."));
       else if (/ECONNREFUSED/.test(error.message)) reject(new CollectError("SSH is not open on this device (connection refused)."));
       else if (/EHOSTUNREACH|ENETUNREACH|ETIMEDOUT/.test(error.message)) reject(new CollectError("Cannot reach the device's IP address."));
@@ -214,9 +222,9 @@ async function session(input: CollectInput, mode: Mode): Promise<CollectResult> 
       if (!PASSWORD_PROMPT.test(lastOf(reply))) throw new CollectError("The device did not ask for a password.");
       shell.type(input.password + eol);
       banner = await shell.read((line) => atPrompt(line) || LOGIN_PROMPT.test(line), 10_000, 3000);
-      if (!atPrompt(lastOf(banner))) throw new CollectError("Login refused: check the username and password.");
+      if (!atPrompt(lastOf(banner))) throw new CollectError("Login refused: check the username and password.", true);
     } else if (PASSWORD_PROMPT.test(lastOf(banner))) {
-      throw new CollectError("The device asked for a second password inside the session.");
+      throw new CollectError("The device asked for a second password inside the session.", true);
     }
     if (!atPrompt(lastOf(banner))) {
       banner += await shell.read(atPrompt, 25_000, 25_000);
@@ -243,6 +251,7 @@ async function session(input: CollectInput, mode: Mode): Promise<CollectResult> 
           input.enablePassword
             ? "The enable password was refused."
             : "This login needs enable mode. Link an Enable login to the device.",
+          true,
         );
       }
     }

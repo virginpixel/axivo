@@ -27,21 +27,71 @@ export type Collector = (input: CollectInput) => Promise<CollectResult>;
 
 type Outcome = "unchanged" | "changed" | "failed" | "skipped";
 
-interface Credential {
+export interface Credential {
   purpose: string | null;
-  credentialSet: { username: string | null; secretCiphertext: string | null; deletedAt: Date | null };
+  createdAt?: Date;
+  credentialSet: { name?: string; username: string | null; secretCiphertext: string | null; deletedAt: Date | null };
 }
 
-/** The SSH login, and the enable password if one is linked. */
-export function pickLogins(credentials: Credential[]) {
-  const live = credentials.filter((c) => !c.credentialSet.deletedAt && c.credentialSet.secretCiphertext);
+/**
+ * The logins to try, in order, and the enable password if one is linked.
+ * Logins marked SSH come first, oldest link first; only when none is marked
+ * SSH are the other general logins (not web UI, iLO, SNMP or OS admin) tried.
+ */
+export function pickLogins<C extends Credential>(credentials: C[]) {
+  const live = credentials
+    .filter((c) => !c.credentialSet.deletedAt && c.credentialSet.secretCiphertext)
+    .sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0));
   const enable = live.find((c) => /enable/i.test(c.purpose ?? ""));
-  const logins = live.filter((c) => c.credentialSet.username && !/enable/i.test(c.purpose ?? ""));
-  const login =
-    logins.find((c) => /ssh/i.test(c.purpose ?? "")) ??
-    logins.find((c) => !/web|ilo|idrac|snmp|os admin/i.test(c.purpose ?? ""));
-  return { login, enable };
+  const usable = live.filter((c) => c.credentialSet.username && !/enable/i.test(c.purpose ?? ""));
+  const ssh = usable.filter((c) => /ssh/i.test(c.purpose ?? ""));
+  const logins = ssh.length > 0 ? ssh : usable.filter((c) => !/web|ilo|idrac|snmp|os admin/i.test(c.purpose ?? ""));
+  return { login: logins[0], logins, enable };
 }
+
+const loginName = (login: Credential) => login.credentialSet.name ?? login.credentialSet.username ?? "login";
+
+/** Every login was tried and none got through; the message says what each one hit. */
+export class LoginsFailedError extends Error {
+  constructor(readonly failures: { login: string; error: string }[]) {
+    super(
+      failures.length === 1
+        ? failures[0]!.error
+        : failures.map((f) => `"${f.login}": ${f.error}`).join(" "),
+    );
+  }
+}
+
+/**
+ * Try each login in turn. Move on to the next only when the login itself was
+ * the problem (refused, not enough rights): a device that cannot be reached
+ * fails the same way for every login, so the rest are not tried.
+ */
+export async function tryLogins<C extends Credential, T>(
+  logins: C[],
+  attempt: (login: C) => Promise<T>,
+): Promise<{ result: T; login: C; note: string | null }> {
+  const failures: { login: string; error: string }[] = [];
+  for (const [index, login] of logins.entries()) {
+    try {
+      const result = await attempt(login);
+      const note = failures.length > 0
+        ? `Logged in with "${loginName(login)}". ${failures.map((f) => `"${f.login}": ${f.error}`).join(" ")}`
+        : null;
+      return { result, login, note };
+    } catch (error) {
+      failures.push({
+        login: loginName(login),
+        error: error instanceof CollectError ? error.message : `Failed: ${(error as Error).message}`,
+      });
+      const another = index < logins.length - 1 && error instanceof CollectError && error.loginProblem;
+      if (!another) break;
+    }
+  }
+  throw new LoginsFailedError(failures);
+}
+
+const NO_CONFIG = "The device did not print a configuration. The login may not have enough rights.";
 
 const IDENTITY_LABELS: Record<keyof DeviceIdentity, string> = {
   operatingSystem: "operatingSystem",
@@ -60,7 +110,7 @@ async function backupOne(
     where: { id: deviceId },
     include: {
       manufacturer: { select: { name: true } },
-      credentials: { include: { credentialSet: { select: { username: true, secretCiphertext: true, deletedAt: true } } } },
+      credentials: { include: { credentialSet: { select: { name: true, username: true, secretCiphertext: true, deletedAt: true } } } },
       asset: { select: { id: true, model: true, serialNumber: true, deletedAt: true } },
     },
   });
@@ -76,29 +126,29 @@ async function backupOne(
     await record("SKIPPED", "No IP address recorded.");
     return "skipped";
   }
-  const { login, enable } = pickLogins(device.credentials);
-  if (!login) {
+  const { logins, enable } = pickLogins(device.credentials);
+  if (logins.length === 0) {
     await record("SKIPPED", "No SSH login linked. Link one from the credential vault.");
     return "skipped";
   }
 
   let result: CollectResult;
+  let note: string | null;
   try {
-    result = await collect({
-      host: device.ipAddress,
-      username: login.credentialSet.username!,
-      password: decryptSecret(login.credentialSet.secretCiphertext!),
-      enablePassword: enable ? decryptSecret(enable.credentialSet.secretCiphertext!) : null,
-      manufacturer: device.manufacturer?.name ?? null,
-    });
+    ({ result, note } = await tryLogins(logins, async (login) => {
+      const collected = await collect({
+        host: device.ipAddress!,
+        username: login.credentialSet.username!,
+        password: decryptSecret(login.credentialSet.secretCiphertext!),
+        enablePassword: enable ? decryptSecret(enable.credentialSet.secretCiphertext!) : null,
+        manufacturer: device.manufacturer?.name ?? null,
+      });
+      // Logged in but shown nothing: a login with more rights may do better.
+      if (!looksLikeConfig(collected.config)) throw new CollectError(NO_CONFIG, true);
+      return collected;
+    }));
   } catch (error) {
-    const message = error instanceof CollectError ? error.message : `Failed: ${(error as Error).message}`;
-    await record("FAILED", message.slice(0, 500));
-    return "failed";
-  }
-
-  if (!looksLikeConfig(result.config)) {
-    await record("FAILED", "The device did not print a configuration. The login may not have enough rights.");
+    await record("FAILED", (error as Error).message.slice(0, 500));
     return "failed";
   }
 
@@ -159,7 +209,8 @@ async function backupOne(
         ...data,
         configCheckedAt: new Date(),
         configStatus: "OK",
-        configError: null,
+        // Saved, but an earlier login failed: worth knowing.
+        configError: note ? note.slice(0, 500) : null,
         // The addresses it routes: tells the ARP reading which switch to ask for a subnet.
         routedNetworks: routedNetworks(result.config) as unknown as Prisma.InputJsonValue,
       },

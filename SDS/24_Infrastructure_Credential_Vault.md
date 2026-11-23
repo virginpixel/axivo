@@ -32,6 +32,20 @@ A type in use cannot be deleted; it can be deactivated.
 
 Servers may list the Applications that run on them.
 
+## Services
+A server lists what it offers on the network: each Docker stack on a
+container host, a web app, a database.
+
+- A service has a name (unique per server, ignoring capitals), its
+  ports, an address and notes. Ports are written as people type them
+  ("9443", "80, 443", "8000-8010", "53/udp"); each must be 1 to 65535 and
+  they are saved in one spelling ("9443, 8000-8010/tcp"). An address
+  starts with http:// or https:// and opens in a new tab.
+- Services are recorded on servers and hosts only, need
+  `infrastructure.manage`, and each change is on the server's history.
+- Searching Servers & hosts also matches a service's name, ports or
+  address; the server shows with the services that matched.
+
 Two devices may share an IP address (a standby clone takes over its
 primary's address). The device page points it out rather than blocking it.
 
@@ -104,10 +118,17 @@ A connection is one cable: a port on one device to a port on another.
 - Every night at the hour set on the Config backups page (organisation
   timezone; default 02:00), the worker backs up each active network
   device that is included (the default) and has an IP address and an
-  SSH login linked. A device's login is the linked credential set whose
-  purpose is SSH, else the first that is not for a web UI or enable; a
-  set with purpose Enable gives the enable password, else the login's
-  own password is tried.
+  SSH login linked. The logins tried are the linked credential sets whose
+  purpose is SSH, the one linked first leading; when none is marked SSH,
+  those not for a web UI, iLO, SNMP, OS admin or enable. A set with
+  purpose Enable gives the enable password, else the login's own
+  password is tried.
+- When a login is refused, lacks enable rights or shows no
+  configuration, the next login is tried. A device that cannot be
+  reached is not tried again with another login. If a later login gets
+  in, the result says which one and why the earlier ones failed; if
+  none does, it names each login and its reason. The ARP reading tries
+  logins the same way.
 - It logs in, enters enable mode when the device starts at `>`, turns
   paging off, and runs only `show version`, the family's identity
   command (`show inventory` / `show system`) and `show running-config`.
